@@ -679,10 +679,10 @@ GET /api/logs</div>
             '限流与缓存': [
                 { key: 'RATE_LIMIT_MAX_REQUESTS', desc: '限流:1分钟内同一IP最大请求次数(0表示不限流)', default: '3', type: 'number' },
                 { key: 'LOG_LEVEL', desc: '日志级别', default: 'info', type: 'select', options: ['error', 'warn', 'info'] },
-                { key: 'SEARCH_CACHE_MINUTES', desc: '搜索结果缓存时间(分钟)', default: '1', type: 'number' },
-                { key: 'COMMENT_CACHE_MINUTES', desc: '弹幕缓存时间(分钟)', default: '1', type: 'number' },
-                { key: 'REMEMBER_LAST_SELECT', desc: '记住手动选择结果', default: 'true', type: 'select', options: ['true', 'false'] },
-                { key: 'MAX_LAST_SELECT_MAP', desc: '最后选择映射缓存大小限制', default: '100', type: 'number' },
+                { key: 'SEARCH_CACHE_MINUTES', desc: '搜索结果缓存时间(分钟)', default: '1',type: 'number' },
+               { key: 'COMMENT_CACHE_MINUTES', desc: '弹幕缓存时间(分钟)', default: '1', type: 'number' },
+               { key: 'REMEMBER_LAST_SELECT', desc: '记住手动选择结果', default: 'true', type: 'select', options: ['true', 'false'] },
+               { key: 'MAX_LAST_SELECT_MAP', desc: '最后选择映射缓存大小限制', default: '100', type: 'number' },
            ],
            'Redis 配置': [
                { key: 'UPSTASH_REDIS_REST_URL', desc: 'Upstash Redis URL', default: '', type: 'text' },
@@ -838,7 +838,7 @@ GET /api/logs</div>
        async function checkApiStatus() {
            try {
                const token = document.getElementById('TOKEN')?.value || '87654321';
-               const url = token === '87654321' ? \`\${apiBaseUrl}/\` : \`\${apiBaseUrl}/\${token}\`;
+               const url = token === '87654321' ? \`\${apiBaseUrl}/api/info\` : \`\${apiBaseUrl}/\${token}/api/info\`;
                const response = await fetch(url);
                const data = await response.json();
                document.getElementById('api-version').textContent = data.version || '-';
@@ -1005,7 +1005,6 @@ GET /api/logs</div>
 </html>`;
 
 async function handleRequest(req, env, deployPlatform, clientIp) {
- // 加载全局变量和环境变量配置
  globals = Globals.init(env, deployPlatform);
 
  const url = new URL(req.url);
@@ -1038,7 +1037,22 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
    });
  }
 
- // GET /
+ function handleApiInfo() {
+   log("info", "Accessed API info endpoint");
+   return jsonResponse({
+     message: "Welcome to the LogVar Danmu API server",
+     version: globals.VERSION,
+     envs: {
+       ...globals.accessedEnvVars,
+       localCacheValid: globals.localCacheValid,
+       redisValid: globals.redisValid
+     },
+     repository: "https://github.com/huangxd-/danmu_api.git",
+     description: "一个人人都能部署的基于 js 的弹幕 API 服务器",
+     notice: "本项目仅为个人爱好开发,代码开源。"
+   });
+ }
+
  if (path === "/" && method === "GET") {
    return handleHomepage();
  }
@@ -1047,7 +1061,6 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
    return new Response(null, { status: 204 });
  }
 
- // --- 校验 token ---
  const parts = path.split("/").filter(Boolean);
 
  if (globals.token === "87654321") {
@@ -1076,8 +1089,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
  log("info", path);
 
- // 智能处理API路径前缀
- if (path !== "/" && path !== "/api/logs") {
+ if (path !== "/" && path !== "/api/logs" && path !== "/api/info") {
      log("info", `[Path Check] Starting path normalization for: "${path}"`);
      const pathBeforeCleanup = path;
      
@@ -1093,7 +1105,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
      }
      
      const pathBeforePrefixCheck = path;
-     if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs')) {
+     if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs') && !path.startsWith('/api/info')) {
          log("info", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
          path = '/api/v2' + path;
      }
@@ -1105,32 +1117,30 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
      log("info", `[Path Check] Final normalized path: "${path}"`);
  }
  
- // GET /
  if (path === "/" && method === "GET") {
    return handleHomepage();
  }
 
- // GET /api/v2/search/anime
+ if (path === "/api/info" && method === "GET") {
+   return handleApiInfo();
+ }
+
  if (path === "/api/v2/search/anime" && method === "GET") {
    return searchAnime(url);
  }
 
- // GET /api/v2/search/episodes
  if (path === "/api/v2/search/episodes" && method === "GET") {
    return searchEpisodes(url);
  }
 
- // POST /api/v2/match
  if (path === "/api/v2/match" && method === "POST") {
    return matchAnime(url, req);
  }
 
- // GET /api/v2/bangumi/:animeId
  if (path.startsWith("/api/v2/bangumi/") && method === "GET") {
    return getBangumi(path);
  }
 
- // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx
  if (path.startsWith("/api/v2/comment") && method === "GET") {
    const queryFormat = url.searchParams.get('format');
    const videoUrl = url.searchParams.get('url');
@@ -1219,7 +1229,6 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
    return getComment(path, queryFormat);
  }
 
- // GET /api/logs
  if (path === "/api/logs" && method === "GET") {
    const logText = globals.logBuffer
      .map(
@@ -1233,7 +1242,6 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
  return jsonResponse({ message: "Not found" }, 404);
 }
 
-// --- Cloudflare Workers 入口 ---
 export default {
  async fetch(request, env, ctx) {
    const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
@@ -1241,7 +1249,6 @@ export default {
  },
 };
 
-// --- Vercel 入口 ---
 export async function vercelHandler(req, res) {
  const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
  const cfReq = new Request(req.url, {
@@ -1259,7 +1266,6 @@ export async function vercelHandler(req, res) {
  res.send(text);
 }
 
-// --- Netlify 入口 ---
 export async function netlifyHandler(event, context) {
  const clientIp = event.headers['x-nf-client-connection-ip'] ||
                   event.headers['x-forwarded-for'] ||
