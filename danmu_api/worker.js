@@ -1,6 +1,3 @@
-import { readFile } from 'fs/promises';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import { Globals } from './configs/globals.js';
 import { jsonResponse } from './utils/http-util.js';
 import { log, formatLogMessage } from './utils/log-util.js'
@@ -11,373 +8,1280 @@ import { getBangumi, getComment, getCommentByUrl, matchAnime, searchAnime, searc
 
 let globals;
 
+// 内嵌的 HTML 管理面板
+const ADMIN_HTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danmu API 管理面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --dark-light: #374151;
+            --gray: #6b7280;
+            --light: #f3f4f6;
+            --border: #e5e7eb;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--dark);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: var(--gray);
+            font-size: 0.95rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            background: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--gray);
+            transition: all 0.3s;
+            box-shadow: var(--shadow);
+        }
+
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .env-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .env-item {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+
+        .env-item:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow);
+        }
+
+        .env-item label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--dark);
+        }
+
+        .env-item .env-desc {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .env-item input,
+        .env-item textarea,
+        .env-item select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        .env-item textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .env-item input:focus,
+        .env-item textarea:focus,
+        .env-item select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .env-category {
+            margin-bottom: 30px;
+        }
+
+        .env-category h3 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: var(--shadow);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .test-section h3 {
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .result-box {
+            margin-top: 15px;
+            padding: 15px;
+            background: var(--light);
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-viewer {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+            line-height: 1.6;
+        }
+
+        .log-line.error {
+            color: #f48771;
+        }
+
+        .log-line.warn {
+            color: #dcdcaa;
+        }
+
+        .log-line.info {
+            color: #4ec9b0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card h4 {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .label {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #3b82f6;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 20px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+            }
+
+            .tab {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 Danmu API 管理面板</h1>
+            <p>一个功能全面的弹幕 API 服务器管理界面 | 支持环境变量配置、API测试、日志查看等</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('dashboard')">📊 仪表盘</button>
+            <button class="tab" onclick="switchTab('env')">⚙️ 环境变量</button>
+            <button class="tab" onclick="switchTab('api-test')">🧪 API测试</button>
+            <button class="tab" onclick="switchTab('logs')">📝 日志查看</button>
+            <button class="tab" onclick="switchTab('guide')">📖 快速指南</button>
+        </div>
+
+        <div class="content">
+            <!-- 仪表盘 -->
+            <div id="dashboard" class="tab-content active">
+                <h2 style="margin-bottom: 20px;">系统状态</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>API 版本</h4>
+                        <div class="value" id="api-version">-</div>
+                        <div class="label">当前版本</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <h4>部署平台</h4>
+                        <div class="value" id="deploy-platform">-</div>
+                        <div class="label">运行环境</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <h4>缓存状态</h4>
+                        <div class="value" id="cache-status">-</div>
+                        <div class="label">本地/Redis</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <h4>服务状态</h4>
+                        <div class="value" id="service-status">检测中</div>
+                        <div class="label">运行状态</div>
+                    </div>
+                </div>
+
+                <div class="test-section">
+                    <h3>快速操作</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="checkApiStatus()">🔄 刷新状态</button>
+                        <button class="btn btn-success" onclick="switchTab('api-test')">🧪 测试API</button>
+                        <button class="btn btn-warning" onclick="switchTab('logs')">📝 查看日志</button>
+                        <button class="btn btn-primary" onclick="exportConfig()">💾 导出配置</button>
+                    </div>
+                </div>
+
+                <div class="test-section">
+                    <h3>API 基本信息</h3>
+                    <div id="api-info" class="result-box">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 环境变量 -->
+            <div id="env" class="tab-content">
+                <div class="alert alert-info">
+                    <span>💡</span>
+                    <div>
+                        <strong>提示:</strong>修改环境变量后需要保存并重启服务才能生效。配置会保存到 localStorage,可以导出/导入配置文件。
+                    </div>
+                </div>
+
+                <div class="search-box">
+                    <input type="text" id="env-search" placeholder="🔍 搜索环境变量..." oninput="filterEnvVars()">
+                </div>
+
+                <div id="env-container"></div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="saveEnvVars()">💾 保存配置</button>
+                    <button class="btn btn-success" onclick="exportConfig()">📤 导出配置</button>
+                    <button class="btn btn-warning" onclick="importConfig()">📥 导入配置</button>
+                    <button class="btn btn-danger" onclick="resetEnvVars()">🔄 重置为默认</button>
+                </div>
+            </div>
+
+            <!-- API测试 -->
+            <div id="api-test" class="tab-content">
+                <div class="test-section">
+                    <h3>🔍 搜索动漫</h3>
+                    <div class="form-group">
+                        <label>关键词</label>
+                        <input type="text" id="search-keyword" placeholder="例如: 生万物" value="生万物">
+                    </div>
+                    <button class="btn btn-primary" onclick="testSearchAnime()">搜索</button>
+                    <div id="search-result" class="result-box hidden"></div>
+                </div>
+
+                <div class="test-section">
+                    <h3>🎯 自动匹配</h3>
+                    <div class="form-group">
+                        <label>文件名</label>
+                        <input type="text" id="match-filename" placeholder="例如: 生万物.S01E01.2160p.WEB-DL.H265" value="生万物.S01E01">
+                    </div>
+                    <button class="btn btn-primary" onclick="testMatch()">匹配</button>
+                    <div id="match-result" class="result-box hidden"></div>
+                </div>
+
+                <div class="test-section">
+                    <h3>💬 获取弹幕</h3>
+                    <div class="form-group">
+                        <label>视频URL或弹幕ID</label>
+                        <input type="text" id="comment-url" placeholder="例如: https://v.qq.com/x/cover/xxx.html 或 10001">
+                    </div>
+                    <div class="form-group">
+                        <label>输出格式</label>
+                        <select id="comment-format">
+                            <option value="json">JSON</option>
+                            <option value="xml">XML</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="testGetComment()">获取弹幕</button>
+                    <div id="comment-result" class="result-box hidden"></div>
+                </div>
+            </div>
+
+            <!-- 日志查看 -->
+            <div id="logs" class="tab-content">
+                <div class="btn-group" style="margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="loadLogs()">🔄 刷新日志</button>
+                    <button class="btn btn-success" onclick="autoRefreshLogs()">⏱️ 自动刷新</button>
+                    <button class="btn btn-warning" onclick="clearLogsDisplay()">🗑️ 清空显示</button>
+                    <button class="btn btn-danger" onclick="downloadLogs()">💾 下载日志</button>
+                </div>
+                <div class="log-viewer" id="log-viewer">
+                    <div class="log-line info">等待加载日志...</div>
+                </div>
+            </div>
+
+            <!-- 快速指南 -->
+            <div id="guide" class="tab-content">
+                <h2 style="margin-bottom: 20px;">📖 快速使用指南</h2>
+
+                <div class="test-section">
+                    <h3>1. 配置 TOKEN</h3>
+                    <p>在"环境变量"标签页中设置 TOKEN,用于 API 访问鉴权。默认值为 87654321。</p>
+                    <p><strong>示例:</strong> <code>TOKEN=your_secret_token</code></p>
+                </div>
+
+                <div class="test-section">
+                    <h3>2. 配置数据源</h3>
+                    <p>通过 SOURCE_ORDER 配置数据源查询顺序,支持的源包括:</p>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li>360 - 360看源</li>
+                        <li>vod - VOD采集站</li>
+                        <li>tmdb - TMDB源</li>
+                        <li>douban - 豆瓣源</li>
+                        <li>bilibili - 哔哩哔哩</li>
+                        <li>tencent - 腾讯视频</li>
+                        <li>iqiyi - 爱奇艺</li>
+                        <li>youku - 优酷</li>
+                        <li>imgo - 芒果TV</li>
+                        <li>renren - 人人视频</li>
+                        <li>hanjutv - 韩剧TV</li>
+                        <li>bahamut - 巴哈姆特</li>
+                    </ul>
+                    <p><strong>示例:</strong> <code>SOURCE_ORDER=360,vod,bilibili,renren</code></p>
+                </div>
+
+                <div class="test-section">
+                    <h3>3. API 使用示例</h3>
+                    <div class="result-box"># 搜索动漫
+GET /api/v2/search/anime?keyword=生万物
+
+# 自动匹配
+POST /api/v2/match
+Body: {"fileName": "生万物.S01E01.2160p.WEB-DL"}
+
+# 获取弹幕 (通过 URL)
+GET /api/v2/comment?url=https://v.qq.com/x/cover/xxx.html&format=json
+
+# 获取弹幕 (通过 ID)
+GET /api/v2/comment/10001?format=xml
+
+# 查看日志
+GET /api/logs</div>
+                </div>
+
+                <div class="test-section">
+                    <h3>4. 播放器配置</h3>
+                    <p>以 senplayer 为例:</p>
+                    <ol style="margin-left: 20px; line-height: 1.8;">
+                        <li>获取部署后的 API 地址,如 <code>http://192.168.1.7:9321/87654321</code></li>
+                        <li>在播放器的"设置 - 弹幕设置 - 自定义弹幕API"中填入 API 地址</li>
+                        <li>播放时点击"弹幕按钮 - 搜索弹幕",选择你的弹幕 API</li>
+                        <li>根据标题搜索并选择剧集即可加载弹幕</li>
+                    </ol>
+                </div>
+
+                <div class="test-section">
+                    <h3>5. 进阶配置</h3>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li><strong>限流配置:</strong>通过 RATE_LIMIT_MAX_REQUESTS 设置 1 分钟内同一 IP 最大请求次数</li>
+                        <li><strong>弹幕过滤:</strong>使用 EPISODE_TITLE_FILTER 过滤预告、花絮等非正片内容</li>
+                        <li><strong>缓存配置:</strong>设置 SEARCH_CACHE_MINUTES 和 COMMENT_CACHE_MINUTES 控制缓存时间</li>
+                        <li><strong>Redis 持久化:</strong>配置 UPSTASH_REDIS_REST_URL 和 TOKEN 启用 Redis 存储</li>
+                    </ul>
+                </div>
+
+                <div class="alert alert-info">
+                    <span>📚</span>
+                    <div>
+                        <strong>更多文档:</strong>
+                        <a href="https://github.com/huangxd-/danmu_api" target="_blank" style="color: #1e40af; text-decoration: underline;">访问 GitHub 仓库</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="import-file" accept=".json" style="display: none;" onchange="handleImport(event)">
+
+    <script>
+        const envConfig = {
+            '基础配置': [
+                { key: 'TOKEN', desc: 'API 访问令牌(用于鉴权)', default: '87654321', type: 'text' },
+                { key: 'OTHER_SERVER', desc: '第三方弹幕服务器地址', default: 'https://api.danmu.icu', type: 'text' },
+            ],
+            'VOD 配置': [
+                { key: 'VOD_SERVERS', desc: 'VOD 服务器列表(格式:名称@URL,名称@URL)', default: '金蝉@https://zy.jinchancaiji.com,789@https://www.caiji.cyou,听风@https://gctf.tfdh.top', type: 'textarea' },
+                { key: 'VOD_RETURN_MODE', desc: 'VOD 返回模式', default: 'fastest', type: 'select', options: ['all', 'fastest'] },
+                { key: 'VOD_REQUEST_TIMEOUT', desc: 'VOD 请求超时时间(毫秒)', default: '10000', type: 'number' },
+            ],
+            '数据源配置': [
+                { key: 'SOURCE_ORDER', desc: '数据源查询顺序(可选:360,vod,tmdb,douban,tencent,youku,iqiyi,imgo,bilibili,renren,hanjutv,bahamut)', default: '360,vod,renren,hanjutv', type: 'text' },
+                { key: 'PLATFORM_ORDER', desc: '平台优先级排序(可选:qiyi,bilibili1,imgo,youku,qq,renren,hanjutv,bahamut)', default: '', type: 'text' },
+            ],
+            '弹幕配置': [
+                { key: 'EPISODE_TITLE_FILTER', desc: '剧集标题过滤正则表达式', default: '预告|花絮|特辑|番外', type: 'textarea' },
+                { key: 'BLOCKED_WORDS', desc: '弹幕屏蔽词列表', default: '', type: 'textarea' },
+                { key: 'GROUP_MINUTE', desc: '弹幕去重分钟数(0-30)', default: '1', type: 'number' },
+                { key: 'DANMU_LIMIT', desc: '弹幕数量限制(单位:千,0表示不限制)', default: '0', type: 'number' },
+                { key: 'CONVERT_TOP_BOTTOM_TO_SCROLL', desc: '将顶部和底部弹幕转换为浮动弹幕', default: 'false', type: 'select', options: ['true', 'false'] },
+                { key: 'CONVERT_COLOR_TO_WHITE', desc: '将彩色弹幕转换为纯白弹幕', default: 'false', type: 'select', options: ['true', 'false'] },
+                { key: 'DANMU_OUTPUT_FORMAT', desc: '弹幕输出格式', default: 'json', type: 'select', options: ['json', 'xml'] },
+                { key: 'DANMU_SIMPLIFIED', desc: '繁体弹幕转简体(巴哈姆特)', default: 'true', type: 'select', options: ['true', 'false'] },
+            ],
+            '高级配置': [
+                { key: 'BILIBILI_COOKIE', desc: 'Bilibili Cookie(用于访问需要登录的内容)', default: '', type: 'textarea' },
+                { key: 'YOUKU_CONCURRENCY', desc: '优酷并发数(1-16)', default: '8', type: 'number' },
+                { key: 'ENABLE_EPISODE_FILTER', desc: '在手动选择接口中启用集标题过滤', default: 'false', type: 'select', options: ['true', 'false'] },
+                { key: 'STRICT_TITLE_MATCH', desc: '启用严格标题匹配模式', default: 'false', type: 'select', options: ['true', 'false'] },
+                { key: 'TITLE_TO_CHINESE', desc: 'match时将外语标题转换为中文', default: 'false', type: 'select', options: ['true', 'false'] },
+                { key: 'PROXY_URL', desc: '代理/反代地址(支持巴哈姆特和TMDB)', default: '', type: 'text' },
+                { key: 'TMDB_API_KEY', desc: 'TMDB API Key', default: '', type: 'text' },
+            ],
+            '限流与缓存': [
+                { key: 'RATE_LIMIT_MAX_REQUESTS', desc: '限流:1分钟内同一IP最大请求次数(0表示不限流)', default: '3', type: 'number' },
+                { key: 'LOG_LEVEL', desc: '日志级别', default: 'info', type: 'select', options: ['error', 'warn', 'info'] },
+                { key: 'SEARCH_CACHE_MINUTES', desc: '搜索结果缓存时间(分钟)', default: '1', type: 'number' },
+                { key: 'COMMENT_CACHE_MINUTES', desc: '弹幕缓存时间(分钟)', default: '1', type: 'number' },
+                { key: 'REMEMBER_LAST_SELECT', desc: '记住手动选择结果', default: 'true', type: 'select', options: ['true', 'false'] },
+                { key: 'MAX_LAST_SELECT_MAP', desc: '最后选择映射缓存大小限制', default: '100', type: 'number' },
+           ],
+           'Redis 配置': [
+               { key: 'UPSTASH_REDIS_REST_URL', desc: 'Upstash Redis URL', default: '', type: 'text' },
+               { key: 'UPSTASH_REDIS_REST_TOKEN', desc: 'Upstash Redis Token', default: '', type: 'text' },
+           ],
+       };
+
+       let autoRefreshInterval = null;
+       let apiBaseUrl = '';
+
+       document.addEventListener('DOMContentLoaded', () => {
+           apiBaseUrl = window.location.origin;
+           initEnvVars();
+           loadEnvVars();
+           checkApiStatus();
+       });
+
+       function switchTab(tabName) {
+           document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+           document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+           event.target.classList.add('active');
+           document.getElementById(tabName).classList.add('active');
+           if (tabName === 'logs') {
+               loadLogs();
+           } else if (tabName === 'dashboard') {
+               checkApiStatus();
+           }
+       }
+
+       function initEnvVars() {
+           const container = document.getElementById('env-container');
+           container.innerHTML = '';
+           for (const [category, vars] of Object.entries(envConfig)) {
+               const categoryDiv = document.createElement('div');
+               categoryDiv.className = 'env-category';
+               categoryDiv.innerHTML = \`<h3>\${category}</h3>\`;
+               const grid = document.createElement('div');
+               grid.className = 'env-grid';
+               vars.forEach(envVar => {
+                   const item = document.createElement('div');
+                   item.className = 'env-item';
+                   item.dataset.key = envVar.key;
+                   let inputHtml = '';
+                   if (envVar.type === 'textarea') {
+                       inputHtml = \`<textarea id="\${envVar.key}" placeholder="\${envVar.default}">\${envVar.default}</textarea>\`;
+                   } else if (envVar.type === 'select') {
+                       const options = envVar.options.map(opt => \`<option value="\${opt}">\${opt}</option>\`).join('');
+                       inputHtml = \`<select id="\${envVar.key}">\${options}</select>\`;
+                   } else {
+                       inputHtml = \`<input type="\${envVar.type}" id="\${envVar.key}" placeholder="\${envVar.default}" value="\${envVar.default}">\`;
+                   }
+                   item.innerHTML = \`
+                       <label>\${envVar.key}</label>
+                       <div class="env-desc">\${envVar.desc}</div>
+                       \${inputHtml}
+                   \`;
+                   grid.appendChild(item);
+               });
+               categoryDiv.appendChild(grid);
+               container.appendChild(categoryDiv);
+           }
+       }
+
+       function saveEnvVars() {
+           const config = {};
+           document.querySelectorAll('.env-item').forEach(item => {
+               const key = item.dataset.key;
+               const input = item.querySelector('input, textarea, select');
+               config[key] = input.value;
+           });
+           localStorage.setItem('danmu_api_config', JSON.stringify(config));
+           showAlert('success', '✅ 配置已保存到本地!');
+       }
+
+       function loadEnvVars() {
+           const saved = localStorage.getItem('danmu_api_config');
+           if (saved) {
+               const config = JSON.parse(saved);
+               for (const [key, value] of Object.entries(config)) {
+                   const input = document.getElementById(key);
+                   if (input) {
+                       input.value = value;
+                   }
+               }
+           }
+       }
+
+       function resetEnvVars() {
+           if (confirm('确定要重置所有环境变量为默认值吗?')) {
+               localStorage.removeItem('danmu_api_config');
+               initEnvVars();
+               showAlert('info', 'ℹ️ 已重置为默认配置');
+           }
+       }
+
+       function exportConfig() {
+           const config = {};
+           document.querySelectorAll('.env-item').forEach(item => {
+               const key = item.dataset.key;
+               const input = item.querySelector('input, textarea, select');
+               config[key] = input.value;
+           });
+           const dataStr = JSON.stringify(config, null, 2);
+           const dataBlob = new Blob([dataStr], { type: 'application/json' });
+           const url = URL.createObjectURL(dataBlob);
+           const link = document.createElement('a');
+           link.href = url;
+           link.download = \`danmu_api_config_\${new Date().getTime()}.json\`;
+           link.click();
+           URL.revokeObjectURL(url);
+           showAlert('success', '✅ 配置已导出!');
+       }
+
+       function importConfig() {
+           document.getElementById('import-file').click();
+       }
+
+       function handleImport(event) {
+           const file = event.target.files[0];
+           if (!file) return;
+           const reader = new FileReader();
+           reader.onload = (e) => {
+               try {
+                   const config = JSON.parse(e.target.result);
+                   for (const [key, value] of Object.entries(config)) {
+                       const input = document.getElementById(key);
+                       if (input) {
+                           input.value = value;
+                       }
+                   }
+                   localStorage.setItem('danmu_api_config', JSON.stringify(config));
+                   showAlert('success', '✅ 配置已导入!');
+               } catch (err) {
+                   showAlert('error', '❌ 配置文件格式错误');
+               }
+           };
+           reader.readAsText(file);
+       }
+
+       function filterEnvVars() {
+           const keyword = document.getElementById('env-search').value.toLowerCase();
+           document.querySelectorAll('.env-item').forEach(item => {
+               const key = item.dataset.key.toLowerCase();
+               const desc = item.querySelector('.env-desc').textContent.toLowerCase();
+               if (key.includes(keyword) || desc.includes(keyword)) {
+                   item.style.display = 'block';
+               } else {
+                   item.style.display = 'none';
+               }
+           });
+       }
+
+       async function checkApiStatus() {
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const url = token === '87654321' ? \`\${apiBaseUrl}/\` : \`\${apiBaseUrl}/\${token}\`;
+               const response = await fetch(url);
+               const data = await response.json();
+               document.getElementById('api-version').textContent = data.version || '-';
+               document.getElementById('service-status').textContent = '✅ 正常';
+               const localCache = data.envs?.localCacheValid ? '✅' : '❌';
+               const redisCache = data.envs?.redisValid ? '✅' : '❌';
+               document.getElementById('cache-status').textContent = \`\${localCache} / \${redisCache}\`;
+               document.getElementById('api-info').textContent = JSON.stringify(data, null, 2);
+           } catch (err) {
+               document.getElementById('service-status').textContent = '❌ 异常';
+               document.getElementById('api-info').textContent = \`错误: \${err.message}\`;
+           }
+       }
+
+       async function testSearchAnime() {
+           const keyword = document.getElementById('search-keyword').value;
+           if (!keyword) {
+               showAlert('error', '请输入搜索关键词');
+               return;
+           }
+           const resultBox = document.getElementById('search-result');
+           resultBox.classList.remove('hidden');
+           resultBox.textContent = '搜索中...';
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const baseUrl = token === '87654321' ? apiBaseUrl : \`\${apiBaseUrl}/\${token}\`;
+               const response = await fetch(\`\${baseUrl}/api/v2/search/anime?keyword=\${encodeURIComponent(keyword)}\`);
+               const data = await response.json();
+               resultBox.textContent = JSON.stringify(data, null, 2);
+           } catch (err) {
+               resultBox.textContent = \`错误: \${err.message}\`;
+           }
+       }
+
+       async function testMatch() {
+           const filename = document.getElementById('match-filename').value;
+           if (!filename) {
+               showAlert('error', '请输入文件名');
+               return;
+           }
+           const resultBox = document.getElementById('match-result');
+           resultBox.classList.remove('hidden');
+           resultBox.textContent = '匹配中...';
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const baseUrl = token === '87654321' ? apiBaseUrl : \`\${apiBaseUrl}/\${token}\`;
+               const response = await fetch(\`\${baseUrl}/api/v2/match\`, {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({ fileName: filename })
+               });
+               const data = await response.json();
+               resultBox.textContent = JSON.stringify(data, null, 2);
+           } catch (err) {
+               resultBox.textContent = \`错误: \${err.message}\`;
+           }
+       }
+
+       async function testGetComment() {
+           const urlOrId = document.getElementById('comment-url').value;
+           const format = document.getElementById('comment-format').value;
+           if (!urlOrId) {
+               showAlert('error', '请输入视频URL或弹幕ID');
+               return;
+           }
+           const resultBox = document.getElementById('comment-result');
+           resultBox.classList.remove('hidden');
+           resultBox.textContent = '获取中...';
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const baseUrl = token === '87654321' ? apiBaseUrl : \`\${apiBaseUrl}/\${token}\`;
+               let url;
+               if (urlOrId.startsWith('http')) {
+                   url = \`\${baseUrl}/api/v2/comment?url=\${encodeURIComponent(urlOrId)}&format=\${format}\`;
+               } else {
+                   url = \`\${baseUrl}/api/v2/comment/\${urlOrId}?format=\${format}\`;
+               }
+               const response = await fetch(url);
+               const text = await response.text();
+               if (format === 'json') {
+                   const data = JSON.parse(text);
+                   resultBox.textContent = JSON.stringify(data, null, 2);
+               } else {
+                   resultBox.textContent = text;
+               }
+           } catch (err) {
+               resultBox.textContent = \`错误: \${err.message}\`;
+           }
+       }
+
+       async function loadLogs() {
+           const viewer = document.getElementById('log-viewer');
+           viewer.innerHTML = '<div class="log-line info">加载中...</div>';
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const url = token === '87654321' ? \`\${apiBaseUrl}/api/logs\` : \`\${apiBaseUrl}/\${token}/api/logs\`;
+               const response = await fetch(url);
+               const text = await response.text();
+               const lines = text.split('\\n').filter(line => line.trim());
+               viewer.innerHTML = '';
+               lines.forEach(line => {
+                   const div = document.createElement('div');
+                   div.className = 'log-line';
+                   if (line.includes('error')) div.classList.add('error');
+                   else if (line.includes('warn')) div.classList.add('warn');
+                   else div.classList.add('info');
+                   div.textContent = line;
+                   viewer.appendChild(div);
+               });
+               viewer.scrollTop = viewer.scrollHeight;
+           } catch (err) {
+               viewer.innerHTML = \`<div class="log-line error">加载失败: \${err.message}</div>\`;
+           }
+       }
+
+       function autoRefreshLogs() {
+           if (autoRefreshInterval) {
+               clearInterval(autoRefreshInterval);
+               autoRefreshInterval = null;
+               showAlert('info', 'ℹ️ 已停止自动刷新');
+           } else {
+               loadLogs();
+               autoRefreshInterval = setInterval(loadLogs, 3000);
+               showAlert('success', '✅ 已开启自动刷新(每3秒)');
+           }
+       }
+
+       function clearLogsDisplay() {
+           document.getElementById('log-viewer').innerHTML = '<div class="log-line info">日志已清空</div>';
+       }
+
+       async function downloadLogs() {
+           try {
+               const token = document.getElementById('TOKEN')?.value || '87654321';
+               const url = token === '87654321' ? \`\${apiBaseUrl}/api/logs\` : \`\${apiBaseUrl}/\${token}/api/logs\`;
+               const response = await fetch(url);
+               const text = await response.text();
+               const blob = new Blob([text], { type: 'text/plain' });
+               const downloadUrl = URL.createObjectURL(blob);
+               const link = document.createElement('a');
+               link.href = downloadUrl;
+               link.download = \`danmu_api_logs_\${new Date().getTime()}.log\`;
+               link.click();
+               URL.revokeObjectURL(downloadUrl);
+               showAlert('success', '✅ 日志已下载');
+           } catch (err) {
+               showAlert('error', \`❌ 下载失败: \${err.message}\`);
+           }
+       }
+
+       function showAlert(type, message) {
+           const existingAlert = document.querySelector('.alert');
+           if (existingAlert) {
+               existingAlert.remove();
+           }
+           const alert = document.createElement('div');
+           alert.className = \`alert alert-\${type}\`;
+           alert.innerHTML = \`<span>\${message.charAt(0)}</span><div>\${message.substring(2)}</div>\`;
+           document.querySelector('.content').insertBefore(alert, document.querySelector('.content').firstChild);
+           setTimeout(() => alert.remove(), 3000);
+       }
+   </script>
+</body>
+</html>`;
+
 async function handleRequest(req, env, deployPlatform, clientIp) {
-  // 加载全局变量和环境变量配置
-  globals = Globals.init(env, deployPlatform);
+ // 加载全局变量和环境变量配置
+ globals = Globals.init(env, deployPlatform);
 
-  const url = new URL(req.url);
-  let path = url.pathname;
-  const method = req.method;
+ const url = new URL(req.url);
+ let path = url.pathname;
+ const method = req.method;
 
-  if (deployPlatform === "node") {
-    await judgeLocalCacheValid(path, deployPlatform);
-  }
-  await judgeRedisValid(path);
+ if (deployPlatform === "node") {
+   await judgeLocalCacheValid(path, deployPlatform);
+ }
+ await judgeRedisValid(path);
 
-  log("info", `request url: ${JSON.stringify(url)}`);
-  log("info", `request path: ${path}`);
-  log("info", `client ip: ${clientIp}`);
+ log("info", `request url: ${JSON.stringify(url)}`);
+ log("info", `request path: ${path}`);
+ log("info", `client ip: ${clientIp}`);
 
-  if (deployPlatform === "node" && globals.localCacheValid && path !== "/favicon.ico" && path !== "/robots.txt") {
-    await getLocalCaches();
-  }
-  if (globals.redisValid && path !== "/favicon.ico" && path !== "/robots.txt") {
-    await getRedisCaches();
-  }
+ if (deployPlatform === "node" && globals.localCacheValid && path !== "/favicon.ico" && path !== "/robots.txt") {
+   await getLocalCaches();
+ }
+ if (globals.redisValid && path !== "/favicon.ico" && path !== "/robots.txt") {
+   await getRedisCaches();
+ }
 
-  function handleHomepage() {
-    log("info", "Accessed homepage with repository information");
-    return jsonResponse({
-      message: "Welcome to the LogVar Danmu API server",
-      version: globals.VERSION,
-      envs: {
-        ...globals.accessedEnvVars,
-        localCacheValid: globals.localCacheValid,
-        redisValid: globals.redisValid
-      },
-      repository: "https://github.com/huangxd-/danmu_api.git",
-      description: "一个人人都能部署的基于 js 的弹幕 API 服务器，支持爱优腾芒哔人韩巴弹幕直接获取，兼容弹弹play的搜索、详情查询和弹幕获取接口规范，并提供日志记录，支持vercel/netlify/edgeone/cloudflare/docker/claw等部署方式，不用提前下载弹幕，没有nas或小鸡也能一键部署。",
-      notice: "本项目仅为个人爱好开发，代码开源。如有任何侵权行为，请联系本人删除。有问题提issue或私信机器人都ok，TG MSG ROBOT: [https://t.me/ddjdd_bot]; 推荐加互助群咨询，TG GROUP: [https://t.me/logvar_danmu_group]; 关注频道获取最新更新内容，TG CHANNEL: [https://t.me/logvar_danmu_channel]。"
-    });
-  }
+ function handleHomepage() {
+   log("info", "Accessed homepage - returning admin panel");
+   return new Response(ADMIN_HTML, {
+     headers: { 
+       "Content-Type": "text/html; charset=utf-8",
+       "Cache-Control": "no-cache"
+     }
+   });
+ }
 
-  // GET /
-  if (path === "/" && method === "GET") {
-    return handleHomepage();
-  }
+ // GET /
+ if (path === "/" && method === "GET") {
+   return handleHomepage();
+ }
 
-  if (path === "/favicon.ico" || path === "/robots.txt") {
-    return new Response(null, { status: 204 });
-  }
-  // GET /admin - 返回管理界面
-  if (path === "/admin" && method === "GET") {
-    try {
-      if (deployPlatform === "node" || deployPlatform === "vercel" || deployPlatform === "netlify") {
-        // Node.js/Vercel/Netlify 环境：读取文件
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = dirname(__filename);
-        const htmlPath = join(__dirname, 'admin.html');
-        const htmlContent = await readFile(htmlPath, 'utf-8');
-        return new Response(htmlContent, {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' }
-        });
-      } else {
-        // Cloudflare Workers 等其他平台：返回提示信息
-        return new Response(
-          '<h1>Admin Panel</h1><p>请将 admin.html 文件内容内嵌到代码中，或使用 Cloudflare Workers KV/Assets。</p>',
-          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-        );
-      }
-    } catch (error) {
-      log("error", `Failed to load admin.html: ${error.message}`);
-      return new Response('Admin page not found', { status: 404 });
-    }
-  }
+ if (path === "/favicon.ico" || path === "/robots.txt") {
+   return new Response(null, { status: 204 });
+ }
 
+ // --- 校验 token ---
+ const parts = path.split("/").filter(Boolean);
 
-  // --- 校验 token ---
-  const parts = path.split("/").filter(Boolean); // 去掉空段
+ if (globals.token === "87654321") {
+   const knownApiPaths = ["api", "v1", "v2"];
+   if (parts.length > 0) {
+     if (parts[0] === "87654321") {
+       path = "/" + parts.slice(1).join("/");
+     } else if (!knownApiPaths.includes(parts[0])) {
+       log("error", `Invalid token in path: ${path}`);
+       return jsonResponse(
+         { errorCode: 401, success: false, errorMessage: "Unauthorized" },
+         401
+       );
+     }
+   }
+ } else {
+   if (parts.length < 1 || parts[0] !== globals.token) {
+     log("error", `Invalid or missing token in path: ${path}`);
+     return jsonResponse(
+       { errorCode: 401, success: false, errorMessage: "Unauthorized" },
+       401
+     );
+   }
+   path = "/" + parts.slice(1).join("/");
+ }
 
-  // 如果 token 是默认值 87654321
-  if (globals.token === "87654321") {
-    // 检查第一段是否是已知的 API 路径（不是 token）
-    const knownApiPaths = ["api", "v1", "v2"];
+ log("info", path);
 
-    if (parts.length > 0) {
-      // 如果第一段是正确的默认 token
-      if (parts[0] === "87654321") {
-        // 移除 token，继续处理
-        path = "/" + parts.slice(1).join("/");
-      } else if (!knownApiPaths.includes(parts[0])) {
-        // 第一段不是已知的 API 路径，可能是错误的 token
-        // 返回 401
-        log("error", `Invalid token in path: ${path}`);
-        return jsonResponse(
-          { errorCode: 401, success: false, errorMessage: "Unauthorized" },
-          401
-        );
-      }
-      // 如果第一段是已知的 API 路径（如 "api"），允许直接访问
-    }
-  } else {
-    // token 不是默认值，必须严格校验
-    if (parts.length < 1 || parts[0] !== globals.token) {
-      log("error", `Invalid or missing token in path: ${path}`);
-      return jsonResponse(
-        { errorCode: 401, success: false, errorMessage: "Unauthorized" },
-        401
-      );
-    }
-    // 移除 token 部分，剩下的才是真正的路径
-    path = "/" + parts.slice(1).join("/");
-  }
+ // 智能处理API路径前缀
+ if (path !== "/" && path !== "/api/logs") {
+     log("info", `[Path Check] Starting path normalization for: "${path}"`);
+     const pathBeforeCleanup = path;
+     
+     while (path.startsWith('/api/v2/api/v2/')) {
+         log("info", `[Path Check] Found redundant /api/v2 prefix. Cleaning...`);
+         path = path.substring('/api/v2'.length);
+     }
+     
+     if (path !== pathBeforeCleanup) {
+         log("info", `[Path Check] Path after cleanup: "${path}"`);
+     } else {
+         log("info", `[Path Check] Path after cleanup: No cleanup needed.`);
+     }
+     
+     const pathBeforePrefixCheck = path;
+     if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs')) {
+         log("info", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
+         path = '/api/v2' + path;
+     }
+       
+     if (path === pathBeforePrefixCheck) {
+         log("info", `[Path Check] Prefix Check: No prefix addition needed.`);
+     }
+     
+     log("info", `[Path Check] Final normalized path: "${path}"`);
+ }
+ 
+ // GET /
+ if (path === "/" && method === "GET") {
+   return handleHomepage();
+ }
 
-  log("info", path);
+ // GET /api/v2/search/anime
+ if (path === "/api/v2/search/anime" && method === "GET") {
+   return searchAnime(url);
+ }
 
-  // 智能处理API路径前缀，确保最终有一个正确的 /api/v2
-  if (path !== "/" && path !== "/api/logs") {
-      log("info", `[Path Check] Starting path normalization for: "${path}"`);
-      const pathBeforeCleanup = path; // 保存清理前的路径检查是否修改
-      
-      // 1. 清理：应对“用户填写/api/v2”+“客户端添加/api/v2”导致的重复前缀
-      while (path.startsWith('/api/v2/api/v2/')) {
-          log("info", `[Path Check] Found redundant /api/v2 prefix. Cleaning...`);
-          // 从第二个 /api/v2 的位置开始截取，相当于移除第一个
-          path = path.substring('/api/v2'.length);
-      }
-      
-      // 打印日志：只有在发生清理时才显示清理后的路径，否则显示“无需清理”
-      if (path !== pathBeforeCleanup) {
-          log("info", `[Path Check] Path after cleanup: "${path}"`);
-      } else {
-          log("info", `[Path Check] Path after cleanup: No cleanup needed.`);
-      }
-      
-      // 2. 补全：如果路径缺少前缀（例如请求原始路径为 /search/anime），则补全
-      const pathBeforePrefixCheck = path;
-      if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs')) {
-          log("info", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
-          path = '/api/v2' + path;
-      }
-        
-      // 打印日志：只有在发生添加前缀时才显示添加后的路径，否则显示“无需补全”
-      if (path === pathBeforePrefixCheck) {
-          log("info", `[Path Check] Prefix Check: No prefix addition needed.`);
-      }
-      
-      log("info", `[Path Check] Final normalized path: "${path}"`);
-  }
-  
-  // GET /
-  if (path === "/" && method === "GET") {
-    return handleHomepage();
-  }
+ // GET /api/v2/search/episodes
+ if (path === "/api/v2/search/episodes" && method === "GET") {
+   return searchEpisodes(url);
+ }
 
-  // GET /api/v2/search/anime
-  if (path === "/api/v2/search/anime" && method === "GET") {
-    return searchAnime(url);
-  }
+ // POST /api/v2/match
+ if (path === "/api/v2/match" && method === "POST") {
+   return matchAnime(url, req);
+ }
 
-  // GET /api/v2/search/episodes
-  if (path === "/api/v2/search/episodes" && method === "GET") {
-    return searchEpisodes(url);
-  }
+ // GET /api/v2/bangumi/:animeId
+ if (path.startsWith("/api/v2/bangumi/") && method === "GET") {
+   return getBangumi(path);
+ }
 
-  // GET /api/v2/match
-  if (path === "/api/v2/match" && method === "POST") {
-    return matchAnime(url, req);
-  }
+ // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx
+ if (path.startsWith("/api/v2/comment") && method === "GET") {
+   const queryFormat = url.searchParams.get('format');
+   const videoUrl = url.searchParams.get('url');
 
-  // GET /api/v2/bangumi/:animeId
-  if (path.startsWith("/api/v2/bangumi/") && method === "GET") {
-    return getBangumi(path);
-  }
+   if (videoUrl) {
+     const cachedComments = getCommentCache(videoUrl);
+     if (cachedComments !== null) {
+       log("info", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
+       const responseData = { count: cachedComments.length, comments: cachedComments };
+       return formatDanmuResponse(responseData, queryFormat);
+     }
 
-  // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx
-  if (path.startsWith("/api/v2/comment") && method === "GET") {
-    const queryFormat = url.searchParams.get('format');
-    const videoUrl = url.searchParams.get('url');
+     if (globals.rateLimitMaxRequests > 0) {
+       const currentTime = Date.now();
+       const oneMinute = 60 * 1000;
+       cleanupExpiredIPs(currentTime);
 
-    // ⚠️ 限流设计说明：
-    // 1. 先检查缓存，缓存命中时直接返回，不计入限流次数
-    // 2. 只有缓存未命中时才执行限流检查和网络请求
-    // 3. 这样可以避免频繁访问同一弹幕时被限流，提高用户体验
+       if (!globals.requestHistory.has(clientIp)) {
+         globals.requestHistory.set(clientIp, []);
+       }
 
-    // 如果有url参数，则通过URL获取弹幕
-    if (videoUrl) {
-      // 先检查缓存
-      const cachedComments = getCommentCache(videoUrl);
-      if (cachedComments !== null) {
-        log("info", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
-        const responseData = { count: cachedComments.length, comments: cachedComments };
-        return formatDanmuResponse(responseData, queryFormat);
-      }
+       const history = globals.requestHistory.get(clientIp);
+       const recentRequests = history.filter(timestamp => currentTime - timestamp <= oneMinute);
 
-      // 缓存未命中，执行限流检查（如果 rateLimitMaxRequests > 0 则启用限流）
-      if (globals.rateLimitMaxRequests > 0) {
-        const currentTime = Date.now();
-        const oneMinute = 60 * 1000;
+       if (recentRequests.length >= globals.rateLimitMaxRequests) {
+         log("warn", `[Rate Limit] IP ${clientIp} exceeded rate limit (${recentRequests.length}/${globals.rateLimitMaxRequests} requests in 1 minute)`);
+         return jsonResponse(
+           { errorCode: 429, success: false, errorMessage: "Too many requests, please try again later" },
+           429
+         );
+       }
 
-        // 清理所有过期的 IP 记录
-        cleanupExpiredIPs(currentTime);
+       recentRequests.push(currentTime);
+       globals.requestHistory.set(clientIp, recentRequests);
+       log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+     }
 
-        // 检查该 IP 地址的历史请求
-        if (!globals.requestHistory.has(clientIp)) {
-          globals.requestHistory.set(clientIp, []);
-        }
+     return getCommentByUrl(videoUrl, queryFormat);
+   }
 
-        const history = globals.requestHistory.get(clientIp);
-        const recentRequests = history.filter(timestamp => currentTime - timestamp <= oneMinute);
+   if (!path.startsWith("/api/v2/comment/")) {
+     log("error", "Missing commentId or url parameter");
+     return jsonResponse(
+       { errorCode: 400, success: false, errorMessage: "Missing commentId or url parameter" },
+       400
+     );
+   }
 
-        // 如果最近 1 分钟内的请求次数超过限制，返回 429 错误
-        if (recentRequests.length >= globals.rateLimitMaxRequests) {
-          log("warn", `[Rate Limit] IP ${clientIp} exceeded rate limit (${recentRequests.length}/${globals.rateLimitMaxRequests} requests in 1 minute)`);
-          return jsonResponse(
-            { errorCode: 429, success: false, errorMessage: "Too many requests, please try again later" },
-            429
-          );
-        }
+   const commentId = parseInt(path.split("/").pop());
+   let urlForComment = findUrlById(commentId);
 
-        // 记录本次请求时间戳
-        recentRequests.push(currentTime);
-        globals.requestHistory.set(clientIp, recentRequests);
-        log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
-      }
+   if (urlForComment) {
+     const cachedComments = getCommentCache(urlForComment);
+     if (cachedComments !== null) {
+       log("info", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
+       const responseData = { count: cachedComments.length, comments: cachedComments };
+       return formatDanmuResponse(responseData, queryFormat);
+     }
+   }
 
-      // 通过URL获取弹幕
-      return getCommentByUrl(videoUrl, queryFormat);
-    }
+   if (globals.rateLimitMaxRequests > 0) {
+     const currentTime = Date.now();
+     const oneMinute = 60 * 1000;
+     cleanupExpiredIPs(currentTime);
 
-    // 否则通过commentId获取弹幕
-    if (!path.startsWith("/api/v2/comment/")) {
-      log("error", "Missing commentId or url parameter");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Missing commentId or url parameter" },
-        400
-      );
-    }
+     if (!globals.requestHistory.has(clientIp)) {
+       globals.requestHistory.set(clientIp, []);
+     }
 
-    const commentId = parseInt(path.split("/").pop());
-    let urlForComment = findUrlById(commentId);
+     const history = globals.requestHistory.get(clientIp);
+     const recentRequests = history.filter(timestamp => currentTime - timestamp <= oneMinute);
 
-    if (urlForComment) {
-      // 检查弹幕缓存 - 缓存命中时直接返回，不计入限流
-      const cachedComments = getCommentCache(urlForComment);
-      if (cachedComments !== null) {
-        log("info", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
-        const responseData = { count: cachedComments.length, comments: cachedComments };
-        return formatDanmuResponse(responseData, queryFormat);
-      }
-    }
+     if (recentRequests.length >= globals.rateLimitMaxRequests) {
+       log("warn", `[Rate Limit] IP ${clientIp} exceeded rate limit (${recentRequests.length}/${globals.rateLimitMaxRequests} requests in 1 minute)`);
+       return jsonResponse(
+         { errorCode: 429, success: false, errorMessage: "Too many requests, please try again later" },
+         429
+       );
+     }
 
-    // 缓存未命中，执行限流检查（如果 rateLimitMaxRequests > 0 则启用限流）
-    if (globals.rateLimitMaxRequests > 0) {
-      // 获取当前时间戳（单位：毫秒）
-      const currentTime = Date.now();
-      const oneMinute = 60 * 1000;  // 1分钟 = 60000 毫秒
+     recentRequests.push(currentTime);
+     globals.requestHistory.set(clientIp, recentRequests);
+     log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+   }
 
-      // 清理所有过期的 IP 记录
-      cleanupExpiredIPs(currentTime);
+   return getComment(path, queryFormat);
+ }
 
-      // 检查该 IP 地址的历史请求
-      if (!globals.requestHistory.has(clientIp)) {
-        // 如果该 IP 地址没有请求历史，初始化一个空队列
-        globals.requestHistory.set(clientIp, []);
-      }
+ // GET /api/logs
+ if (path === "/api/logs" && method === "GET") {
+   const logText = globals.logBuffer
+     .map(
+       (log) =>
+         `[${log.timestamp}] ${log.level}: ${formatLogMessage(log.message)}`
+     )
+     .join("\n");
+   return new Response(logText, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+ }
 
-      const history = globals.requestHistory.get(clientIp);
-
-      // 过滤掉已经超出 1 分钟的请求
-      const recentRequests = history.filter(timestamp => currentTime - timestamp <= oneMinute);
-
-      // 如果最近的请求数量大于等于配置的限制次数，则限制请求
-      if (recentRequests.length >= globals.rateLimitMaxRequests) {
-        log("warn", `[Rate Limit] IP ${clientIp} exceeded rate limit (${recentRequests.length}/${globals.rateLimitMaxRequests} requests in 1 minute)`);
-        return jsonResponse(
-          { errorCode: 429, success: false, errorMessage: "Too many requests, please try again later" },
-          429
-        );
-      }
-
-      // 记录本次请求时间戳
-      recentRequests.push(currentTime);
-      globals.requestHistory.set(clientIp, recentRequests);
-      log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
-    }
-
-    return getComment(path, queryFormat);
-  }
-
-  // GET /api/logs
-  if (path === "/api/logs" && method === "GET") {
-    const logText = globals.logBuffer
-      .map(
-        (log) =>
-          `[${log.timestamp}] ${log.level}: ${formatLogMessage(log.message)}`
-      )
-      .join("\n");
-    return new Response(logText, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-  }
-
-  return jsonResponse({ message: "Not found" }, 404);
+ return jsonResponse({ message: "Not found" }, 404);
 }
-
-
 
 // --- Cloudflare Workers 入口 ---
 export default {
-  async fetch(request, env, ctx) {
-    // 获取客户端的真实 IP
-    const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
-
-    return handleRequest(request, env, "cloudflare", clientIp);
-  },
+ async fetch(request, env, ctx) {
+   const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+   return handleRequest(request, env, "cloudflare", clientIp);
+ },
 };
 
 // --- Vercel 入口 ---
 export async function vercelHandler(req, res) {
-  // 从请求头获取真实 IP
-  const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
-
-  const cfReq = new Request(req.url, {
-    method: req.method,
-    headers: req.headers,
-    body:
-      req.method === "POST" || req.method === "PUT"
-        ? JSON.stringify(req.body)
-        : undefined,
-  });
-
-  const response = await handleRequest(cfReq, process.env, "vercel", clientIp);
-
-  res.status(response.status);
-  response.headers.forEach((value, key) => res.setHeader(key, value));
-  const text = await response.text();
-  res.send(text);
+ const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+ const cfReq = new Request(req.url, {
+   method: req.method,
+   headers: req.headers,
+   body:
+     req.method === "POST" || req.method === "PUT"
+       ? JSON.stringify(req.body)
+       : undefined,
+ });
+ const response = await handleRequest(cfReq, process.env, "vercel", clientIp);
+ res.status(response.status);
+ response.headers.forEach((value, key) => res.setHeader(key, value));
+ const text = await response.text();
+ res.send(text);
 }
 
 // --- Netlify 入口 ---
 export async function netlifyHandler(event, context) {
-  // 获取客户端 IP
-  const clientIp = event.headers['x-nf-client-connection-ip'] ||
-                   event.headers['x-forwarded-for'] ||
-                   context.ip ||
-                   'unknown';
-
-  // 构造标准 Request 对象
-  const url = event.rawUrl || `https://${event.headers.host}${event.path}`;
-
-  const request = new Request(url, {
-    method: event.httpMethod,
-    headers: new Headers(event.headers),
-    body: event.body ? event.body : undefined,
-  });
-
-  // 调用核心处理函数
-  const response = await handleRequest(request, process.env, "netlify", clientIp);
-
-  // 转换为 Netlify 响应格式
-  const headers = {};
-  response.headers.forEach((value, key) => {
-    headers[key] = value;
-  });
-
-  return {
-    statusCode: response.status,
-    headers,
-    body: await response.text(),
-  };
+ const clientIp = event.headers['x-nf-client-connection-ip'] ||
+                  event.headers['x-forwarded-for'] ||
+                  context.ip ||
+                  'unknown';
+ const url = event.rawUrl || `https://${event.headers.host}${event.path}`;
+ const request = new Request(url, {
+   method: event.httpMethod,
+   headers: new Headers(event.headers),
+   body: event.body ? event.body : undefined,
+ });
+ const response = await handleRequest(request, process.env, "netlify", clientIp);
+ const headers = {};
+ response.headers.forEach((value, key) => {
+   headers[key] = value;
+ });
+ return {
+   statusCode: response.status,
+   headers,
+   body: await response.text(),
+ };
 }
 
-// 为了测试导出 handleRequest
-export { handleRequest};
+export { handleRequest };
+
