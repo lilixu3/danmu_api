@@ -1,3 +1,6 @@
+import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { Globals } from './configs/globals.js';
 import { jsonResponse } from './utils/http-util.js';
 import { log, formatLogMessage } from './utils/log-util.js'
@@ -55,6 +58,30 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
   if (path === "/favicon.ico" || path === "/robots.txt") {
     return new Response(null, { status: 204 });
+  }
+  // GET /admin - 返回管理界面
+  if (path === "/admin" && method === "GET") {
+    try {
+      if (deployPlatform === "node") {
+        // Node.js 环境：读取文件
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        const htmlPath = join(__dirname, 'admin.html');
+        const htmlContent = await readFile(htmlPath, 'utf-8');
+        return new Response(htmlContent, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
+      } else {
+        // 其他平台：返回提示信息
+        return new Response(
+          '<h1>Admin Panel</h1><p>请将 admin.html 文件内容内嵌到代码中，或使用平台的静态文件托管功能。</p>',
+          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
+      }
+    } catch (error) {
+      log("error", `Failed to load admin.html: ${error.message}`);
+      return new Response('Admin page not found', { status: 404 });
+    }
   }
 
   // --- 校验 token ---
