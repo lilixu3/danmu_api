@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "danmu_api/worker.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["danmu_api/admin.html"]
+      }
     }
   ],
   "routes": [
