@@ -62,8 +62,8 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // GET /admin - 返回管理界面
   if (path === "/admin" && method === "GET") {
     try {
-      if (deployPlatform === "node") {
-        // Node.js 环境：读取文件
+      if (deployPlatform === "node" || deployPlatform === "vercel" || deployPlatform === "netlify") {
+        // Node.js/Vercel/Netlify 环境：读取文件
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = dirname(__filename);
         const htmlPath = join(__dirname, 'admin.html');
@@ -72,9 +72,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       } else {
-        // 其他平台：返回提示信息
+        // Cloudflare Workers 等其他平台：返回提示信息
         return new Response(
-          '<h1>Admin Panel</h1><p>请将 admin.html 文件内容内嵌到代码中，或使用平台的静态文件托管功能。</p>',
+          '<h1>Admin Panel</h1><p>请将 admin.html 文件内容内嵌到代码中，或使用 Cloudflare Workers KV/Assets。</p>',
           { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
         );
       }
@@ -83,6 +83,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       return new Response('Admin page not found', { status: 404 });
     }
   }
+
 
   // --- 校验 token ---
   const parts = path.split("/").filter(Boolean); // 去掉空段
