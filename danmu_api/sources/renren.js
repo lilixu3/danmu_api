@@ -6,6 +6,7 @@ import { autoDecode, createHmacSha256, generateRandomSid, generateSign, generate
 import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches } from "../utils/common-util.js";
+import { SegmentListResponse } from '../models/dandan-model.js';
 
 // =====================
 // 获取人人视频弹幕
@@ -16,22 +17,32 @@ export default class RenrenSource extends BaseSource {
     SEARCH_HOST: "api.qwdjapp.com",
     DRAMA_HOST: "api.zhimeisj.top",
     DANMU_HOST: "static-dm.qwdjapp.com",
-    USER_AGENT: 'Mozilla/5.0 (Linux; Android 15; PJC110 Build/AP3A.240617.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.7339.207 Mobile Safari/537.36 App/RRSPApp platform/android AppVersion/10.31.2'
+    APP_VERSION: "10.31.2",
+    USER_AGENT: 'Mozilla/5.0 (Linux; Android 16; 23127PN0CC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36 App/RRSPApp platform/android AppVersion/10.31.2'
   };
 
   generateAppCommonHeaders(timestamp, sign, xCaSign = null) {
     const headers = {
       'User-Agent': this.API_CONFIG.USER_AGENT,
-      'deviceId': 'fG1vO5jzBm22vJ5mfcCYGp2NrBii5SPysgiy%2FaUb63EOTrtXyXdxHm1cUajUR1zbszl62ApHyWc1GKZtH%2FbmF0UMZWgEetdDy9QVXd9WvPU%3D',
-      'aliId': 'aPuaf9shK3QDAL6WwVdhc7cC',
-      'umId': '380998657e22ed51b5a21f2b519aa5beod',
-      'clientType': 'android_rrsp_xb_RRSP',
-      't': timestamp.toString(),
-      'token':'rrtv-6433be3f6c8b32fbfc208ddef64a2ca781bec85d',
+      'deviceId': 'T2%2Bjh%2FnHhJkWEzPnQT2E0%2FEw865FTT0uL%2BiBwRa2ZdM%3D',
+      'aliId': 'aUzmLtnZIYoDAA9KyLdcLQpM',
+      'umId': '53e0f078fa8474ae7ba412f766989b54od',
       'st':'4c1a2b5a87b8f63045d94156a5881c6a',
+      'clientType': 'android_rrsp_xb_XiaoMi',
+      't': timestamp.toString(),
       'sign': sign,
       'isAgree': '1',
-      'cv': '10.31.2'
+      'cv': this.API_CONFIG.APP_VERSION,
+      'ct': 'android_rrsp_xb_XiaoMi',
+      'pkt': 'rrmj',
+      'p': 'Android',
+      'wcode': '0',
+      'et': '2',
+      'uet': '1',
+      'folding-screen': '1',
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip',
+      'Connection': 'close'
     };
 
     if (xCaSign) {
@@ -55,23 +66,60 @@ export default class RenrenSource extends BaseSource {
       };
 
       const sign = generateSign(path, timestamp, queryParams, this.API_CONFIG.SECRET_KEY);
+
       const queryString = Object.entries(queryParams)
-        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .map(([k, v]) => `${k}=${encodeURIComponent(v === null || v === undefined ? "" : String(v))}`)
         .join('&');
+
       const xCaSign = generateXCaSign(path, timestamp, queryString, this.API_CONFIG.SECRET_KEY);
 
       const headers = this.generateAppCommonHeaders(timestamp, sign, xCaSign);
       headers['Host'] = this.API_CONFIG.SEARCH_HOST;
-
+      headers['Origin'] = 'https://d.rrsp.com.cn';
+      headers['Referer'] = 'https://d.rrsp.com.cn/';
 
       const resp = await httpGet(`https://${this.API_CONFIG.SEARCH_HOST}${path}?${queryString}`, {
         headers: headers,
+        retries: 1,
       });
 
-      if (!resp.data) return [];
+      // ===== 添加调试日志 =====
+      log("info", `[Renren] searchAppContent 原始响应:`, {
+        hasData: !!resp.data,
+        dataType: typeof resp.data,
+        code: resp?.data?.code,
+        dataKeys: resp?.data ? Object.keys(resp.data) : [],
+        fullResponse: JSON.stringify(resp.data).substring(0, 500) // 只打印前500字符
+      });
+      // =====================
+
+      if (!resp.data) {
+        log("warn", "[Renren] searchAppContent: resp.data 为空");
+        return [];
+      }
+
+      // 服务端明确提示"版本过低/强制更新"时：直接返回空，让上层走备用搜索
+      if (resp?.data?.code === "0001") {
+        log("warn", "[Renren] searchAppContent: 版本过低/强制更新 (code: 0001)");
+        return [];
+      }
 
       const list = resp?.data?.data?.searchDramaList || [];
-      return list.map((item, idx) => ({
+      
+      // ===== 添加调试日志 =====
+      log("info", `[Renren] searchAppContent 解析结果:`, {
+        hasDataField: !!resp?.data?.data,
+        hasSearchDramaList: !!resp?.data?.data?.searchDramaList,
+        listLength: list.length,
+        firstItem: list[0] ? {
+          id: list[0].id,
+          title: list[0].title,
+          year: list[0].year
+        } : null
+      });
+      // =====================
+      
+      return list.map((item) => ({
         provider: "renren",
         mediaId: String(item.id),
         title: String(item.title || "").replace(/<[^>]+>/g, "").replace(/:/g, "："),
@@ -83,7 +131,15 @@ export default class RenrenSource extends BaseSource {
         currentEpisodeIndex: null,
       }));
     } catch (error) {
-      log("error", "getRenrenAppAnimes error:", {
+      const msg = String(error?.message || "");
+      const is418 = /status:\s*418\b/.test(msg);
+
+      if (is418) {
+        log("warn", "[Renren] /search/content 被服务端拦截 (418)，已降级为备用搜索接口");
+        return [];
+      }
+
+      log("error", "[Renren] searchAppContent error:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
@@ -119,14 +175,15 @@ export default class RenrenSource extends BaseSource {
       headers['ignore'] = 'false';
 
       const resp = await httpGet(`https://${this.API_CONFIG.DRAMA_HOST}${path}?${queryString}`, {
-        headers: headers
+        headers: headers,
+        retries: 1,
       });
 
       if (!resp.data) return null;
 
       return resp.data;
     } catch (error) {
-      log("error", "getRenrenAppDramaDetail error:", {
+      log("error", "[Renren] getAppDramaDetail error:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
@@ -156,7 +213,7 @@ export default class RenrenSource extends BaseSource {
 
       return resp.data;
     } catch (error) {
-      log("error", "getRenrenDramaDetail error:", {
+      log("error", "[Renren] getAppDanmu error:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
@@ -167,11 +224,14 @@ export default class RenrenSource extends BaseSource {
 
   parseRRSPPFields(pField) {
     const parts = String(pField).split(",");
-    const num = (i, cast, dft) => { try { return cast(parts[i]); } catch { return dft; } };
+    const num = (i, cast, dft) => { 
+      try { return cast(parts[i]); } 
+      catch { return dft; } 
+    };
     const timestamp = num(0, parseFloat, 0);
-    const mode = num(1, x=>parseInt(x,10),1);
-    const size = num(2, x=>parseInt(x,10),25);
-    const color = num(3, x=>parseInt(x,10),16777215);
+    const mode = num(1, x => parseInt(x, 10), 1);
+    const size = num(2, x => parseInt(x, 10), 25);
+    const color = num(3, x => parseInt(x, 10), 16777215);
     const userId = parts[6] || "";
     const contentId = parts[7] || `${timestamp}:${userId}`;
     return { timestamp, mode, size, color, userId, contentId };
@@ -218,7 +278,7 @@ export default class RenrenSource extends BaseSource {
   }
 
   async renrenHttpGet(url, { params = {}, headers = {} } = {}) {
-    const u = updateQueryString(url, params)
+    const u = updateQueryString(url, params);
     const resp = await httpGet(u, {
       headers: headers,
       retries: 1,
@@ -235,35 +295,33 @@ export default class RenrenSource extends BaseSource {
     const headers = this.buildSignedHeaders({ method, url, params, deviceId });
     const resp = await httpGet(url + "?" + sortedQueryString(params), {
       headers: headers,
+      retries: 1,
     });
     return resp;
   }
 
-  async performNetworkSearch(
-    keyword,
-    {
-      lockRef = null,
-      lastRequestTimeRef = { value: 0 },  // 调用方传引用
-      minInterval = 500                   // 默认节流间隔（毫秒）
-    } = {}
-  ) {
+  async performNetworkSearch(keyword, { lockRef = null, lastRequestTimeRef = { value: 0 }, minInterval = 500 } = {}) {
     try {
       const url = `https://api.rrmj.plus/m-station/search/drama`;
-      const params = { keywords: keyword, size: 20, order: "match", search_after: "", isExecuteVipActivity: true };
+      const params = { 
+        keywords: keyword, 
+        size: 20, 
+        order: "match", 
+        search_after: "", 
+        isExecuteVipActivity: true 
+      };
 
-      // 🔒 锁逻辑（可选）
       if (lockRef) {
         while (lockRef.value) await new Promise(r => setTimeout(r, 50));
         lockRef.value = true;
       }
 
-      // ⏱️ 节流逻辑（依赖 lastRequestTimeRef）
       const now = Date.now();
       const dt = now - lastRequestTimeRef.value;
       if (dt < minInterval) await new Promise(r => setTimeout(r, minInterval - dt));
 
       const resp = await this.renrenRequest("GET", url, params);
-      lastRequestTimeRef.value = Date.now(); // 更新引用
+      lastRequestTimeRef.value = Date.now();
 
       if (lockRef) lockRef.value = false;
 
@@ -271,7 +329,7 @@ export default class RenrenSource extends BaseSource {
 
       const decoded = autoDecode(resp.data);
       const list = decoded?.data?.searchDramaList || [];
-      return list.map((item, idx) => ({
+      return list.map((item) => ({
         provider: "renren",
         mediaId: String(item.id),
         title: String(item.title || "").replace(/<[^>]+>/g, "").replace(/:/g, "："),
@@ -283,7 +341,7 @@ export default class RenrenSource extends BaseSource {
         currentEpisodeIndex: null,
       }));
     } catch (error) {
-      log("error", "getRenrenAnimes error:", {
+      log("error", "[Renren] performNetworkSearch error:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
@@ -293,37 +351,47 @@ export default class RenrenSource extends BaseSource {
   }
 
   async search(keyword) {
-    const parsedKeyword = { title: keyword, season: null }; // 简化 parse_search_keyword
+    const parsedKeyword = { title: keyword, season: null };
     const searchTitle = parsedKeyword.title;
     const searchSeason = parsedKeyword.season;
 
     let allResults = [];
-    // 先使用APP API进行搜索
+    
+    // 优先使用 APP 接口搜索
     allResults = await this.searchAppContent(searchTitle);
+    
+    // APP 接口失败时降级到网页接口
     if (allResults.length === 0) {
+      log("info", "[Renren] APP 搜索无结果，降级到网页接口");
       const lock = { value: false };
       const lastRequestTime = { value: 0 };
-      allResults = await this.performNetworkSearch(searchTitle, { lockRef: lock, lastRequestTimeRef: lastRequestTime, minInterval: 400 });
+      allResults = await this.performNetworkSearch(searchTitle, { 
+        lockRef: lock, 
+        lastRequestTimeRef: lastRequestTime, 
+        minInterval: 400 
+      });
     }
 
     if (searchSeason == null) return allResults;
 
-    // 按 season 过滤
     return allResults.filter(r => r.season === searchSeason);
   }
 
   async getDetail(id) {
+    // 优先使用 APP 接口
     const resp = await this.getAppDramaDetail(String(id));
-    if (!resp) {
-      const url = `https://api.rrmj.plus/m-station/drama/page`;
-      const params = { hsdrOpen:0,isAgeLimit:0,dramaId:String(id),hevcOpen:1 };
-      const resp = await this.renrenRequest("GET", url, params);
-      if (!resp.data) return null;
-      const decoded = autoDecode(resp.data);
-      return decoded?.data || null;
-    } else {
+    if (resp) {
       return resp.data;
     }
+    
+    // APP 接口失败时降级到网页接口
+    log("info", "[Renren] APP 详情接口失败，降级到网页接口");
+    const url = `https://api.rrmj.plus/m-station/drama/page`;
+    const params = { hsdrOpen: 0, isAgeLimit: 0, dramaId: String(id), hevcOpen: 1 };
+    const fallbackResp = await this.renrenRequest("GET", url, params);
+    if (!fallbackResp.data) return null;
+    const decoded = autoDecode(fallbackResp.data);
+    return decoded?.data || null;
   }
 
   async getEpisodes(id) {
@@ -331,14 +399,14 @@ export default class RenrenSource extends BaseSource {
     if (!detail || !detail.episodeList) return [];
 
     let episodes = [];
-    detail.episodeList.forEach((ep, idx)=>{
+    detail.episodeList.forEach((ep, idx) => {
       const sid = String(ep.sid || "").trim();
-      if(!sid) return;
-      const title = String(ep.title || `第${idx+1}`.padStart(2,"0")+"集");
-      episodes.push({ sid, order: idx+1, title });
+      if (!sid) return;
+      const title = String(ep.title || `第${String(idx + 1).padStart(2, "0")}集`);
+      episodes.push({ sid, order: idx + 1, title });
     });
 
-    return episodes.map(e=>({
+    return episodes.map(e => ({
       provider: "renren",
       episodeId: e.sid,
       title: e.title,
@@ -350,14 +418,12 @@ export default class RenrenSource extends BaseSource {
   async handleAnimes(sourceAnimes, queryTitle, curAnimes) {
     const tmpAnimes = [];
 
-    // 添加错误处理，确保sourceAnimes是数组
     if (!sourceAnimes || !Array.isArray(sourceAnimes)) {
       log("error", "[Renren] sourceAnimes is not a valid array");
       return [];
     }
 
-    // 使用 map 和 async 时需要返回 Promise 数组，并等待所有 Promise 完成
-    const processRenrenAnimes = await Promise.all(sourceAnimes
+    await Promise.all(sourceAnimes
       .filter(s => titleMatches(s.title, queryTitle))
       .map(async (anime) => {
         try {
@@ -387,10 +453,11 @@ export default class RenrenSource extends BaseSource {
             };
 
             tmpAnimes.push(transformedAnime);
+            addAnime({ ...transformedAnime, links: links });
 
-            addAnime({...transformedAnime, links: links});
-
-            if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
+            if (globals.animes.length > globals.MAX_ANIMES) {
+              removeEarliestAnime();
+            }
           }
         } catch (error) {
           log("error", `[Renren] Error processing anime: ${error.message}`);
@@ -400,33 +467,56 @@ export default class RenrenSource extends BaseSource {
 
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
 
-    return processRenrenAnimes;
+    return tmpAnimes;
   }
 
   async getEpisodeDanmu(id) {
+    // 优先使用 APP 接口
     const resp = await this.getAppDanmu(id);
-    if (!resp) {
-      const ClientProfile = {
-        user_agent: "Mozilla/5.0",
-        origin: "https://rrsp.com.cn",
-        referer: "https://rrsp.com.cn/",
-      };
-      const url = `https://static-dm.rrmj.plus/v1/produce/danmu/EPISODE/${id}`;
-      const headers = {
-        "Accept": "application/json",
-        "User-Agent": ClientProfile.user_agent,
-        "Origin": ClientProfile.origin,
-        "Referer": ClientProfile.referer,
-      };
-      const resp = await this.renrenHttpGet(url, { headers });
-      if (!resp.data) return null;
-      const data = autoDecode(resp.data);
-      if (Array.isArray(data)) return data;
-      if (data?.data && Array.isArray(data.data)) return data.data;
-      return null;
-    } else {
+    if (resp) {
       return resp;
     }
+
+    // APP 接口失败时降级到网页接口
+    log("info", "[Renren] APP 弹幕接口失败，降级到网页接口");
+    const ClientProfile = {
+      user_agent: "Mozilla/5.0",
+      origin: "https://rrsp.com.cn",
+      referer: "https://rrsp.com.cn/",
+    };
+    const url = `https://static-dm.rrmj.plus/v1/produce/danmu/EPISODE/${id}`;
+    const headers = {
+      "Accept": "application/json",
+      "User-Agent": ClientProfile.user_agent,
+      "Origin": ClientProfile.origin,
+      "Referer": ClientProfile.referer,
+    };
+    
+    const fallbackResp = await this.renrenHttpGet(url, { headers });
+    if (!fallbackResp.data) return null;
+    
+    const data = autoDecode(fallbackResp.data);
+    if (Array.isArray(data)) return data;
+    if (data?.data && Array.isArray(data.data)) return data.data;
+    return null;
+  }
+
+  async getEpisodeDanmuSegments(id) {
+    log("info", "[Renren] 获取弹幕分段列表:", id);
+
+    return new SegmentListResponse({
+      "type": "renren",
+      "segmentList": [{
+        "type": "renren",
+        "segment_start": 0,
+        "segment_end": 30000,
+        "url": id
+      }]
+    });
+  }
+
+  async getEpisodeSegmentDanmu(segment) {
+    return this.getEpisodeDanmu(segment.url);
   }
 
   formatComments(comments) {
