@@ -16,7 +16,7 @@ export default class RenrenSource extends BaseSource {
     SEARCH_HOST: "api.qwdjapp.com",
     DRAMA_HOST: "api.zhimeisj.top",
     DANMU_HOST: "static-dm.qwdjapp.com",
-    USER_AGENT: 'Mozilla/5.0 (Linux; Android 15; PJC110 Build/AP3A.240617.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.7339.207 Mobile Safari/537.36 App/RRSPApp platform/android AppVersion/10.27.4'
+    USER_AGENT: 'Mozilla/5.0 (Linux; Android 15; PJC110 Build/AP3A.240617.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.7339.207 Mobile Safari/537.36 App/RRSPApp platform/android AppVersion/10.31.2'
   };
 
   generateAppCommonHeaders(timestamp, sign, xCaSign = null) {
@@ -30,7 +30,7 @@ export default class RenrenSource extends BaseSource {
       'st':'4c1a2b5a87b8f63045d94156a5881c6a',
       'sign': sign,
       'isAgree': '1',
-      'cv': '10.27.4'
+      'cv': '10.31.2'
     };
 
     if (xCaSign) {
