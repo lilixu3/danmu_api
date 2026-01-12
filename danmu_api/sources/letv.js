@@ -15,6 +15,7 @@ export default class LetvSource extends BaseSource {
     super();
     this.danmuApiUrl = "https://hd-my.le.com/danmu/list";
     this.searchApiUrl = "https://so.le.com/s";
+    this.episodesCache = new Map(); // 缓存分集列表（来自 search 页 data-info 的 vidEpisode）
   }
 
   filterLetvSearchItem(dataInfo, htmlBlock) {
@@ -63,14 +64,24 @@ export default class LetvSource extends BaseSource {
       // 解析集数
       const episodeCount = (total && /^\d+$/.test(total)) ? parseInt(total) : 0;
 
-      // 验证分集数据完整性
+      // 验证分集数据完整性（后续 getEpisodes 优先依赖 vidEpisode；缺失就没法拿到分集）
       const vidEpisode = dataInfo.vidEpisode || '';
-      if (episodeCount > 0 && vidEpisode) {
+      if (episodeCount > 0) {
+        if (!vidEpisode) {
+          log("warn", `[Letv] 跳过 '${title}' - 声称有${episodeCount}集但 vidEpisode 为空`);
+          return null;
+        }
+
         const actualCount = vidEpisode.split(',').length;
         if (actualCount !== episodeCount) {
           log("warn", `[Letv] 跳过 '${title}' - 集数不匹配: ${actualCount}/${episodeCount}`);
           return null;
         }
+      }
+
+      // 缓存分集信息，避免详情页（SSR）拿不到 data-info
+      if (vidEpisode) {
+        this.episodesCache.set(pid, vidEpisode);
       }
 
       // 确保图片URL是完整的
@@ -175,45 +186,58 @@ export default class LetvSource extends BaseSource {
     try {
       log("info", `[Letv] 获取分集列表: pid=${mediaId}`);
 
-      const urlsToTry = [
-        `https://www.le.com/tv/${mediaId}.html`,
-        `https://www.le.com/comic/${mediaId}.html`,
-        `https://www.le.com/playlet/${mediaId}.html`,
-        `https://www.le.com/movie/${mediaId}.html`
-      ];
+      // 1) 优先使用 search 阶段缓存的 vidEpisode（详情页经常拿不到 data-info）
+      let vidEpisodeStr = this.episodesCache && this.episodesCache.get(mediaId);
 
-      let htmlContent = null;
-      for (const url of urlsToTry) {
-        try {
-          const response = await httpGet(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-            timeout: 10000
-          });
+      // 2) 缓存未命中才尝试抓详情页
+      if (!vidEpisodeStr) {
+        const urlsToTry = [
+          `https://www.le.com/tv/${mediaId}.html`,
+          `https://www.le.com/comic/${mediaId}.html`,
+          `https://www.le.com/playlet/${mediaId}.html`,
+          `https://www.le.com/movie/${mediaId}.html`
+        ];
 
-          if (response && response.data) {
-            htmlContent = typeof response.data === 'string' ? response.data : String(response.data);
-            break;
+        let htmlContent = null;
+        for (const url of urlsToTry) {
+          try {
+            const response = await httpGet(url, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+              timeout: 10000
+            });
+
+            if (response && response.data) {
+              htmlContent = typeof response.data === 'string' ? response.data : String(response.data);
+              break;
+            }
+          } catch (error) {
+            continue;
           }
-        } catch (error) {
-          continue;
+        }
+
+        if (!htmlContent) {
+          log("error", `[Letv] 无法获取作品页面: pid=${mediaId}`);
+          return [];
+        }
+
+        // 兼容 data-info="..." 或 data-info='...'
+        const dataInfoMatch = htmlContent.match(/data-info=(?:"({.*?})"|'({.*?})')/s);
+        if (!dataInfoMatch) {
+          log("error", `[Letv] HTML中未找到data-info`);
+          return [];
+        }
+
+        let dataInfoStr = dataInfoMatch[1] || dataInfoMatch[2] || '';
+        dataInfoStr = dataInfoStr.replace(/'/g, '"').replace(/([{,])(\w+):/g, '$1"$2":');
+        const dataInfo = JSON.parse(dataInfoStr);
+
+        vidEpisodeStr = dataInfo.vidEpisode || '';
+
+        // 写回缓存，避免后续重复抓详情页
+        if (vidEpisodeStr) {
+          this.episodesCache.set(mediaId, vidEpisodeStr);
         }
       }
-
-      if (!htmlContent) {
-        log("error", `[Letv] 无法获取作品页面: pid=${mediaId}`);
-        return [];
-      }
-
-      const dataInfoMatch = htmlContent.match(/data-info="({.*?})"/s);
-      if (!dataInfoMatch) {
-        log("error", `[Letv] HTML中未找到data-info`);
-        return [];
-      }
-
-      let dataInfoStr = dataInfoMatch[1];
-      dataInfoStr = dataInfoStr.replace(/'/g, '"').replace(/([{,])(\w+):/g, '$1"$2":');
-      const dataInfo = JSON.parse(dataInfoStr);
-      const vidEpisodeStr = dataInfo.vidEpisode || '';
 
       if (!vidEpisodeStr) {
         log("warn", `[Letv] 未找到分集信息`);
@@ -256,6 +280,7 @@ export default class LetvSource extends BaseSource {
     log("info", `[Letv] 开始处理 ${sourceAnimes.length} 个搜索结果, 查询标题: ${queryTitle}`);
 
     await Promise.all(sourceAnimes
+      .filter(s => titleMatches(s.title, queryTitle))
       .map(async (anime) => {
         try {
           const eps = await this.getEpisodes(anime.mediaId);
