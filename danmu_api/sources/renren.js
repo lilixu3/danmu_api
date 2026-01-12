@@ -21,43 +21,13 @@ export default class RenrenSource extends BaseSource {
     USER_AGENT: 'Mozilla/5.0 (Linux; Android 16; 23127PN0CC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36 App/RRSPApp platform/android AppVersion/10.31.2'
   };
 
-  // ===== 新增: 生成设备标识的辅助函数 =====
-  generateTestDeviceId() {
-    const randomBytes = Array.from({length: 32}, () => 
-      String.fromCharCode(Math.floor(Math.random() * 94) + 33)
-    ).join('');
-    const base64 = Buffer.from(randomBytes).toString('base64');
-    return encodeURIComponent(base64);
-  }
-
-  generateTestAliId() {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    return Array.from({length: 24}, () => 
-      chars[Math.floor(Math.random() * chars.length)]
-    ).join('');
-  }
-
-  generateTestUmId() {
-    const hex = Array.from({length: 32}, () => 
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-    return hex + 'od';
-  }
-
-  generateTestSt() {
-    return Array.from({length: 32}, () => 
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-  }
-  // ===== 新增结束 =====
-
   generateAppCommonHeaders(timestamp, sign, xCaSign = null) {
     const headers = {
       'User-Agent': this.API_CONFIG.USER_AGENT,
-      'deviceId': this.generateTestDeviceId(),
-      'aliId': this.generateTestAliId(),
-      'umId': this.generateTestUmId(),
-      'st': this.generateTestSt(),
+      'deviceId': 'T2%2Bjh%2FnHhJkWEzPnQT2E0%2FEw865FTT0uL%2BiBwRa2ZdM%3D',
+      'aliId': 'aUzmLtnZIYoDAA9KyLdcLQpM',
+      'umId': '53e0f078fa8474ae7ba412f766989b54od',
+      'st':'4c1a2b5a87b8f63045d94156a5881c6a',
       'clientType': 'android_rrsp_xb_XiaoMi',
       't': timestamp.toString(),
       'sign': sign,
