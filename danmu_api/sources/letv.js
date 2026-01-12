@@ -162,6 +162,7 @@ export default class LetvSource extends BaseSource {
       }
 
       log("info", `[Letv] 搜索找到 ${results.length} 个结果`);
+      log("info", `[Letv] 结果详情: ${JSON.stringify(results)}`);
       return results;
 
     } catch (error) {
