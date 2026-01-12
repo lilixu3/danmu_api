@@ -253,7 +253,7 @@ export default class LetvSource extends BaseSource {
       return [];
     }
 
-    const processLetvAnimes = await Promise.all(sourceAnimes
+    await Promise.all(sourceAnimes
       .filter(s => titleMatches(s.title, queryTitle))
       .map(async (anime) => {
         try {
@@ -300,7 +300,7 @@ export default class LetvSource extends BaseSource {
     );
 
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
-    return processLetvAnimes;
+    return tmpAnimes;
   }
 
   async getEpisodeDanmu(url) {
