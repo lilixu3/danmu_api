@@ -253,8 +253,9 @@ export default class LetvSource extends BaseSource {
       return [];
     }
 
+    log("info", `[Letv] 开始处理 ${sourceAnimes.length} 个搜索结果, 查询标题: ${queryTitle}`);
+
     await Promise.all(sourceAnimes
-      .filter(s => titleMatches(s.title, queryTitle))
       .map(async (anime) => {
         try {
           const eps = await this.getEpisodes(anime.mediaId);
