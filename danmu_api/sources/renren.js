@@ -27,7 +27,7 @@ export default class RenrenSource extends BaseSource {
       'umId': '380998657e22ed51b5a21f2b519aa5beod',
       'clientType': 'android_rrsp_xb_RRSP',
       't': timestamp.toString(),
-      'token':'rrtv-6433be3f6c8b32fbfc208ddef64a2ca781bec85d'
+      'token':'rrtv-6433be3f6c8b32fbfc208ddef64a2ca781bec85d',
       'st':'4c1a2b5a87b8f63045d94156a5881c6a',
       'sign': sign,
       'isAgree': '1',
