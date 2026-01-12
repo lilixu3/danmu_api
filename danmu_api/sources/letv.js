@@ -15,15 +15,6 @@ export default class LetvSource extends BaseSource {
     super();
     this.danmuApiUrl = "https://hd-my.le.com/danmu/list";
     this.searchApiUrl = "https://so.le.com/s";
-    this.episodesCache = new Map(); // 缓存分集列表
-
-    // 位置映射：乐视 -> 标准格式 (1=滚动, 4=底部, 5=顶部)
-    this.POSITION_MAP = {
-      4: 1,  // 滚动弹幕
-      3: 4,  // 底部弹幕
-      1: 5,  // 顶部弹幕
-      2: 1,  // 其他 -> 滚动
-    };
   }
 
   /**
@@ -31,7 +22,6 @@ export default class LetvSource extends BaseSource {
    */
   filterLetvSearchItem(dataInfo, htmlBlock) {
     try {
-      // 提取基本信息
       const pid = dataInfo.pid || '';
       const mediaTypeStr = dataInfo.type || '';
       const total = dataInfo.total || '0';
@@ -62,18 +52,14 @@ export default class LetvSource extends BaseSource {
 
       // 提取年份
       let year = null;
-      // 方法1: 从年份标签中提取
       let yearMatch = htmlBlock.match(/<b>年份：<\/b>.*?>(\d{4})<\/a>/);
       if (!yearMatch) {
-        // 方法2: 从上映时间标签中提取
         yearMatch = htmlBlock.match(/<b>上映时间：<\/b>.*?>(\d{4})<\/a>/);
       }
       if (!yearMatch) {
-        // 方法3: 从年份链接的href中提取 (y2016)
         yearMatch = htmlBlock.match(/_y(\d{4})_/);
       }
       if (!yearMatch) {
-        // 方法4: 从 data-info 的 keyWord 中提取
         yearMatch = (dataInfo.keyWord || '').match(/(\d{4})/);
       }
       if (yearMatch) {
@@ -100,7 +86,6 @@ export default class LetvSource extends BaseSource {
           return null;
         }
 
-        // 解析 vidEpisode 中的集数
         const vidEpisodeParts = vidEpisode.split(',');
         const actualEpisodeCount = vidEpisodeParts.length;
 
@@ -110,12 +95,6 @@ export default class LetvSource extends BaseSource {
         }
 
         log("debug", `[Letv] 验证通过 '${title}' (pid=${pid})，vidEpisode集数=${actualEpisodeCount}，total=${episodeCount}`);
-      }
-
-      // 缓存分集信息
-      if (vidEpisode) {
-        this.episodesCache.set(pid, vidEpisode);
-        log("debug", `[Letv] 缓存分集信息 pid=${pid}, vidEpisode长度=${vidEpisode.length}`);
       }
 
       // 确保图片URL是完整的
@@ -177,7 +156,6 @@ export default class LetvSource extends BaseSource {
       const htmlContent = typeof response.data === "string" ? response.data : String(response.data);
       log("debug", `[Letv] 搜索请求成功，响应长度: ${htmlContent.length} 字符`);
 
-      // 使用正则表达式提取所有 data-info 属性
       const pattern = /<div class="So-detail[^"]*"[^>]*data-info="({.*?})"[^>]*>/gs;
       const matches = [...htmlContent.matchAll(pattern)];
 
@@ -189,16 +167,12 @@ export default class LetvSource extends BaseSource {
           let dataInfoStr = match[1];
           log("debug", `[Letv] 提取到 data-info 原始字符串: ${dataInfoStr.substring(0, 200)}...`);
 
-          // 解析JavaScript对象字面量为JSON
-          // 1. 先将所有单引号替换为双引号
           dataInfoStr = dataInfoStr.replace(/'/g, '"');
-          // 2. 然后为没有引号的键添加引号
           dataInfoStr = dataInfoStr.replace(/([{,])(\w+):/g, '$1"$2":');
 
           const dataInfo = JSON.parse(dataInfoStr);
           log("debug", `[Letv] 成功解析 data-info，pid=${dataInfo.pid}, type=${dataInfo.type}`);
 
-          // 提取HTML块
           const startPos = match.index;
           const endPatterns = ['</div>\n\t</div>', '</div>\n</div>', '</div></div>'];
           let endPos = -1;
@@ -222,7 +196,6 @@ export default class LetvSource extends BaseSource {
 
           const htmlBlock = htmlContent.substring(startPos, endPos);
 
-          // 过滤搜索项
           const filtered = this.filterLetvSearchItem(dataInfo, htmlBlock);
           if (filtered) {
             results.push(filtered);
@@ -255,70 +228,57 @@ export default class LetvSource extends BaseSource {
     try {
       log("info", `[Letv] 获取分集列表: pid=${mediaId}`);
 
-      // 优先使用缓存的分集信息
-      let vidEpisodeStr = this.episodesCache.get(mediaId);
+      // 构造作品页面URL
+      const urlsToTry = [
+        `https://www.le.com/tv/${mediaId}.html`,
+        `https://www.le.com/comic/${mediaId}.html`,
+        `https://www.le.com/playlet/${mediaId}.html`,
+        `https://www.le.com/movie/${mediaId}.html`
+      ];
 
-      if (!vidEpisodeStr) {
-        log("debug", `[Letv] 缓存未命中，尝试从详情页获取 pid=${mediaId}`);
+      let htmlContent = null;
+      for (const url of urlsToTry) {
+        try {
+          const response = await httpGet(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+              'Upgrade-Insecure-Requests': '1',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'same-origin'
+            },
+            timeout: 10000
+          });
 
-        // 构造作品页面URL
-        const urlsToTry = [
-          `https://www.le.com/tv/${mediaId}.html`,
-          `https://www.le.com/comic/${mediaId}.html`,
-          `https://www.le.com/playlet/${mediaId}.html`,
-          `https://www.le.com/movie/${mediaId}.html`
-        ];
-
-        let htmlContent = null;
-        for (const url of urlsToTry) {
-          try {
-            const response = await httpGet(url, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'same-origin'
-              },
-              timeout: 10000
-            });
-
-            if (response && response.data) {
-              htmlContent = typeof response.data === 'string' ? response.data : String(response.data);
-              log("debug", `[Letv] 成功获取页面: ${url}`);
-              break;
-            }
-          } catch (error) {
-            log("debug", `[Letv] 尝试URL失败 ${url}: ${error.message}`);
-            continue;
+          if (response && response.data) {
+            htmlContent = typeof response.data === 'string' ? response.data : String(response.data);
+            log("debug", `[Letv] 成功获取页面: ${url}`);
+            break;
           }
-        }
-
-        if (!htmlContent) {
-          log("error", `[Letv] 无法获取作品页面: pid=${mediaId}`);
-          return [];
-        }
-
-        // 从HTML中提取data-info
-        const dataInfoMatch = htmlContent.match(/data-info="({.*?})"/s);
-        if (!dataInfoMatch) {
-          log("error", `[Letv] HTML中未找到data-info: pid=${mediaId}`);
-          return [];
-        }
-
-        // 解析JavaScript对象字面量为JSON
-        let dataInfoStr = dataInfoMatch[1];
-        dataInfoStr = dataInfoStr.replace(/'/g, '"');
-        dataInfoStr = dataInfoStr.replace(/([{,])(\w+):/g, '$1"$2":');
-
-        const dataInfo = JSON.parse(dataInfoStr);
-        vidEpisodeStr = dataInfo.vidEpisode || '';
-
-        // 缓存提取到的分集信息
-        if (vidEpisodeStr) {
-          this.episodesCache.set(mediaId, vidEpisodeStr);
+        } catch (error) {
+          log("debug", `[Letv] 尝试URL失败 ${url}: ${error.message}`);
+          continue;
         }
       }
+
+      if (!htmlContent) {
+        log("error", `[Letv] 无法获取作品页面: pid=${mediaId}`);
+        return [];
+      }
+
+      // 从HTML中提取data-info
+      const dataInfoMatch = htmlContent.match(/data-info="({.*?})"/s);
+      if (!dataInfoMatch) {
+        log("error", `[Letv] HTML中未找到data-info: pid=${mediaId}`);
+        return [];
+      }
+
+      let dataInfoStr = dataInfoMatch[1];
+      dataInfoStr = dataInfoStr.replace(/'/g, '"');
+      dataInfoStr = dataInfoStr.replace(/([{,])(\w+):/g, '$1"$2":');
+
+      const dataInfo = JSON.parse(dataInfoStr);
+      const vidEpisodeStr = dataInfo.vidEpisode || '';
 
       if (!vidEpisodeStr) {
         log("warn", `[Letv] 未找到分集信息: pid=${mediaId}`);
@@ -421,18 +381,14 @@ export default class LetvSource extends BaseSource {
     return processLetvAnimes;
   }
 
-  /**
-   * 获取某集的弹幕（原始数据）
-   */
   async getEpisodeDanmu(url) {
     log("info", "[Letv] 开始从本地请求乐视视频弹幕...", url);
 
     try {
-      let vid, pid;
+      let vid;
 
       // 1. 处理完整 URL
       if (url.includes('le.com')) {
-        // 从播放页URL中提取video_id: https://www.le.com/ptv/vplay/{vid}.html
         const vidMatch = url.match(/\/vplay\/(\d+)\.html/);
         if (vidMatch) {
           vid = vidMatch[1];
@@ -470,7 +426,7 @@ export default class LetvSource extends BaseSource {
       const segmentDuration = 300;
       const totalSegments = Math.ceil(duration / segmentDuration);
       const allDanmu = [];
-      const concurrency = 6; // 并发数
+      const concurrency = 6;
 
       log("info", `[Letv] 开始并发获取弹幕 (共${totalSegments}个时间段, 并发数: ${concurrency})`);
 
@@ -516,13 +472,7 @@ export default class LetvSource extends BaseSource {
       // 按时间排序
       allDanmu.sort((a, b) => parseFloat(a.start || 0) - parseFloat(b.start || 0));
 
-      log("info", `[Letv] 共获取 ${allDanmu.length} 条原始弹幕`);
-
-      // 调试：打印前3条原始弹幕
-      if (allDanmu.length > 0) {
-        log("debug", `[Letv] 前3条原始弹幕示例: ${JSON.stringify(allDanmu.slice(0, 3))}`);
-      }
-
+      log("info", `[Letv] 共获取 ${allDanmu.length} 条弹幕`);
       return allDanmu;
 
     } catch (error) {
@@ -531,9 +481,6 @@ export default class LetvSource extends BaseSource {
     }
   }
 
-  /**
-   * 获取单个时间段的弹幕
-   */
   async _getDanmuSegment(vid, startTime, endTime) {
     try {
       const params = new URLSearchParams({
@@ -559,7 +506,6 @@ export default class LetvSource extends BaseSource {
 
       let text = typeof response.data === 'string' ? response.data : String(response.data);
 
-      // 解析JSONP响应
       const jsonMatch = text.match(/vjs_\d+\((.*)\)/);
       if (!jsonMatch) {
         return [];
@@ -580,9 +526,6 @@ export default class LetvSource extends BaseSource {
     }
   }
 
-  /**
-   * 获取视频时长（秒）
-   */
   async _getVideoDuration(videoId) {
     try {
       const url = `https://www.le.com/ptv/vplay/${videoId}.html`;
@@ -600,7 +543,6 @@ export default class LetvSource extends BaseSource {
 
       const text = typeof response.data === 'string' ? response.data : String(response.data);
 
-      // 从页面中提取时长信息
       const durationMatch = text.match(/duration['\"]?\s*:\s*['\"]?(\d+):(\d+)['\"]?/);
       if (durationMatch) {
         const minutes = parseInt(durationMatch[1]);
@@ -608,7 +550,6 @@ export default class LetvSource extends BaseSource {
         return minutes * 60 + seconds;
       }
 
-      // 默认返回40分钟
       log("warn", "[Letv] 未找到视频时长信息，使用默认值2400秒");
       return 2400;
 
@@ -618,32 +559,6 @@ export default class LetvSource extends BaseSource {
     }
   }
 
-  /**
-   * 解析弹幕颜色
-   */
-  parseColor(colorStr) {
-    try {
-      if (!colorStr) return 16777215;
-
-      if (typeof colorStr === 'string') {
-        const hex = colorStr.replace('#', '');
-        const decimal = parseInt(hex, 16);
-        return isNaN(decimal) ? 16777215 : decimal;
-      }
-
-      if (typeof colorStr === 'number') {
-        return colorStr;
-      }
-
-      return 16777215;
-    } catch (error) {
-      return 16777215;
-    }
-  }
-
-  /**
-   * 格式化弹幕 - 返回标准中间格式
-   */
   formatComments(comments) {
     if (!comments || !Array.isArray(comments)) {
       log("warn", "[Letv] formatComments 接收到无效的 comments 参数");
@@ -651,10 +566,10 @@ export default class LetvSource extends BaseSource {
     }
 
     const formatted = [];
+    const positionMap = { 1: 1, 4: 5, 5: 4 };
 
     for (const item of comments) {
       try {
-        // 1. 提取内容
         let text = item.txt || item.content || '';
         if (typeof text !== 'string') {
           text = String(text);
@@ -665,26 +580,27 @@ export default class LetvSource extends BaseSource {
           continue;
         }
 
-        // 2. 提取时间（秒）
         const timepoint = parseFloat(item.start || 0);
 
-        // 3. 提取颜色
-        const color = this.parseColor(item.color);
+        let color = 16777215;
+        if (item.color) {
+          const colorValue = item.color;
+          if (typeof colorValue === 'string' && colorValue.startsWith('#')) {
+            color = parseInt(colorValue.substring(1), 16);
+          } else {
+            color = parseInt(String(colorValue), 16);
+          }
+        }
 
-        // 4. 提取发送时间戳
         let unixtime = parseInt(item.addtime || 0);
         if (unixtime === 0) {
           unixtime = Math.floor(Date.now() / 1000);
         }
 
-        // 5. 提取用户ID
         const uid = String(item.uid || '0');
-
-        // 6. 提取弹幕类型（position映射）
         const position = parseInt(item.position || 4);
-        const ct = this.POSITION_MAP[position] || 1;
+        const ct = positionMap[position] || 1;
 
-        // 7. 构建标准中间格式对象
         const danmuObj = {
           timepoint: timepoint,
           ct: ct,
@@ -703,12 +619,6 @@ export default class LetvSource extends BaseSource {
     }
 
     log("info", `[Letv] 成功格式化 ${formatted.length} 条弹幕`);
-
-    // 调试：打印前3条格式化后的弹幕
-    if (formatted.length > 0) {
-      log("debug", `[Letv] 前3条格式化后的弹幕: ${JSON.stringify(formatted.slice(0, 3))}`);
-    }
-
     return formatted;
   }
 }
