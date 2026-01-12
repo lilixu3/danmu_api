@@ -17,9 +17,6 @@ export default class LetvSource extends BaseSource {
     this.searchApiUrl = "https://so.le.com/s";
   }
 
-  /**
-   * 过滤乐视视频搜索项
-   */
   filterLetvSearchItem(dataInfo, htmlBlock) {
     try {
       const pid = dataInfo.pid || '';
@@ -222,7 +219,6 @@ export default class LetvSource extends BaseSource {
         return [];
       }
 
-      // 解析vidEpisode: '1-26316591,2-26316374,...'
       const episodes = [];
       for (const item of vidEpisodeStr.split(',')) {
         const parts = item.split('-');
@@ -312,7 +308,6 @@ export default class LetvSource extends BaseSource {
     try {
       let vid;
 
-      // 处理完整 URL
       if (url.includes('le.com')) {
         const vidMatch = url.match(/\/vplay\/(\d+)\.html/);
         if (vidMatch) {
@@ -322,7 +317,6 @@ export default class LetvSource extends BaseSource {
           return [];
         }
       } else {
-        // 处理数字 episodeId
         const episodeId = parseInt(url);
         let foundLink = null;
 
@@ -341,10 +335,7 @@ export default class LetvSource extends BaseSource {
         }
       }
 
-      // 获取视频时长
       const duration = await this._getVideoDuration(vid);
-      
-      // 并发获取弹幕
       const segmentDuration = 300;
       const totalSegments = Math.ceil(duration / segmentDuration);
       const allDanmu = [];
@@ -377,9 +368,7 @@ export default class LetvSource extends BaseSource {
         return [];
       }
 
-      // 按时间排序
       allDanmu.sort((a, b) => parseFloat(a.start || 0) - parseFloat(b.start || 0));
-
       log("info", `[Letv] 共获取 ${allDanmu.length} 条弹幕`);
       return allDanmu;
 
@@ -413,11 +402,7 @@ export default class LetvSource extends BaseSource {
       if (!jsonMatch) return [];
 
       const data = JSON.parse(jsonMatch[1]);
-      if (data.code === 200 && data.data) {
-        return data.data.list || [];
-      }
-
-      return [];
+      return (data.code === 200 && data.data) ? (data.data.list || []) : [];
 
     } catch (error) {
       return [];
@@ -436,11 +421,9 @@ export default class LetvSource extends BaseSource {
       const text = typeof response.data === 'string' ? response.data : String(response.data);
       const durationMatch = text.match(/duration['\"]?\s*:\s*['\"]?(\d+):(\d+)['\"]?/);
       
-      if (durationMatch) {
-        return parseInt(durationMatch[1]) * 60 + parseInt(durationMatch[2]);
-      }
-
-      return 2400;
+      return durationMatch 
+        ? parseInt(durationMatch[1]) * 60 + parseInt(durationMatch[2]) 
+        : 2400;
 
     } catch (error) {
       return 2400;
@@ -459,7 +442,6 @@ export default class LetvSource extends BaseSource {
         text = String(text).trim();
         if (!text) continue;
 
-        // 解析颜色
         let color = 16777215;
         if (item.color) {
           const colorStr = String(item.color);
