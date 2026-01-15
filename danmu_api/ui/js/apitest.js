@@ -1906,8 +1906,19 @@ function exportDanmu(format) {
                 return response.text();
             })
             .then(content => {
+                // 如果是 JSON 格式，尝试格式化以便于阅读（缩进4格）
+                let finalContent = content;
+                if (format === 'json') {
+                    try {
+                        const jsonObj = JSON.parse(content);
+                        finalContent = JSON.stringify(jsonObj, null, 4);
+                    } catch (e) {
+                        // 解析失败忽略，使用原始内容
+                    }
+                }
+
                 const mimeType = format === 'xml' ? 'application/xml' : 'application/json';
-                const blob = new Blob([content], { type: mimeType + ';charset=utf-8' });
+                const blob = new Blob([finalContent], { type: mimeType + ';charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
