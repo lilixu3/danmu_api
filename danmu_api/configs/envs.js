@@ -284,7 +284,7 @@ export class Envs {
       'VOD_REQUEST_TIMEOUT': { category: 'source', type: 'number', description: 'VOD请求超时时间，默认10000', min: 5000, max: 30000 },
       'BILIBILI_COOKIE': { category: 'source', type: 'text', description: 'B站Cookie' },
       'YOUKU_CONCURRENCY': { category: 'source', type: 'number', description: '优酷并发配置，默认8', min: 1, max: 16 },
-      'MERGE_SOURCE_PAIRS': { category: 'source', type: 'text', description: '源合并配置，格式：主源&副源,主源2&副源2，例如：dandan&animeko' },
+      'MERGE_SOURCE_PAIRS': { category: 'source', type: 'text', description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，格式：源字段&源字段，示例：dandan&animeko,dandan&bahamut,\n目前允许合并的源字段有：tencent,youku,iqiyi,imgo,bilibili,sohu,renren,hanjutv,bahamut,dandan,animeko' },
 
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置' },
