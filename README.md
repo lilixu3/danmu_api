@@ -124,7 +124,7 @@ LogVar 弹幕 API 服务器
    # 测试
    node --test ./danmu_api/worker.test.js
    # 构建forward弹幕插件
-   node build-forward-widget.js
+   node build-forward-widget.cjs
    # 测试forward弹幕插件
    node danmu_api/forward-widget.test.js
    ```
@@ -454,7 +454,7 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 ## 项目结构
 ```
 ├── .gitignore
-├── build-forward-widget.js     # 构建forward弹幕插件脚本
+├── build-forward-widget.cjs    # 构建forward弹幕插件脚本（CJS，兼容 Node ESM 项目）
 ├── Dockerfile
 ├── edgeone.json                # edgeone pages 配置文件
 ├── LICENSE
@@ -466,7 +466,6 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 ├── config/
 │   └── .env.example            # .env 配置文件示例
 ├── danmu_api/
-│   ├── esm-shim.js             # Node.js低版本兼容层
 │   ├── server.js               # 本地node启动脚本
 │   ├── worker.js               # 主 API 服务器代码
 │   ├── worker.test.js          # 测试文件

@@ -38,7 +38,7 @@ async function doubanApiPost(url, data={}) {
   try {
     const response = await httpPost(`${doubanApi}${url}`,
         JSON.stringify({...data, apikey: "0ac44ae016490db2204ce0a042db2916"}), {
-      method: 'GET',
+      method: 'POST',
       headers: {
         "Referer": "https://api.douban.com",
         "Content-Type": "application/json",
@@ -60,7 +60,7 @@ async function doubanApiPost(url, data={}) {
 
 // 使用 豆瓣 API 查询片名
 export async function searchDoubanTitles(keyword, count = 20) {
-  const url = `/search?q=${keyword}&start=0&count=${count}&type=movie`;
+  const url = `/search?q=${encodeURIComponent(keyword)}&start=0&count=${count}&type=movie`;
   return await doubanApiGet(url);
 }
 

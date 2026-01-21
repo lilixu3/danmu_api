@@ -18,6 +18,12 @@ export default class DoubanSource extends BaseSource {
     try {
       const response = await searchDoubanTitles(keyword);
 
+      // 请求失败时，searchDoubanTitles 会返回 null
+      if (!response || !response.data) {
+        log("error", "[Douban] search response is null");
+        return [];
+      }
+
       const data = response.data;
 
       let tmpAnimes = [];

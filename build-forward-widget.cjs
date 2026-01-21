@@ -1,8 +1,8 @@
 const esbuild = require('esbuild');
 const fs = require('fs');
 
-// 动态获取版本号
-const { Globals } = require('./danmu_api/configs/globals.js');
+// 动态获取版本号（项目为 ESM，这里用动态 import 兼容 CJS 脚本）
+let Globals;
 
 // 定义要排除的UI相关模块
 const uiModules = [
@@ -36,6 +36,8 @@ let customPolyfillContent = fs.readFileSync('forward/custom-polyfill.js', 'utf8'
 
 (async () => {
   try {
+    // 延迟加载 Globals（ESM）
+    ({ Globals } = await import('./danmu_api/configs/globals.js'));
     await esbuild.build({
       entryPoints: ['forward/forward-widget.js'], // 新的入口文件
       bundle: true,
