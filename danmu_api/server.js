@@ -231,6 +231,25 @@ function createProxyServer() {
   return http.createServer(async (req, res) => {
     try {
       const urlObj = new URL(req.url, 'http://localhost');
+
+      // 仅提供 /proxy 入口，避免误用为通用 HTTP 服务
+      if (urlObj.pathname !== '/proxy') {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not Found');
+        return;
+      }
+
+      // 可选：为本地代理增加额外鉴权（防止将端口暴露公网后变成开放代理）
+      const proxyToken = process.env.LOCAL_PROXY_TOKEN;
+      if (proxyToken) {
+        const provided = req.headers['x-proxy-token'];
+        if (provided !== proxyToken) {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Forbidden');
+          return;
+        }
+      }
+
       const target = urlObj.searchParams.get('url');
 
       if (!target) {
@@ -240,7 +259,14 @@ function createProxyServer() {
       }
 
       // 只允许 http/https
-      const targetUrl = new URL(target);
+      let targetUrl;
+      try {
+        targetUrl = new URL(target);
+      } catch (e) {
+        res.statusCode = 400;
+        res.end('Bad Request: Invalid url format');
+        return;
+      }
       if (!['http:', 'https:'].includes(targetUrl.protocol)) {
         res.statusCode = 400;
         res.end('Bad Request: Only http/https are allowed');
@@ -302,6 +328,13 @@ function createProxyServer() {
   });
 }
 
+
+
+function hasForwardProxyConfig() {
+  const proxyConfig = (process.env.PROXY_URL || '').split(',').map(s => s.trim()).filter(Boolean);
+  return proxyConfig.some(c => c && !/^@/.test(c) && !/^[\w-]+@http/i.test(c));
+}
+
 // =============== 启动 ===============
 checkAndCopyConfigFiles();
 loadEnv();
@@ -312,7 +345,15 @@ mainServer.listen(9321, '0.0.0.0', () => {
   console.log('Server running on http://0.0.0.0:9321');
 });
 
-proxyServer = createProxyServer();
-proxyServer.listen(5321, '0.0.0.0', () => {
-  console.log('Proxy server running on http://0.0.0.0:5321');
-});
+if (hasForwardProxyConfig()) {
+  proxyServer = createProxyServer();
+  const bindHost = process.env.LOCAL_PROXY_BIND || '127.0.0.1';
+  proxyServer.listen(5321, bindHost, () => {
+    console.log(`Proxy server running on http://${bindHost}:5321 (local forward proxy helper)`);
+    if (bindHost !== '127.0.0.1' && !process.env.LOCAL_PROXY_TOKEN) {
+      console.warn('[proxy] Warning: LOCAL_PROXY_BIND is not 127.0.0.1 but LOCAL_PROXY_TOKEN is not set. This may expose an open proxy.');
+    }
+  });
+} else {
+  console.log('Proxy server disabled (no forward proxy configured in PROXY_URL).');
+}

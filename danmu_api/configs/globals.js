@@ -158,7 +158,7 @@ export const Globals = {
         if (prop === 'version') return self.VERSION;
         if (prop === 'maxLogs') return self.MAX_LOGS;
         if (prop === 'maxAnimes') return self.MAX_ANIMES;
-        if (prop === 'maxLastSelectMap') return self.MAX_LAST_SELECT_MAP;
+        if (prop === 'maxLastSelectMap') return self.envs.MAX_LAST_SELECT_MAP;
 
         // 暴露方法
         if (prop === 'makeProxyUrl') return self.makeProxyUrl.bind(self);

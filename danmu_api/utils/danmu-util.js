@@ -204,9 +204,9 @@ export function convertToDanmakuJson(contents, platform) {
     return null; // 如果不是有效的正则格式则返回 null
   }).filter(regex => regex !== null); // 过滤掉无效的项
 
-  log("info", `原始屏蔽词字符串: ${globals.blockedWords}`);
+  log("debug", `原始屏蔽词字符串: ${globals.blockedWords}`);
   const regexArrayToString = array => Array.isArray(array) ? array.map(regex => regex.toString()).join('\n') : String(array);
-  log("info", `屏蔽词列表: ${regexArrayToString(regexArray)}`);
+  log("debug", `屏蔽词列表: ${regexArrayToString(regexArray)}`);
 
   // 过滤列表
   const filteredDanmus = danmus.filter(item => {
@@ -214,7 +214,7 @@ export function convertToDanmakuJson(contents, platform) {
   });
 
   // 按n分钟内去重
-  log("info", `去重分钟数: ${globals.groupMinute}`);
+  log("debug", `去重分钟数: ${globals.groupMinute}`);
   const groupedDanmus = groupDanmusByMinute(filteredDanmus, globals.groupMinute);
 
   // 应用弹幕转换规则（在去重和限制弹幕数之后）

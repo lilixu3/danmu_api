@@ -5,6 +5,52 @@ import { simpleHash } from "./codec-util.js";
 let fs, path;
 
 // =====================
+// 通用缓存修剪工具
+// =====================
+
+/**
+ * 删除过期项并按最大条目数裁剪 Map（保持插入顺序，近似 LRU）
+ * @param {Map<any, any>} map
+ * @param {number} maxAgeMinutes
+ * @param {number} maxItems
+ * @param {string} label
+ */
+function pruneTimedCache(map, maxAgeMinutes, maxItems, label) {
+  if (!map || !(map instanceof Map)) return;
+
+  const now = Date.now();
+  const ageLimitMs = Math.max(0, Number(maxAgeMinutes || 0)) * 60 * 1000;
+
+  // 1) 清理过期项
+  if (ageLimitMs > 0) {
+    for (const [k, v] of map.entries()) {
+      const ts = v && typeof v.timestamp === 'number' ? v.timestamp : 0;
+      if (ts && now - ts > ageLimitMs) {
+        map.delete(k);
+      }
+    }
+  }
+
+  // 2) 按最大条目数裁剪（0 或负数表示不限制）
+  const limit = Number(maxItems);
+  if (!Number.isFinite(limit) || limit <= 0) return;
+
+  if (map.size <= limit) return;
+
+  const toRemove = map.size - limit;
+  let removed = 0;
+  for (const key of map.keys()) {
+    map.delete(key);
+    removed++;
+    if (removed >= toRemove) break;
+  }
+
+  if (removed > 0) {
+    log('debug', `[Cache] Pruned ${removed} entries from ${label}, current size=${map.size}`);
+  }
+}
+
+// =====================
 // cache数据结构处理函数
 // =====================
 
@@ -39,12 +85,16 @@ export function getSearchCache(keyword) {
 
 // 设置搜索缓存
 export function setSearchCache(keyword, results) {
+    const safeResults = Array.isArray(results) ? results : [];
     globals.searchCache.set(keyword, {
-        results: results,
+        results: safeResults,
         timestamp: Date.now()
     });
 
-    log("info", `Cached search results for "${keyword}" (${results.length} animes)`);
+    // 写入时顺便做一次修剪，避免长时间运行导致内存膨胀
+    pruneTimedCache(globals.searchCache, globals.searchCacheMinutes, globals.searchCacheMaxItems ?? 300, 'searchCache');
+
+    log("info", `Cached search results for \"${keyword}\" (${safeResults.length} animes)`);
 }
 
 // 检查弹幕缓存是否有效（未过期）
@@ -78,12 +128,16 @@ export function getCommentCache(videoUrl) {
 
 // 设置弹幕缓存
 export function setCommentCache(videoUrl, comments) {
+    const safeComments = Array.isArray(comments) ? comments : [];
     globals.commentCache.set(videoUrl, {
-        comments: comments,
+        comments: safeComments,
         timestamp: Date.now()
     });
 
-    log("info", `Cached comments for "${videoUrl}" (${comments.length} comments)`);
+    // 写入时顺便做一次修剪，避免长时间运行导致内存膨胀
+    pruneTimedCache(globals.commentCache, globals.commentCacheMinutes, globals.commentCacheMaxItems ?? 300, 'commentCache');
+
+    log("info", `Cached comments for \"${videoUrl}\" (${safeComments.length} comments)`);
 }
 
 // 添加元素到 episodeIds：检查 url 是否存在，若不存在则以自增 id 添加
@@ -323,49 +377,91 @@ export function getDirname() {
 // 从本地缓存目录读取缓存数据
 export function readCacheFromFile(key) {
   const cacheFilePath = path.join(getDirname(), '..', '..', '.cache', `${key}`);
-  if (fs.existsSync(cacheFilePath)) {
+  if (!fs.existsSync(cacheFilePath)) return null;
+
+  try {
     const fileContent = fs.readFileSync(cacheFilePath, 'utf8');
-    return JSON.parse(fileContent);
+    let parsed;
+    try {
+      parsed = JSON.parse(fileContent);
+    } catch (e) {
+      // 非 JSON 内容直接忽略
+      return null;
+    }
+
+    // 兼容旧格式：文件里存的是一个“被 JSON.stringify 过的字符串”
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch (e) {
+        // 不是 JSON 字符串则保持原样
+      }
+    }
+
+    return parsed;
+  } catch (e) {
+    log('error', `[Cache] Failed to read cache file: ${key}`, e.message);
+    return null;
   }
-  return null;
 }
 
 // 将缓存数据写入本地缓存文件
 export function writeCacheToFile(key, value) {
-  const cacheFilePath = path.join(getDirname(), '..', '..', '.cache', `${key}`);
-  fs.writeFileSync(cacheFilePath, JSON.stringify(value), 'utf8');
+  const cacheDirPath = path.join(getDirname(), '..', '..', '.cache');
+  const cacheFilePath = path.join(cacheDirPath, `${key}`);
+
+  try {
+    // 确保目录存在
+    fs.mkdirSync(cacheDirPath, { recursive: true });
+
+    // 原子写：先写临时文件再替换，减少意外中断导致的损坏概率
+    const tmpPath = `${cacheFilePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(value), 'utf8');
+    fs.renameSync(tmpPath, cacheFilePath);
+  } catch (e) {
+    log('error', `[Cache] Failed to write cache file: ${key}`, e.message);
+  }
 }
 
 // 从本地获取缓存
 export async function getLocalCaches() {
-  if (!globals.localCacheInitialized) {
-    try {
-      log("info", 'getLocalCaches start.');
+  if (globals.localCacheInitialized) return;
 
-      // 从本地缓存文件读取数据并恢复到 globals 中
-      globals.animes = JSON.parse(readCacheFromFile('animes')) || globals.animes;
-      globals.episodeIds = JSON.parse(readCacheFromFile('episodeIds')) || globals.episodeIds;
-      globals.episodeNum = JSON.parse(readCacheFromFile('episodeNum')) || globals.episodeNum;
+  try {
+    log("info", 'getLocalCaches start.');
 
-      // 恢复 lastSelectMap 并转换为 Map 对象
-      const lastSelectMapData = readCacheFromFile('lastSelectMap');
-      if (lastSelectMapData) {
-        globals.lastSelectMap = new Map(Object.entries(JSON.parse(lastSelectMapData)));
-        log("info", `Restored lastSelectMap from local cache with ${globals.lastSelectMap.size} entries`);
+    // 从本地缓存文件读取数据并恢复到 globals 中
+    const animesData = readCacheFromFile('animes');
+    if (Array.isArray(animesData)) globals.animes = animesData;
+
+    const episodeIdsData = readCacheFromFile('episodeIds');
+    if (Array.isArray(episodeIdsData)) globals.episodeIds = episodeIdsData;
+
+    const episodeNumData = readCacheFromFile('episodeNum');
+    if (typeof episodeNumData === 'number') globals.episodeNum = episodeNumData;
+
+    // 恢复 lastSelectMap 并转换为 Map 对象（兼容 object/entries 两种格式）
+    const lastSelectMapData = readCacheFromFile('lastSelectMap');
+    if (lastSelectMapData) {
+      if (Array.isArray(lastSelectMapData)) {
+        globals.lastSelectMap = new Map(lastSelectMapData);
+      } else if (typeof lastSelectMapData === 'object') {
+        globals.lastSelectMap = new Map(Object.entries(lastSelectMapData));
       }
-
-      // 更新哈希值
-      globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
-      globals.lastHashes.episodeIds = simpleHash(JSON.stringify(globals.episodeIds));
-      globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
-      globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
-
-      globals.localCacheInitialized = true;
-      log("info", 'getLocalCaches completed successfully.');
-    } catch (error) {
-      log("error", `getLocalCaches failed: ${error.message}`, error.stack);
-      globals.localCacheInitialized = true; // 标记为已初始化，避免重复尝试
+      log("info", `Restored lastSelectMap from local cache with ${globals.lastSelectMap.size} entries`);
     }
+
+    // 更新哈希值
+    globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
+    globals.lastHashes.episodeIds = simpleHash(JSON.stringify(globals.episodeIds));
+    globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
+    globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
+
+    globals.localCacheInitialized = true;
+    log("info", 'getLocalCaches completed successfully.');
+  } catch (error) {
+    log("error", `getLocalCaches failed: ${error.message}`, error.stack);
+    globals.localCacheInitialized = true; // 标记为已初始化，避免重复尝试
   }
 }
 
@@ -385,10 +481,12 @@ export async function updateLocalCaches() {
 
     for (const { key, value } of variables) {
       // 对于 lastSelectMap（Map 对象），需要转换为普通对象后再序列化
-      const serializedValue = key === 'lastSelectMap' ? JSON.stringify(Object.fromEntries(value)) : JSON.stringify(value);
+      const cacheValue = key === 'lastSelectMap' ? Object.fromEntries(value) : value;
+      const serializedValue = JSON.stringify(cacheValue);
       const currentHash = simpleHash(serializedValue);
+
       if (currentHash !== globals.lastHashes[key]) {
-        writeCacheToFile(key, serializedValue);
+        writeCacheToFile(key, cacheValue);
         updates.push({ key, hash: currentHash });
       }
     }
@@ -400,7 +498,7 @@ export async function updateLocalCaches() {
         globals.lastHashes[key] = hash; // 更新本地哈希
       });
     } else {
-      log("info", 'No changes detected, skipping local cache update.');
+      log("debug", 'No changes detected, skipping local cache update.');
     }
 
   } catch (error) {
