@@ -136,6 +136,13 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
           // 从第二个 /api/v2 的位置开始截取，相当于移除第一个
           path = path.substring('/api/v2'.length);
       }
+
+      // 1.5 兼容：部分客户端会把前缀写成 /v2/...（省略 /api）。
+      // 如果直接拼接会得到 /api/v2/v2/...，这里先把 /v2 规范化成 /api/v2。
+      if (path === '/v2' || path.startsWith('/v2/')) {
+          log("debug", `[Path Check] Found /v2 shorthand prefix. Converting to /api/v2...`);
+          path = '/api' + path; // '/api' + '/v2/xxx' => '/api/v2/xxx'
+      }
       
       // 打印日志：只有在发生清理时才显示清理后的路径，否则显示"无需清理"
       if (path !== pathBeforeCleanup) {
@@ -147,7 +154,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 2. 补全：如果路径缺少前缀（例如请求原始路径为 /search/anime），则补全
       const pathBeforePrefixCheck = path;
       if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs') 
-        && !path.startsWith('/api/env') && !path.startsWith('/api/env') && !path.startsWith('/api/cache')) {
+        && !path.startsWith('/api/env') && !path.startsWith('/api/cache')) {
           log("debug", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
           path = '/api/v2' + path;
       }
