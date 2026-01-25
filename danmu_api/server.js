@@ -14,6 +14,7 @@ import chokidar from 'chokidar';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { handleRequest } from './worker.js';
+import { sendWebResponseToNode } from './utils/node-response-util.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -210,14 +211,10 @@ function createServer() {
 
       const webResponse = await handleRequest(webRequest, process.env, 'node', clientIp);
 
-      res.statusCode = webResponse.status;
-      webResponse.headers.forEach((value, key) => {
-        res.setHeader(key, value);
-      });
-
-      // 统一按二进制发送，避免 text() 丢失非 UTF-8/压缩/图片等场景
-      const ab = await webResponse.arrayBuffer();
-      res.end(Buffer.from(ab));
+      // ✅ 流式回写 +（可选）gzip 压缩：
+      // - 避免 arrayBuffer 全量缓冲带来的“服务端很快但客户端很慢”体感
+      // - 客户端支持 gzip 时显著降低 JSON/XML 体积
+      await sendWebResponseToNode(req, res, webResponse, process.env);
     } catch (error) {
       console.error('[server] Server error:', error);
       res.statusCode = 500;

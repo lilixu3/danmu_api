@@ -9,6 +9,7 @@
 // 调用核心 handleRequest，再把 Response 写回 res。
 
 import { handleRequest } from './worker.js';
+import { sendWebResponseToNode } from './utils/node-response-util.js';
 
 function normalizeHeaders(nodeHeaders) {
   const headers = {};
@@ -79,14 +80,9 @@ export default async function handler(req, res) {
 
     const webResponse = await handleRequest(webRequest, process.env, 'vercel', getClientIp(req));
 
-    res.statusCode = webResponse.status;
-    webResponse.headers.forEach((value, key) => {
-      res.setHeader(key, value);
-    });
-
-    // 统一按二进制回写，避免 text() 丢失非 UTF-8/压缩/图片等场景
-    const ab = await webResponse.arrayBuffer();
-    res.end(Buffer.from(ab));
+    // ✅ 流式回写 +（可选）gzip 压缩：
+    // Vercel Node Functions 同样会遇到“大响应全量缓冲”导致的延迟/内存峰值问题。
+    await sendWebResponseToNode(req, res, webResponse, process.env);
   } catch (err) {
     console.error('[vercel] handler error:', err);
     res.statusCode = 500;
