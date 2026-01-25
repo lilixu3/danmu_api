@@ -30,7 +30,7 @@ const systemEnvBackup = { ...process.env };
 // - 仅对超过阈值的响应启用，避免小包负优化
 //
 // ⚠️ 这里不引入额外环境变量，保持“开箱即用 + 不显得乱”。
-const GZIP_MIN_BYTES = 256;     // 小于此大小不压缩（避免 gzip 头开销）
+const GZIP_MIN_BYTES = 1024;     // 小于此大小不压缩（避免 gzip 头开销）
 const GZIP_LEVEL = 6;           // 0-9，默认 6 在压缩率与 CPU 之间较均衡
 const gzipAsync = promisify(gzipCb);
 
