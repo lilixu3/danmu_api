@@ -101,7 +101,9 @@ function shouldGzip(req, webResponse, env) {
   if (!isCompressibleContentType(contentType)) return false;
 
   // 小响应不压缩（优先用 Content-Length 判断；没有则压缩）
-  const minBytes = parseNumberHeader(env?.RESPONSE_GZIP_MIN_BYTES) ?? 1024;
+  const minBytesRaw = parseNumberHeader(env?.RESPONSE_GZIP_MIN_BYTES);
+  // 防御：避免负数/极端值导致判断异常
+  const minBytes = Math.min(Math.max(minBytesRaw ?? 1024, 0), 10485760);
   const contentLength = parseNumberHeader(webResponse?.headers?.get?.('content-length'));
   if (contentLength !== null && contentLength >= 0 && contentLength < minBytes) return false;
 
