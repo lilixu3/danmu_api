@@ -14,7 +14,7 @@ import { promisify } from 'node:util';
 
 // =============== 出口 GZIP 压缩（Vercel Node Functions） ===============
 // 不引入额外环境变量，保持简单：按客户端 Accept-Encoding 自动协商。
-const GZIP_MIN_BYTES = 256;
+const GZIP_MIN_BYTES = 1024;
 const GZIP_LEVEL = 6;
 const gzipAsync = promisify(gzipCb);
 
