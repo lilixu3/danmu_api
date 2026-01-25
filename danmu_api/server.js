@@ -9,6 +9,8 @@ import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
 import { fileURLToPath } from 'node:url';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
 import dotenv from 'dotenv';
 import chokidar from 'chokidar';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -20,6 +22,17 @@ const __dirname = path.dirname(__filename);
 
 // 保存系统环境变量的副本，确保它们具有最高优先级
 const systemEnvBackup = { ...process.env };
+
+// =============== 出口 GZIP 压缩（Node 本地/Docker） ===============
+// 说明：
+// - 仅在客户端声明支持 gzip（Accept-Encoding 包含 gzip）时启用
+// - 仅对文本类响应（json/xml/text 等）启用，避免对二进制/图片等做无意义压缩
+// - 仅对超过阈值的响应启用，避免小包负优化
+//
+// ⚠️ 这里不引入额外环境变量，保持“开箱即用 + 不显得乱”。
+const GZIP_MIN_BYTES = 256;     // 小于此大小不压缩（避免 gzip 头开销）
+const GZIP_LEVEL = 6;           // 0-9，默认 6 在压缩率与 CPU 之间较均衡
+const gzipAsync = promisify(gzipCb);
 
 // 配置文件路径在项目根目录（server.js 的上一级目录）
 const projectRoot = path.join(__dirname, '..');
@@ -192,6 +205,61 @@ function getClientIp(req) {
   return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
 }
 
+// =============== 工具：GZIP 决策与日志 ===============
+function clientAcceptsGzip(req) {
+  const ae = req.headers?.['accept-encoding'];
+  if (!ae) return false;
+  const v = Array.isArray(ae) ? ae.join(',') : String(ae);
+  return v.toLowerCase().includes('gzip');
+}
+
+function isCompressibleContentType(contentType = '') {
+  const ct = String(contentType).toLowerCase();
+  if (!ct) return false;
+
+  // 常见文本类
+  if (ct.startsWith('text/')) return true;
+  if (ct.includes('json')) return true;
+  if (ct.includes('xml')) return true;
+  if (ct.includes('javascript')) return true;
+  if (ct.includes('svg')) return true;
+  return false;
+}
+
+function appendVary(existing, value) {
+  if (!existing) return value;
+  const current = Array.isArray(existing) ? existing.join(',') : String(existing);
+  const parts = current.split(',').map(s => s.trim()).filter(Boolean);
+  const lower = parts.map(s => s.toLowerCase());
+  if (!lower.includes(value.toLowerCase())) {
+    parts.push(value);
+  }
+  return parts.join(', ');
+}
+
+function shouldLogGzip(req) {
+  // 仅在弹幕相关接口上强制打印 gzip 决策，避免日志过于吵
+  // 你如果希望所有接口都打印，可以把这里改为：return true;
+  const u = req?.url || '';
+  return u.includes('/api/v2/comment') || u.includes('/api/v2/segmentcomment');
+}
+
+function logGzipDecision({ enabled, req, contentType, rawBytes, gzBytes, reason }) {
+  const url = req?.url || '';
+  const method = req?.method || 'GET';
+  const ct = contentType ? String(contentType) : '';
+
+  if (enabled) {
+    const ratio = rawBytes > 0 ? ((gzBytes / rawBytes) * 100).toFixed(1) : '0.0';
+    console.log(`[GZIP] on  ${method} ${url} | ${rawBytes}B -> ${gzBytes}B (${ratio}%) | ${ct}`);
+  } else {
+    // 仅在弹幕接口，或客户端声明支持 gzip 时打印关闭原因
+    if (shouldLogGzip(req) || clientAcceptsGzip(req)) {
+      console.log(`[GZIP] off ${method} ${url} | ${rawBytes}B | ${ct}${reason ? ` | reason=${reason}` : ''}`);
+    }
+  }
+}
+
 // =============== 主业务服务器（9321） ===============
 function createServer() {
   return http.createServer(async (req, res) => {
@@ -211,13 +279,75 @@ function createServer() {
       const webResponse = await handleRequest(webRequest, process.env, 'node', clientIp);
 
       res.statusCode = webResponse.status;
+
+      // Header 透传：移除与传输编码相关的字段（我们会在出口统一处理）
+      // 避免出现：body 已是解压后的数据，但 header 仍残留 Content-Encoding 导致客户端解析异常
       webResponse.headers.forEach((value, key) => {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'content-encoding' || lowerKey === 'content-length') return;
         res.setHeader(key, value);
       });
 
-      // 统一按二进制发送，避免 text() 丢失非 UTF-8/压缩/图片等场景
+      const contentType = webResponse.headers.get('content-type') || '';
+      const alreadyEncoded = Boolean(webResponse.headers.get('content-encoding'));
+
+      // 统一按二进制读取
       const ab = await webResponse.arrayBuffer();
-      res.end(Buffer.from(ab));
+      let buffer = Buffer.from(ab);
+
+      // [优化] 出口 gzip：仅在条件满足时启用
+      const canGzip = (
+        !alreadyEncoded &&
+        (webResponse.status !== 204 && webResponse.status !== 304) &&
+        (method !== 'HEAD') &&
+        clientAcceptsGzip(req) &&
+        isCompressibleContentType(contentType) &&
+        buffer.length >= GZIP_MIN_BYTES
+      );
+
+      if (canGzip) {
+        try {
+          const compressed = await gzipAsync(buffer, { level: GZIP_LEVEL });
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', appendVary(res.getHeader('Vary'), 'Accept-Encoding'));
+          res.setHeader('Content-Length', compressed.length);
+          logGzipDecision({
+            enabled: true,
+            req,
+            contentType,
+            rawBytes: buffer.length,
+            gzBytes: compressed.length,
+          });
+          buffer = compressed;
+        } catch (err) {
+          // 压缩失败时直接回退原始数据
+          logGzipDecision({
+            enabled: false,
+            req,
+            contentType,
+            rawBytes: buffer.length,
+            reason: `compress-failed:${err?.message || err}`
+          });
+        }
+      } else {
+        // 打印“未启用 gzip”的原因（便于你快速确认到底有没有生效）
+        let reason = '';
+        if (alreadyEncoded) reason = 'already-encoded';
+        else if (!clientAcceptsGzip(req)) reason = 'client-no-gzip';
+        else if (!isCompressibleContentType(contentType)) reason = 'non-text-type';
+        else if (buffer.length < GZIP_MIN_BYTES) reason = `too-small(<${GZIP_MIN_BYTES})`;
+        else if (method === 'HEAD') reason = 'HEAD';
+        else if (webResponse.status === 204 || webResponse.status === 304) reason = `status-${webResponse.status}`;
+        logGzipDecision({ enabled: false, req, contentType, rawBytes: buffer.length, reason });
+      }
+
+      // Node 在 res.end(Buffer) 时通常会自动补 Content-Length，
+      // 但我们在 gzip 分支会明确设置；这里再兜底一次，确保日志/客户端一致。
+      if (!res.hasHeader('Content-Length')) {
+        res.setHeader('Content-Length', buffer.length);
+      }
+
+      res.end(buffer);
     } catch (error) {
       console.error('[server] Server error:', error);
       res.statusCode = 500;

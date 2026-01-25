@@ -9,6 +9,61 @@
 // 调用核心 handleRequest，再把 Response 写回 res。
 
 import { handleRequest } from './worker.js';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
+
+// =============== 出口 GZIP 压缩（Vercel Node Functions） ===============
+// 不引入额外环境变量，保持简单：按客户端 Accept-Encoding 自动协商。
+const GZIP_MIN_BYTES = 256;
+const GZIP_LEVEL = 6;
+const gzipAsync = promisify(gzipCb);
+
+function clientAcceptsGzip(req) {
+  const ae = req.headers?.['accept-encoding'];
+  if (!ae) return false;
+  const v = Array.isArray(ae) ? ae.join(',') : String(ae);
+  return v.toLowerCase().includes('gzip');
+}
+
+function isCompressibleContentType(contentType = '') {
+  const ct = String(contentType).toLowerCase();
+  if (!ct) return false;
+  if (ct.startsWith('text/')) return true;
+  if (ct.includes('json')) return true;
+  if (ct.includes('xml')) return true;
+  if (ct.includes('javascript')) return true;
+  if (ct.includes('svg')) return true;
+  return false;
+}
+
+function appendVary(existing, value) {
+  if (!existing) return value;
+  const current = Array.isArray(existing) ? existing.join(',') : String(existing);
+  const parts = current.split(',').map(s => s.trim()).filter(Boolean);
+  const lower = parts.map(s => s.toLowerCase());
+  if (!lower.includes(value.toLowerCase())) parts.push(value);
+  return parts.join(', ');
+}
+
+function shouldLogGzip(req) {
+  const u = req?.url || '';
+  return u.includes('/api/v2/comment') || u.includes('/api/v2/segmentcomment');
+}
+
+function logGzipDecision({ enabled, req, contentType, rawBytes, gzBytes, reason }) {
+  // Vercel 的日志成本更敏感：仅在弹幕接口或客户端声明支持 gzip 时打印
+  if (!shouldLogGzip(req) && !clientAcceptsGzip(req)) return;
+  const url = req?.url || '';
+  const method = req?.method || 'GET';
+  const ct = contentType ? String(contentType) : '';
+
+  if (enabled) {
+    const ratio = rawBytes > 0 ? ((gzBytes / rawBytes) * 100).toFixed(1) : '0.0';
+    console.log(`[GZIP][vercel] on  ${method} ${url} | ${rawBytes}B -> ${gzBytes}B (${ratio}%) | ${ct}`);
+  } else {
+    console.log(`[GZIP][vercel] off ${method} ${url} | ${rawBytes}B | ${ct}${reason ? ` | reason=${reason}` : ''}`);
+  }
+}
 
 function normalizeHeaders(nodeHeaders) {
   const headers = {};
@@ -80,13 +135,56 @@ export default async function handler(req, res) {
     const webResponse = await handleRequest(webRequest, process.env, 'vercel', getClientIp(req));
 
     res.statusCode = webResponse.status;
+    // Header 透传：移除与传输编码相关的字段（我们会在出口统一处理）
     webResponse.headers.forEach((value, key) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'content-encoding' || lowerKey === 'content-length') return;
       res.setHeader(key, value);
     });
 
-    // 统一按二进制回写，避免 text() 丢失非 UTF-8/压缩/图片等场景
+    const contentType = webResponse.headers.get('content-type') || '';
+    const alreadyEncoded = Boolean(webResponse.headers.get('content-encoding'));
+
+    // 统一按二进制回写
     const ab = await webResponse.arrayBuffer();
-    res.end(Buffer.from(ab));
+    let buffer = Buffer.from(ab);
+
+    const canGzip = (
+      !alreadyEncoded &&
+      (webResponse.status !== 204 && webResponse.status !== 304) &&
+      (method !== 'HEAD') &&
+      clientAcceptsGzip(req) &&
+      isCompressibleContentType(contentType) &&
+      buffer.length >= GZIP_MIN_BYTES
+    );
+
+    if (canGzip) {
+      try {
+        const compressed = await gzipAsync(buffer, { level: GZIP_LEVEL });
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Vary', appendVary(res.getHeader('Vary'), 'Accept-Encoding'));
+        res.setHeader('Content-Length', compressed.length);
+        logGzipDecision({ enabled: true, req, contentType, rawBytes: buffer.length, gzBytes: compressed.length });
+        buffer = compressed;
+      } catch (err) {
+        logGzipDecision({ enabled: false, req, contentType, rawBytes: buffer.length, reason: `compress-failed:${err?.message || err}` });
+      }
+    } else {
+      let reason = '';
+      if (alreadyEncoded) reason = 'already-encoded';
+      else if (!clientAcceptsGzip(req)) reason = 'client-no-gzip';
+      else if (!isCompressibleContentType(contentType)) reason = 'non-text-type';
+      else if (buffer.length < GZIP_MIN_BYTES) reason = `too-small(<${GZIP_MIN_BYTES})`;
+      else if (method === 'HEAD') reason = 'HEAD';
+      else if (webResponse.status === 204 || webResponse.status === 304) reason = `status-${webResponse.status}`;
+      logGzipDecision({ enabled: false, req, contentType, rawBytes: buffer.length, reason });
+    }
+
+    if (!res.hasHeader('Content-Length')) {
+      res.setHeader('Content-Length', buffer.length);
+    }
+
+    res.end(buffer);
   } catch (err) {
     console.error('[vercel] handler error:', err);
     res.statusCode = 500;
