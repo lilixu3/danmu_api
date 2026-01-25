@@ -335,34 +335,6 @@ export class Envs {
       'DEPLOY_PLATFROM_TOKEN': { category: 'system', type: 'text', description: '部署平台访问令牌' },
       'NODE_TLS_REJECT_UNAUTHORIZED': { category: 'system', type: 'number', description: '在建立 HTTPS 连接时是否验证服务器的 SSL/TLS 证书，0表示忽略，默认为1', min: 0, max: 1 },
       'ALLOW_PRIVATE_URLS': { category: 'system', type: 'boolean', description: '是否允许访问本地/内网 URL（默认 false，开启可能存在 SSRF 风险）' },
-
-      // ==================== 性能/传输优化（按平台生效） ====================
-      // 说明：这些配置项属于“运行时能力/入口适配”类优化。
-      // - Node / Vercel Node Functions：由 server.js / vercel.js 入口负责 gzip 协商压缩
-      // - 其它边缘运行时（Cloudflare/EdgeOne 等）多数会由平台自动压缩；本项目不强制在这些平台启用 gzip
-      // 为避免 UI 配置项“看得到但不生效”的混乱，这里通过 platforms 字段声明生效平台，并在 /api/config 输出时自动过滤。
-      'RESPONSE_GZIP': {
-        category: 'system',
-        type: 'boolean',
-        description: 'HTTP 响应 gzip 压缩开关（仅 Node / Vercel Node 生效；会根据客户端 Accept-Encoding 协商）',
-        platforms: ['node', 'vercel']
-      },
-      'RESPONSE_GZIP_MIN_BYTES': {
-        category: 'system',
-        type: 'number',
-        description: '小于该字节数的响应不 gzip（仅 Node / Vercel Node 生效，默认 1024）',
-        min: 0,
-        max: 10485760,
-        platforms: ['node', 'vercel']
-      },
-      'RESPONSE_GZIP_LEVEL': {
-        category: 'system',
-        type: 'number',
-        description: 'gzip 压缩等级 0-9（仅 Node / Vercel Node 生效，默认 6）',
-        min: 0,
-        max: 9,
-        platforms: ['node', 'vercel']
-      },
     };
 
     return {
@@ -403,25 +375,6 @@ export class Envs {
       enableEpisodeFilter: this.get('ENABLE_EPISODE_FILTER', false, 'boolean'), // 集标题过滤开关配置（默认 false，禁用过滤）
       logLevel: this.get('LOG_LEVEL', 'info', 'string'), // 日志级别配置（默认 info，可选值：debug, info, warn, error）
       allowPrivateUrls: this.get('ALLOW_PRIVATE_URLS', false, 'boolean'), // 是否允许访问本地/内网 URL（默认 false）
-
-      // ==================== 性能/传输优化（按平台生效） ====================
-      // 仅用于 UI 展示与配置统一；具体执行逻辑由各平台入口适配实现。
-      responseGzip: this.get('RESPONSE_GZIP', true, 'boolean'),
-      responseGzipMinBytes: (() => {
-        const v = this.get('RESPONSE_GZIP_MIN_BYTES', 1024, 'number');
-        // 防御：避免负数/极端值
-        const n = Number.isFinite(v) ? v : 1024;
-        const clamped = Math.min(Math.max(n, 0), 10485760);
-        this.accessedEnvVars.set('RESPONSE_GZIP_MIN_BYTES', clamped);
-        return clamped;
-      })(),
-      responseGzipLevel: (() => {
-        const v = this.get('RESPONSE_GZIP_LEVEL', 6, 'number');
-        const n = Number.isFinite(v) ? v : 6;
-        const clamped = Math.min(Math.max(n, 0), 9);
-        this.accessedEnvVars.set('RESPONSE_GZIP_LEVEL', clamped);
-        return clamped;
-      })(),
       searchCacheMinutes: this.get('SEARCH_CACHE_MINUTES', 1, 'number'), // 搜索结果缓存时间配置（分钟，默认 1）
       commentCacheMinutes: this.get('COMMENT_CACHE_MINUTES', 1, 'number'), // 弹幕缓存时间配置（分钟，默认 1）
       searchCacheMaxItems: this.get('SEARCH_CACHE_MAX_ITEMS', 300, 'number'), // 搜索缓存最大条目数（默认 300，0表示不限制）

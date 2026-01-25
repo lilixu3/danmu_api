@@ -16,30 +16,6 @@ export function handleUI() {
 export function handleConfig(hasPermission = false) {
   // 获取环境变量配置
   const envVarConfig = globals.envVarConfig;
-  const deployPlatform = String(globals.deployPlatform || 'node').toLowerCase();
-
-  // 过滤：仅展示对当前部署平台“生效/适用”的配置项，避免 UI 出现“看得到但不生效”的混乱。
-  // 约定：envVarConfig[key].platforms = ['node','vercel', ...] 时表示仅这些平台生效。
-  function isVarVisibleOnPlatform(key) {
-    const cfg = envVarConfig?.[key];
-    const ps = cfg?.platforms;
-    if (!Array.isArray(ps) || ps.length === 0) return true;
-    return ps.map(p => String(p).toLowerCase()).includes(deployPlatform);
-  }
-
-  function filterEnvObject(obj) {
-    const out = {};
-    for (const [k, v] of Object.entries(obj || {})) {
-      if (isVarVisibleOnPlatform(k)) out[k] = v;
-    }
-    return out;
-  }
-
-  // 过滤后的 envVarConfig（仅保留当前平台适用的项）
-  const filteredEnvVarConfig = {};
-  for (const [k, v] of Object.entries(envVarConfig || {})) {
-    if (isVarVisibleOnPlatform(k)) filteredEnvVarConfig[k] = v;
-  }
   
   // 分类环境变量
   const categorizedVars = {
@@ -52,9 +28,8 @@ export function handleConfig(hasPermission = false) {
   };
   
   // 获取所有环境变量 - 这是用于配置预览的
-  const filteredAccessedEnvVars = filterEnvObject(globals.accessedEnvVars);
   const previewEnvVars = {
-    ...filteredAccessedEnvVars,
+    ...globals.accessedEnvVars,
     localCacheValid: globals.localCacheValid,
     redisValid: globals.redisValid,
     deployPlatform: globals.deployPlatform
@@ -62,7 +37,7 @@ export function handleConfig(hasPermission = false) {
   
   // 将环境变量按分类组织 - 使用原始环境变量进行分类，但保持预览格式
   Object.keys(previewEnvVars).forEach(key => {
-    const varConfig = filteredEnvVarConfig[key] || { category: 'system', type: 'text', description: '未分类配置项' };
+    const varConfig = envVarConfig[key] || { category: 'system', type: 'text', description: '未分类配置项' };
     const category = varConfig.category || 'system';
     
     categorizedVars[category].push({
@@ -79,7 +54,7 @@ export function handleConfig(hasPermission = false) {
   const hasAdminToken = adminToken.trim() !== '';
   
   // 准备原始环境变量，无权限时也需要脱敏
-  let originalEnvVars = filterEnvObject(globals.originalEnvVars);
+  let originalEnvVars = { ...globals.originalEnvVars };
   if (!hasPermission || globals.currentToken !== globals.adminToken) {
     Object.keys(originalEnvVars).forEach(key => {
       if (globals.currentToken !== globals.token || key !== "TOKEN") {
@@ -95,7 +70,7 @@ export function handleConfig(hasPermission = false) {
     version: globals.VERSION,
     envs: previewEnvVars, // 配置预览使用
     categorizedEnvVars: categorizedVars,
-    envVarConfig: filteredEnvVarConfig,
+    envVarConfig: envVarConfig,
     originalEnvVars: originalEnvVars, // 系统设置使用原始环境变量（已脱敏）
     hasAdminToken: hasAdminToken, // 添加admin token配置状态
     repository: "https://github.com/huangxd-/danmu_api.git",
