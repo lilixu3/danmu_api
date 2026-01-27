@@ -1,7 +1,7 @@
 import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { jsonResponse, xmlResponse } from "./http-util.js";
-
+import { traditionalized } from './zh-util.js';
 // =====================
 // danmu处理相关函数
 // =====================
@@ -328,7 +328,14 @@ export function convertToDanmakuJson(contents, platform) {
       log("info", `[danmu convert] 颜色列表: [${colorList.join(', ')}]`);
     }
   }
-
+  // 在最后一步转换弹幕文本为繁体字
+  if (globals.danmuTraditional) {
+    convertedDanmus = convertedDanmus.map(danmu => ({
+      ...danmu,
+      m: traditionalized(danmu.m)
+    }));
+    log("info", `[danmu convert] 转换了 ${convertedDanmus.length} 条弹幕为繁体字`);
+  }
   log("info", `danmus_original: ${danmus.length}`);
   log("info", `danmus_filter: ${filteredDanmus.length}`);
   log("info", `danmus_group: ${groupedDanmus.length}`);
