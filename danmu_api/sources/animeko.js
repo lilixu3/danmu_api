@@ -128,13 +128,28 @@ export default class AnimekoSource extends BaseSource {
     
     // 标准化函数
     const normalize = (str) => {
-        if (!str) return "";
-        // 兼容旧 Node：移除空白 + 常见中英文标点（可按需增减）
-        return simplized(str)
-          .toLowerCase()
-          .replace(/[\s~`!@#$%^&*()\-_=+\[{\]}\\|;:'",<.>\/?，。！？【】（）《》“”‘’、；：·…]/g, "");
+      if (!str) return "";
+      const s = simplized(str).toLowerCase();
 
+      // 运行时支持 Unicode property escapes 就走原逻辑（效果与原来完全一致）
+      try {
+        return s.replace(/[\p{P}\p{S}\s]/gu, "");
+      } catch (_) {
+        // fallback：尽量覆盖「标点」「符号」「空白」
+        // 1) 去空白
+        // 2) 去 ASCII 标点/符号
+        // 3) 去常见中文/全角标点
+        // 4) 去常见 Unicode 标点块 & 全角半角块中的标点
+        // 5) 去常见符号块（货币/箭头/杂项符号等）
+        return s
+          .replace(/\s+/g, "")
+          .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, "")
+          .replace(/[·•…—–―，。！？；：、“”‘’《》〈〉【】「」『』（）〔〕〖〗￥]/g, "")
+          .replace(/[\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F\uFE10-\uFE1F\uFE30-\uFE4F\uFF00-\uFF65]/g, "")
+          .replace(/[\u20A0-\u20CF\u2100-\u214F\u2190-\u21FF\u2300-\u23FF\u2600-\u26FF\u2700-\u27BF]/g, "");
+      }
     };
+
 
     const normalizedKeyword = normalize(keyword);
 
