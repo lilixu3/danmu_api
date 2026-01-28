@@ -117,6 +117,20 @@ export default class AnimekoSource extends BaseSource {
   }
 
   /**
+   * 移除字符串中的标点符号、特殊符号和空白字符
+   * 兼容不支持 Unicode 属性转义的 Node.js 版本
+   * @param {string} str 输入字符串
+   * @returns {string} 清理后的字符串
+   */
+  removePunctuationAndSymbols(str) {
+    if (!str) return "";
+    
+    // 使用字符范围匹配常见标点和符号，而不是 Unicode 属性
+    // 包括：ASCII 标点、中文标点、各类符号、空白字符
+    return str.replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~\u2000-\u206F\u3000-\u303F\uFF00-\uFFEF]/g, "");
+  }
+
+  /**
    * 过滤搜索结果
    * 包含基础相似度过滤和智能季度匹配逻辑
    * @param {Array} list 原始 API 返回结果列表
@@ -129,24 +143,8 @@ export default class AnimekoSource extends BaseSource {
     // 标准化函数
     const normalize = (str) => {
         if (!str) return "";
-        let _stripRe;
-
-        function getStripRe() {
-          if (_stripRe) return _stripRe;
-
-          try {
-            // 运行时支持 \p{…}：效果与原逻辑完全一致
-            _stripRe = new RegExp("[\\p{P}\\p{S}\\s]", "gu");
-          } catch (e) {
-            // 运行时不支持：fallback（近似）
-            _stripRe = /[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~，。！？；：、“”‘’《》〈〉【】「」『』（）〔〕〖〗￥·•…—–―]/g;
-          }
-
-          return _stripRe;
-        }
-
-        return simplized(str).toLowerCase().replace(getStripRe(), "");
-
+        // 使用兼容方法替代 Unicode 属性正则
+        return this.removePunctuationAndSymbols(simplized(str).toLowerCase());
     };
 
     const normalizedKeyword = normalize(keyword);
