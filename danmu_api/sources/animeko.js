@@ -129,7 +129,11 @@ export default class AnimekoSource extends BaseSource {
     // 标准化函数
     const normalize = (str) => {
         if (!str) return "";
-        return simplized(str).toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
+        // 兼容旧 Node：移除空白 + 常见中英文标点（可按需增减）
+        return simplized(str)
+          .toLowerCase()
+          .replace(/[\s~`!@#$%^&*()\-_=+\[{\]}\\|;:'",<.>\/?，。！？【】（）《》“”‘’、；：·…]/g, "");
+
     };
 
     const normalizedKeyword = normalize(keyword);
