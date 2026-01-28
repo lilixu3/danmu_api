@@ -145,7 +145,7 @@ export default class DandanSource extends BaseSource {
       const resp = await httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=%2Fv2%2Fcomment%2F${id}%3Ffrom%3D0%26withRelated%3Dtrue%26chConvert%3D0`, {
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": `LogVar Danmu API/${globals.version}`,
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         },
         retries: 1,
       });
@@ -196,8 +196,8 @@ export default class DandanSource extends BaseSource {
         const decimalColor = r * 256 * 256 + g * 256 + b;
         return `${platform}${decimalColor}`;
       })}`,
-      // 根据 globals.danmuSimplified 控制是否繁转简
-      m: globals.danmuSimplified ? simplized(c.m) : c.m,
+      // 根据 globals.danmuSimplifiedTraditional 控制是否繁转简
+      m: globals.danmuSimplifiedTraditional === 'simplified' ? simplized(c.m) : c.m,
     }));
   }
 }
