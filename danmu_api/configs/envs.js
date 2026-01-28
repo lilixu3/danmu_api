@@ -214,29 +214,6 @@ export class Envs {
   static getOriginalEnvVars() {
     return this.originalEnvVars;
   }
-
-  /** 解析弹幕转换颜色
-   * @returns {string} 弹幕转换颜色
-   */
-  static resolveConvertColor() {
-    // CONVERT_COLOR_TO_WHITE 变量向前兼容处理
-    // 直接从原始环境变量读取，不记录到 accessedEnvVars
-    let convertColorToWhite = false;
-    if (typeof this.env !== 'undefined' && this.env['CONVERT_COLOR_TO_WHITE']) {
-      convertColorToWhite = this.env['CONVERT_COLOR_TO_WHITE'] === true || 
-                            this.env['CONVERT_COLOR_TO_WHITE'] === 'true' || 
-                            this.env['CONVERT_COLOR_TO_WHITE'] === 1 || 
-                            this.env['CONVERT_COLOR_TO_WHITE'] === '1';
-    } else if (typeof process !== 'undefined' && process.env?.['CONVERT_COLOR_TO_WHITE']) {
-      const val = process.env['CONVERT_COLOR_TO_WHITE'];
-      convertColorToWhite = val === 'true' || val === '1';
-    }
-    
-    // 如果设置了旧的 CONVERT_COLOR_TO_WHITE，则转换为新的 CONVERT_COLOR 值
-    // true -> 'white', false -> 'default'
-    const defaultColor = convertColorToWhite ? 'white' : 'default';
-    return this.get('CONVERT_COLOR', defaultColor, 'string');
-  }
 /**
    * 解析剧名映射表
    * @returns {Map} 剧名映射表
@@ -308,8 +285,7 @@ export class Envs {
       'BLOCKED_WORDS': { category: 'danmu', type: 'text', description: '屏蔽词列表' },
       'GROUP_MINUTE': { category: 'danmu', type: 'number', description: '分钟内合并去重（0表示不去重），默认1', min: 0, max: 30 },
       'DANMU_LIMIT': { category: 'danmu', type: 'number', description: '弹幕数量限制，单位为k，即千：默认 0，表示不限制弹幕数', min: 0, max: 100 },
-      'DANMU_SIMPLIFIED': { category: 'danmu', type: 'boolean', description: '弹幕繁体转简体开关，优先级：DANMU_SIMPLIFIED < DANMU_TRADITIONAL，默认值为true' },
-      'DANMU_TRADITIONAL': { category: 'danmu', type: 'boolean', description: '弹幕简体转繁体开关，优先级：DANMU_TRADITIONAL > DANMU_SIMPLIFIED，默认值为false' },
+      'DANMU_SIMPLIFIED_TRADITIONAL': { category: 'danmu', type: 'select', options: ['default', 'simplified', 'traditional'], description: '弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）' },
       'CONVERT_TOP_BOTTOM_TO_SCROLL': { category: 'danmu', type: 'boolean', description: '顶部/底部弹幕转换为浮动弹幕' },
       'CONVERT_COLOR': { category: 'danmu', type: 'color-list', description: '自定义随机转换颜色池（支持手动配置/排序/删除，支持真随机添加，为空则不转换）' },
       'DANMU_FONT_SIZE': { category: 'danmu', type: 'number', description: '弹幕字体大小（B站标准），默认25', min: 10, max: 100 },
@@ -357,8 +333,7 @@ export class Envs {
       groupMinute: Math.min(this.get('GROUP_MINUTE', 1, 'number'), 30), // 分钟内合并去重（默认 1，最大值30，0表示不去重）
       danmuLimit: this.get('DANMU_LIMIT', 0, 'number'), // 等间隔采样限制弹幕总数，单位为k，即千：默认 0，表示不限制弹幕数，若改为5，弹幕总数在超过5000的情况下会将弹幕数控制在5000
       proxyUrl: this.get('PROXY_URL', '', 'string', true), // 代理/反代地址
-      danmuSimplified: this.get('DANMU_SIMPLIFIED', true, 'boolean'), // 弹幕繁体转简体开关，优先级：DANMU_SIMPLIFIED < DANMU_TRADITIONAL，默认值为true
-      danmuTraditional: this.get('DANMU_TRADITIONAL', false, 'boolean'), // 弹幕简体转繁体开关，优先级：DANMU_TRADITIONAL > DANMU_SIMPLIFIED，默认值为false
+      danmuSimplifiedTraditional: this.get('DANMU_SIMPLIFIED_TRADITIONAL', 'default', 'string'), // 弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）
       danmuFontSize: (() => {
         const raw = this.get('DANMU_FONT_SIZE', 25, 'string');
         let v = parseInt(raw, 10);
@@ -381,7 +356,7 @@ export class Envs {
       searchCacheMaxItems: this.get('SEARCH_CACHE_MAX_ITEMS', 300, 'number'), // 搜索缓存最大条目数（默认 300，0表示不限制）
       commentCacheMaxItems: this.get('COMMENT_CACHE_MAX_ITEMS', 300, 'number'), // 弹幕缓存最大条目数（默认 300，0表示不限制）
       convertTopBottomToScroll: this.get('CONVERT_TOP_BOTTOM_TO_SCROLL', false, 'boolean'), // 顶部/底部弹幕转换为浮动弹幕配置（默认 false，禁用转换）
-      convertColor: this.resolveConvertColor(), // 弹幕转换颜色配置，支持 default、white、color（默认 default，禁用转换）
+      convertColor: this.get('CONVERT_COLOR', 'default', 'string'), // 弹幕转换颜色配置，支持 default、white、color（默认 default，禁用转换）
       danmuOutputFormat: this.get('DANMU_OUTPUT_FORMAT', 'json', 'string'), // 弹幕输出格式配置（默认 json，可选值：json, xml）
       strictTitleMatch: this.get('STRICT_TITLE_MATCH', false, 'boolean'), // 严格标题匹配模式配置（默认 false，宽松模糊匹配）
       titleToChinese: this.get('TITLE_TO_CHINESE', false, 'boolean'), // 外语标题转换中文开关
