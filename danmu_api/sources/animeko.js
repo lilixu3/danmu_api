@@ -115,7 +115,6 @@ export default class AnimekoSource extends BaseSource {
 
     return null;
   }
-
   /**
    * 移除字符串中的标点符号、特殊符号和空白字符
    * 兼容不支持 Unicode 属性转义的 Node.js 版本
@@ -127,9 +126,8 @@ export default class AnimekoSource extends BaseSource {
     
     // 使用字符范围匹配常见标点和符号，而不是 Unicode 属性
     // 包括：ASCII 标点、中文标点、各类符号、空白字符
-    return str.replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~\u2000-\u206F\u3000-\u303F\uFF00-\uFFEF]/g, "");
+    return str.replace(/[\s\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E\u2000-\u206F\u3000-\u3003\u3008-\u301F\u3030-\u303F\uFF01-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF60\uFFE0-\uFFE6\uFF61-\uFF65\u2190-\u21FF\u2600-\u27BF]+/g, "");
   }
-
   /**
    * 过滤搜索结果
    * 包含基础相似度过滤和智能季度匹配逻辑
