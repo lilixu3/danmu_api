@@ -27,7 +27,6 @@ export default class RenrenSource extends BaseSource {
       'deviceId': 'T2%2Bjh%2FnHhJkWEzPnQT2E0%2FEw865FTT0uL%2BiBwRa2ZdM%3D',
       'aliId': 'aUzmLtnZIYoDAA9KyLdcLQpM',
       'umId': '53e0f078fa8474ae7ba412f766989b54od',
-      'st':'4c1a2b5a87b8f63045d94156a5881c6a',
       'clientType': 'android_rrsp_xb_XiaoMi',
       't': timestamp.toString(),
       'sign': sign,
@@ -36,7 +35,7 @@ export default class RenrenSource extends BaseSource {
       'ct': 'android_rrsp_xb_XiaoMi',
       'pkt': 'rrmj',
       'p': 'Android',
-      'wcode': '0',
+      'wcode': '3',
       'et': '2',
       'uet': '1',
       'folding-screen': '1',
@@ -83,42 +82,12 @@ export default class RenrenSource extends BaseSource {
         retries: 1,
       });
 
-      // ===== 添加调试日志 =====
-      log("info", `[Renren] searchAppContent 原始响应:`, {
-        hasData: !!resp.data,
-        dataType: typeof resp.data,
-        code: resp?.data?.code,
-        dataKeys: resp?.data ? Object.keys(resp.data) : [],
-        fullResponse: JSON.stringify(resp.data).substring(0, 500) // 只打印前500字符
-      });
-      // =====================
-
-      if (!resp.data) {
-        log("warn", "[Renren] searchAppContent: resp.data 为空");
-        return [];
-      }
+      if (!resp.data) return [];
 
       // 服务端明确提示"版本过低/强制更新"时：直接返回空，让上层走备用搜索
-      if (resp?.data?.code === "0001") {
-        log("warn", "[Renren] searchAppContent: 版本过低/强制更新 (code: 0001)");
-        return [];
-      }
+      if (resp?.data?.code === "0001") return [];
 
       const list = resp?.data?.data?.searchDramaList || [];
-      
-      // ===== 添加调试日志 =====
-      log("info", `[Renren] searchAppContent 解析结果:`, {
-        hasDataField: !!resp?.data?.data,
-        hasSearchDramaList: !!resp?.data?.data?.searchDramaList,
-        listLength: list.length,
-        firstItem: list[0] ? {
-          id: list[0].id,
-          title: list[0].title,
-          year: list[0].year
-        } : null
-      });
-      // =====================
-      
       return list.map((item) => ({
         provider: "renren",
         mediaId: String(item.id),
@@ -358,7 +327,7 @@ export default class RenrenSource extends BaseSource {
     let allResults = [];
     
     // 优先使用 APP 接口搜索
-    allResults = await this.searchAppContent(searchTitle);
+    // allResults = await this.searchAppContent(searchTitle);
     
     // APP 接口失败时降级到网页接口
     if (allResults.length === 0) {
@@ -379,13 +348,13 @@ export default class RenrenSource extends BaseSource {
 
   async getDetail(id) {
     // 优先使用 APP 接口
-    const resp = await this.getAppDramaDetail(String(id));
-    if (resp) {
-      return resp.data;
-    }
+    // const resp = await this.getAppDramaDetail(String(id));
+    // if (resp) {
+    //   return resp.data;
+    // }
     
-    // APP 接口失败时降级到网页接口
-    log("info", "[Renren] APP 详情接口失败，降级到网页接口");
+    // // APP 接口失败时降级到网页接口
+    // log("info", "[Renren] APP 详情接口失败，降级到网页接口");
     const url = `https://api.rrmj.plus/m-station/drama/page`;
     const params = { hsdrOpen: 0, isAgeLimit: 0, dramaId: String(id), hevcOpen: 1 };
     const fallbackResp = await this.renrenRequest("GET", url, params);
@@ -472,13 +441,13 @@ export default class RenrenSource extends BaseSource {
 
   async getEpisodeDanmu(id) {
     // 优先使用 APP 接口
-    const resp = await this.getAppDanmu(id);
-    if (resp) {
-      return resp;
-    }
+    // const resp = await this.getAppDanmu(id);
+    // if (resp) {
+    //   return resp;
+    // }
 
-    // APP 接口失败时降级到网页接口
-    log("info", "[Renren] APP 弹幕接口失败，降级到网页接口");
+    // // APP 接口失败时降级到网页接口
+    // log("info", "[Renren] APP 弹幕接口失败，降级到网页接口");
     const ClientProfile = {
       user_agent: "Mozilla/5.0",
       origin: "https://rrsp.com.cn",
