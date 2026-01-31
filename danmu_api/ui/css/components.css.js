@@ -773,151 +773,212 @@ export const componentsCssContent = /* css */ `
     }
 }
 /* ========================================
-   合并模式与暂存区样式 (新增适配 Glass UI)
+   合并模式与暂存区样式 (Glassmorphism 风格适配)
    ======================================== */
+
+/* 控制栏容器 - 玻璃态卡片 */
 .merge-mode-controls {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
     margin: 1rem 0;
-    padding: 0.5rem;
-    background: var(--bg-tertiary);
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    backdrop-filter: var(--blur-sm);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    border: 1px solid transparent;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-sm);
 }
 
 [data-theme="dark"] .merge-mode-controls {
-    border-color: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
 }
 
-.merge-mode-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all var(--transition-fast);
-}
-
+/* 暂存区 - 虚线玻璃态容器 */
 .staging-area {
     display: none;
-    background: var(--bg-secondary);
+    background: rgba(var(--primary-rgb), 0.02); /* 极淡的主色背景 */
     border: 2px dashed var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.75rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.75rem;
     align-items: center;
-    min-height: 52px;
+    min-height: 64px;
     position: relative;
-    transition: all var(--transition-fast);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .staging-area.active {
     display: flex;
-    animation: fadeInDown 0.3s ease-out;
+    animation: slideDownFade 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 拖拽进入暂存区时的高亮状态 */
+.staging-area:hover,
+.staging-tag.drag-over {
+    border-color: var(--primary-color);
+    background: rgba(var(--primary-rgb), 0.05);
+    box-shadow: 0 0 20px rgba(var(--primary-rgb), 0.1) inset;
 }
 
 [data-theme="dark"] .staging-area {
-    background: rgba(0, 0, 0, 0.2);
-    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(0, 0, 0, 0.15);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
-.staging-area::before {
-    content: '暂存区:';
-    color: var(--primary-color);
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-right: 0.25rem;
-    align-self: center;
-}
-
+/* 暂存区标签 - 胶囊样式 */
 .staging-tag {
     background: var(--bg-primary);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.8125rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px; /* 完全圆角 */
+    font-size: 0.875rem;
+    font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    cursor: move; 
+    gap: 0.5rem;
+    cursor: grab; 
     user-select: none;
-    max-width: 100%;
     box-shadow: var(--shadow-sm);
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    backdrop-filter: var(--blur-sm);
+}
+
+.staging-tag:active {
+    cursor: grabbing;
 }
 
 [data-theme="dark"] .staging-tag {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
-.staging-tag.drag-over {
+.staging-tag:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
     border-color: var(--primary-color);
-    transform: scale(1.05);
 }
 
 .staging-tag.dragging {
-    opacity: 0.5;
+    opacity: 0.6;
     transform: scale(0.95);
+    box-shadow: none;
 }
 
+/* 删除按钮 (X) */
 .staging-tag .remove-btn {
-    color: var(--danger-color);
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 1rem;
-    line-height: 1;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-
-.staging-tag .remove-btn:hover {
-    opacity: 1;
-}
-
-.staging-separator {
-    color: var(--text-tertiary);
-    font-weight: bold;
-    font-size: 0.875rem;
-}
-
-.confirm-merge-btn {
-    margin-left: auto;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.05);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.2s;
+    border: none;
+    padding: 0;
 }
 
+[data-theme="dark"] .staging-tag .remove-btn {
+    background: rgba(255,255,255,0.1);
+}
+
+.staging-tag .remove-btn:hover {
+    background: var(--danger-color);
+    color: white;
+    transform: scale(1.1);
+}
+
+/* 连接符 & */
+.staging-separator {
+    color: var(--primary-color);
+    font-weight: 800;
+    font-size: 1rem;
+    opacity: 0.6;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* 确认合并按钮 - 悬浮圆形按钮 */
+.confirm-merge-btn {
+    margin-left: auto;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    border: none;
+    background: var(--success-color); /* 还是用绿色表示确认 */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); /* 绿色阴影 */
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.confirm-merge-btn:hover:not(:disabled) {
+    background: var(--success-hover);
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.confirm-merge-btn:disabled {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: scale(0.9);
+    opacity: 0.6;
+}
+
+/* 可选项列表容器 */
 .available-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
+    gap: 0.625rem;
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
 }
 
+[data-theme="dark"] .available-tags {
+    border-color: rgba(255, 255, 255, 0.03);
+}
+
+/* 可选标签样式 */
 .available-tag {
-    padding: 0.375rem 0.75rem;
-    background: var(--bg-tertiary);
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    padding: 0.5rem 1rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     user-select: none;
     font-size: 0.875rem;
     color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    box-shadow: var(--shadow-sm);
 }
 
 .available-tag:hover {
     background: var(--bg-secondary);
-    color: var(--text-primary);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
 }
 
 .available-tag.disabled {
@@ -925,13 +986,22 @@ export const componentsCssContent = /* css */ `
     cursor: not-allowed;
     background: var(--bg-tertiary);
     color: var(--text-tertiary);
+    border-color: transparent;
     pointer-events: none;
     box-shadow: none;
     transform: none;
+    filter: grayscale(1);
 }
 
-@keyframes fadeInDown {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+/* 动画定义 */
+@keyframes slideDownFade {
+    from { 
+        opacity: 0; 
+        transform: translateY(-15px) scale(0.98); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0) scale(1); 
+    }
 }
 `;
