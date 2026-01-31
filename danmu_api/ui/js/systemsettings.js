@@ -5,6 +5,9 @@ export const systemSettingsJsContent = /* javascript */ `
    ======================================== */
 let deploymentInProgress = false;
 let cacheClearing = false;
+// [新增] 合并模式全局变量
+let isMergeMode = false;
+let stagingTags = [];
 
 /* ========================================
    显示/隐藏清理缓存模态框
@@ -958,6 +961,11 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             const options = Array.from(document.querySelectorAll('.tag-option')).map(el => el.dataset.value);
             itemData = { key, value, description, type, options };
         } else if (type === 'multi-select') {
+            // [新增] 如果开启了合并模式，且暂存区还有内容，自动将其视为确认添加
+            if (isMergeMode && stagingTags && stagingTags.length > 0) {
+                confirmMergeGroup();
+            }
+
             const selectedTags = Array.from(document.querySelectorAll('.selected-tag'))
                 .map(el => el.dataset.value);
             value = selectedTags.join(',');
@@ -1158,21 +1166,31 @@ function renderValueInput(item) {
         \`;
 
     } else if (type === 'multi-select') {
+        // 多选标签（可拖动排序）
         const options = item && item.options ? item.options : ['option1', 'option2', 'option3', 'option4'];
+        // 确保value是字符串类型后再进行split操作
         const stringValue = typeof value === 'string' ? value : String(value || '');
         const selectedValues = stringValue ? stringValue.split(',').map(v => v.trim()).filter(v => v) : [];
+        
+        // 获取当前 Key 以判断是否启用合并模式
+        const currentKey = item ? item.key : (document.getElementById('env-key') ? document.getElementById('env-key').value : '');
+        const shouldShowMergeMode = currentKey === 'MERGE_SOURCE_PAIRS' || currentKey === 'PLATFORM_ORDER';
+        
+        // 重置合并状态
+        isMergeMode = false;
+        stagingTags = [];
 
         const optionsInput = item ? '' : \`
-            <div class="form-group">
-                <label class="form-label">可选项 (逗号分隔)</label>
-                <input type="text" class="form-input" id="multi-options" placeholder="例如: auth,payment,analytics"
+            <div class="form-group margin-bottom-15">
+                <label>可选项 (逗号分隔)</label>
+                <input type="text" id="multi-options" placeholder="例如: auth,payment,analytics"
                        value="\${options.join(',')}" onchange="updateMultiOptions()">
             </div>
         \`;
 
         container.innerHTML = \`
             \${optionsInput}
-            <label class="form-label">已选择 (拖动调整顺序)</label>
+            <label>已选择 (拖动调整顺序)</label>
             <div class="multi-select-container">
                 <div class="selected-tags \${selectedValues.length === 0 ? 'empty' : ''}" id="selected-tags">
                     \${selectedValues.map(val => \`
@@ -1182,12 +1200,31 @@ function renderValueInput(item) {
                         </div>
                     \`).join('')}
                 </div>
-                <label class="form-label">可选项 (点击添加)</label>
+
+                \${shouldShowMergeMode ? \`
+                <div class="merge-mode-controls">
+                    <button type="button" class="btn btn-sm btn-secondary merge-mode-btn" id="merge-mode-toggle" onclick="toggleMergeMode()">
+                        <span class="icon">🔗</span> <span>开启合并模式</span>
+                    </button>
+                    <div class="form-help" style="margin: 0; font-size: 0.8em; margin-left: 10px;">
+                        开启后，点击下方选项添加到暂存区，组合后点击 √ 确认添加
+                    </div>
+                </div>
+
+                <div class="staging-area" id="staging-area">
+                    <button type="button" class="btn btn-sm btn-success confirm-merge-btn" onclick="confirmMergeGroup()" title="确认添加该组">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </button>
+                </div>
+                \` : ''}
+
+                <label>可选项 (点击添加)</label>
                 <div class="available-tags" id="available-tags">
                     \${options.map(opt => {
-                        const isSelected = selectedValues.includes(opt);
                         return \`
-                            <div class="available-tag \${isSelected ? 'disabled' : ''}"
+                            <div class="available-tag"
                                  data-value="\${opt}" onclick="addSelectedTag(this)">
                                 \${opt}
                             </div>
@@ -1197,6 +1234,8 @@ function renderValueInput(item) {
             </div>
         \`;
 
+        // 设置拖动事件
+        setTimeout(updateTagStates, 0); // 立即更新一次状态
         setupDragAndDrop();
 
     } else if (type === 'map') {
@@ -1603,12 +1642,61 @@ function updateTagOptions() {
 /* ========================================
    多选标签操作
    ======================================== */
+// 统一的状态检查函数
+function updateTagStates() {
+    const keyInput = document.getElementById('env-key');
+    const currentKey = keyInput ? keyInput.value : '';
+    const isMergeSourcePairs = currentKey === 'MERGE_SOURCE_PAIRS';
+
+    const stagingTokens = new Set(stagingTags);
+    const selectedTagElements = Array.from(document.querySelectorAll('.selected-tag'));
+
+    const availableTags = document.querySelectorAll('.available-tag');
+    availableTags.forEach(tag => {
+        const value = tag.dataset.value;
+        let shouldDisable = false;
+
+        if (isMergeMode) {
+            // 合并模式下：如果在暂存区，则禁用
+            if (stagingTokens.has(value)) {
+                shouldDisable = true;
+            }
+        } else {
+            // 普通模式下：如果已选择，则禁用
+            const isAlreadySelected = selectedTagElements.some(el => el.dataset.value === value);
+            if (isAlreadySelected) {
+                shouldDisable = true;
+            }
+            // 特殊情况：如果是合并源，但没开合并模式且没被选，也禁用
+            if (isMergeSourcePairs && !isAlreadySelected) {
+                shouldDisable = true;
+            }
+        }
+
+        if (shouldDisable) {
+            tag.classList.add('disabled');
+        } else {
+            tag.classList.remove('disabled');
+        }
+    });
+}
+
+// 添加已选标签 (修改版)
 function addSelectedTag(element) {
+    const value = element.dataset.value;
+
+    if (isMergeMode) {
+        if (!stagingTags.includes(value)) {
+            stagingTags.push(value);
+            renderStagingArea();
+            updateTagStates(); // 立即更新状态
+        }
+        return;
+    }
+
     if (element.classList.contains('disabled')) return;
 
-    const value = element.dataset.value;
     const container = document.getElementById('selected-tags');
-
     container.classList.remove('empty');
 
     const tag = document.createElement('div');
@@ -1621,45 +1709,198 @@ function addSelectedTag(element) {
     \`;
 
     container.appendChild(tag);
-
-    element.classList.add('disabled');
-
+    updateTagStates(); // 更新状态
     setupDragAndDrop();
 }
 
+// 移除已选标签 (修改版)
 function removeSelectedTag(button) {
     const tag = button.parentElement;
-    const value = tag.dataset.value;
-    const container = document.getElementById('selected-tags');
-
     tag.remove();
 
+    const container = document.getElementById('selected-tags');
     if (container.children.length === 0) {
         container.classList.add('empty');
     }
 
-    const availableTag = document.querySelector(\`.available-tag[data-value="\${value}"]\`);
-    if (availableTag) {
-        availableTag.classList.remove('disabled');
-    }
+    updateTagStates(); // 释放状态
+    setupDragAndDrop();
 }
 
+// 更新多选选项 (修改版)
 function updateMultiOptions() {
     const input = document.getElementById('multi-options');
     const options = input.value.split(',').map(s => s.trim()).filter(s => s);
-    const selectedValues = Array.from(document.querySelectorAll('.selected-tag'))
-        .map(el => el.dataset.value);
-
     const container = document.getElementById('available-tags');
+    
     container.innerHTML = options.map(opt => {
-        const isSelected = selectedValues.includes(opt);
         return \`
-            <div class="available-tag \${isSelected ? 'disabled' : ''}"
+            <div class="available-tag"
                  data-value="\${opt}" onclick="addSelectedTag(this)">
                 \${opt}
             </div>
         \`;
     }).join('');
+    
+    updateTagStates();
+}
+
+// 切换合并模式
+function toggleMergeMode() {
+    isMergeMode = !isMergeMode;
+    const btn = document.getElementById('merge-mode-toggle');
+    const stagingArea = document.getElementById('staging-area');
+
+    if (isMergeMode) {
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-secondary');
+        btn.innerHTML = '<span class="icon">⛓‍💥</span> <span>合并模式已开启 (点击关闭)</span>';
+        stagingArea.classList.add('active');
+        renderStagingArea();
+    } else {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+        btn.innerHTML = '<span class="icon">🔗</span> <span>开启合并模式</span>';
+        stagingArea.classList.remove('active');
+        stagingTags = [];
+    }
+    
+    updateTagStates();
+}
+
+// 渲染暂存区
+function renderStagingArea() {
+    const container = document.getElementById('staging-area');
+    const confirmBtn = container.querySelector('.confirm-merge-btn');
+    
+    // 清除除确认按钮外的所有子元素
+    while (container.firstChild && container.firstChild !== confirmBtn) {
+        container.removeChild(container.firstChild);
+    }
+
+    if (stagingTags.length === 0) {
+        const hint = document.createElement('span');
+        hint.textContent = '请点击下方选项进行组合...';
+        hint.style.color = '#666'; // 使用固定颜色或CSS变量
+        hint.style.fontSize = '0.8rem';
+        hint.style.marginRight = 'auto';
+        container.insertBefore(hint, confirmBtn);
+        confirmBtn.disabled = true;
+        confirmBtn.style.opacity = '0.5';
+        confirmBtn.style.cursor = 'not-allowed';
+    } else {
+        confirmBtn.disabled = false;
+        confirmBtn.style.opacity = '1';
+        confirmBtn.style.cursor = 'pointer';
+        
+        stagingTags.forEach((tag, index) => {
+            if (index > 0) {
+                const sep = document.createElement('span');
+                sep.className = 'staging-separator';
+                sep.textContent = '&';
+                container.insertBefore(sep, confirmBtn);
+            }
+            const tagEl = document.createElement('div');
+            tagEl.className = 'staging-tag';
+            tagEl.draggable = true;
+            tagEl.dataset.value = tag;
+            tagEl.dataset.index = index;
+            tagEl.innerHTML = \`\${tag}<span class="remove-btn" onclick="removeFromStaging(\${index})">×</span>\`;
+            container.insertBefore(tagEl, confirmBtn);
+        });
+        
+        setupStagingDragAndDrop();
+    }
+}
+
+// 从暂存区移除
+function removeFromStaging(index) {
+    stagingTags.splice(index, 1);
+    renderStagingArea();
+    updateTagStates();
+}
+
+// 确认添加合并组
+function confirmMergeGroup() {
+    if (stagingTags.length === 0) return;
+    const groupValue = stagingTags.join('&');
+    const container = document.getElementById('selected-tags');
+    container.classList.remove('empty');
+
+    const tag = document.createElement('div');
+    tag.className = 'selected-tag';
+    tag.draggable = true;
+    tag.dataset.value = groupValue;
+    tag.innerHTML = \`<span class="tag-text">\${groupValue}</span><button type="button" class="remove-btn" onclick="removeSelectedTag(this)">×</button>\`;
+    
+    container.appendChild(tag);
+    setupDragAndDrop();
+    
+    stagingTags = []; // 清空暂存区
+    renderStagingArea();
+    updateTagStates();
+}
+
+// 暂存区拖放功能
+let stagingDraggedElement = null;
+
+function setupStagingDragAndDrop() {
+    const container = document.getElementById('staging-area');
+    const tags = container.querySelectorAll('.staging-tag');
+    
+    tags.forEach(tag => {
+        tag.addEventListener('dragstart', handleStagingDragStart);
+        tag.addEventListener('dragend', handleStagingDragEnd);
+        tag.addEventListener('dragover', handleStagingDragOver);
+        tag.addEventListener('drop', handleStagingDrop);
+        tag.addEventListener('dragenter', handleStagingDragEnter);
+        tag.addEventListener('dragleave', handleStagingDragLeave);
+    });
+}
+
+function handleStagingDragStart(e) {
+    stagingDraggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleStagingDragEnd(e) {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.staging-tag').forEach(tag => {
+        tag.classList.remove('drag-over');
+    });
+    stagingDraggedElement = null;
+}
+
+function handleStagingDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleStagingDragEnter(e) {
+    if (this !== stagingDraggedElement) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleStagingDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function handleStagingDrop(e) {
+    e.stopPropagation();
+    if (stagingDraggedElement && stagingDraggedElement !== this) {
+        const draggedIndex = parseInt(stagingDraggedElement.dataset.index);
+        const targetIndex = parseInt(this.dataset.index);
+        
+        const [movedItem] = stagingTags.splice(draggedIndex, 1);
+        stagingTags.splice(targetIndex, 0, movedItem);
+        
+        renderStagingArea();
+    }
+    this.classList.remove('drag-over');
+    return false;
 }
 
 /* ========================================
