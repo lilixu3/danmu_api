@@ -1321,27 +1321,27 @@ function renderValueInput(item) {
             return options.map(opt => {
                 const label = opt === 'all' ? '全部' : opt;
                 const selected = selectedPlatforms.includes(opt) ? 'selected' : '';
-                return `<option value="${escapeHtml(opt)}" ${selected}>${escapeHtml(label)}</option>`;
+                return '<option value="' + escapeHtml(opt) + '" ' + selected + '>' + escapeHtml(label) + '</option>';
             }).join('');
         };
 
-        container.innerHTML = `
+        container.innerHTML = \`
             <label class="form-label">时间轴偏移配置</label>
             <div class="map-container" id="timeline-offset-container">
-                ${offsetItems.map((item, index) => `
-                    <div class="timeline-offset-item map-item" data-index="${index}">
-                        <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名" value="${escapeHtml(item.title)}">
+                \${offsetItems.map((item, index) => \`
+                    <div class="timeline-offset-item map-item" data-index="\${index}">
+                        <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名" value="\${escapeHtml(item.title)}">
                         <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                            ${renderOptions(item.platforms)}
+                            \${renderOptions(item.platforms)}
                         </select>
-                        <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)" value="${escapeHtml(item.offset)}">
+                        <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)" value="\${escapeHtml(item.offset)}">
                         <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
                     </div>
-                `).join('')}
+                \`).join('')}
                 <div class="timeline-offset-item-template map-item" style="display: none;">
                     <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名">
                     <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                        ${renderOptions([])}
+                        \${renderOptions([])}
                     </select>
                     <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)">
                     <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
@@ -1357,7 +1357,7 @@ function renderValueInput(item) {
                 </svg>
                 <span>添加偏移项</span>
             </button>
-        `;
+        \`;
 
     } else if (type === 'color-list') {
         // 默认颜色池（与后端 danmu-util.js 保持一致）
