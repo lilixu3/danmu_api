@@ -1326,37 +1326,65 @@ function renderValueInput(item) {
         };
 
         container.innerHTML = \`
-            <label class="form-label">时间轴偏移配置</label>
-            <div class="map-container" id="timeline-offset-container">
-                \${offsetItems.map((item, index) => \`
-                    <div class="timeline-offset-item map-item" data-index="\${index}">
-                        <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名" value="\${escapeHtml(item.title)}">
-                        <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                            \${renderOptions(item.platforms)}
-                        </select>
-                        <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)" value="\${escapeHtml(item.offset)}">
-                        <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
+            <div class="timeline-offset-panel">
+                <div class="timeline-offset-header">
+                    <div class="timeline-offset-title">时间轴偏移规则</div>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="addTimelineOffsetItem()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
+                            <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
+                        </svg>
+                        <span>新增规则</span>
+                    </button>
+                </div>
+                <div class="timeline-offset-help">选择“all”表示全部平台，偏移量单位为秒（可为负数）。</div>
+                <div class="timeline-offset-list" id="timeline-offset-container">
+                    \${offsetItems.map((item, index) => \`
+                        <div class="timeline-offset-item" data-index="\${index}">
+                            <div class="timeline-offset-grid">
+                                <div class="timeline-offset-field">
+                                    <label>剧名</label>
+                                    <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年" value="\${escapeHtml(item.title)}">
+                                </div>
+                                <div class="timeline-offset-field">
+                                    <label>平台</label>
+                                    <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
+                                        \${renderOptions(item.platforms)}
+                                    </select>
+                                </div>
+                                <div class="timeline-offset-field offset-value-field">
+                                    <label>偏移(秒)</label>
+                                    <input type="number" step="0.1" class="offset-value-input form-input" placeholder="-5" value="\${escapeHtml(item.offset)}">
+                                </div>
+                                <div class="timeline-offset-field offset-actions">
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    \`).join('')}
+                    <div class="timeline-offset-item timeline-offset-item-template" style="display: none;">
+                        <div class="timeline-offset-grid">
+                            <div class="timeline-offset-field">
+                                <label>剧名</label>
+                                <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年">
+                            </div>
+                            <div class="timeline-offset-field">
+                                <label>平台</label>
+                                <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
+                                    \${renderOptions([])}
+                                </select>
+                            </div>
+                            <div class="timeline-offset-field offset-value-field">
+                                <label>偏移(秒)</label>
+                                <input type="number" step="0.1" class="offset-value-input form-input" placeholder="-5">
+                            </div>
+                            <div class="timeline-offset-field offset-actions">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
+                            </div>
+                        </div>
                     </div>
-                \`).join('')}
-                <div class="timeline-offset-item-template map-item" style="display: none;">
-                    <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名">
-                    <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                        \${renderOptions([])}
-                    </select>
-                    <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)">
-                    <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
                 </div>
             </div>
-            <div class="form-help" style="margin-top: 0.5rem;">
-                选择“all”表示全部平台；偏移量单位为秒，可为负数
-            </div>
-            <button type="button" class="btn btn-primary" onclick="addTimelineOffsetItem()" style="margin-top: 1rem;">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
-                    <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
-                </svg>
-                <span>添加偏移项</span>
-            </button>
         \`;
 
     } else if (type === 'color-list') {
@@ -2493,7 +2521,7 @@ function addTimelineOffsetItem() {
     const template = container.querySelector('.timeline-offset-item-template');
     if (!template) return;
     const newItem = template.cloneNode(true);
-    newItem.style.display = 'flex';
+    newItem.style.display = 'block';
     newItem.classList.remove('timeline-offset-item-template');
     newItem.classList.add('timeline-offset-item');
     const index = container.querySelectorAll('.timeline-offset-item:not(.timeline-offset-item-template)').length;

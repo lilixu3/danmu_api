@@ -561,13 +561,82 @@ export const formsCssContent = /* css */ `
     min-width: 0;
 }
 
+.timeline-offset-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.timeline-offset-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.timeline-offset-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.timeline-offset-help {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.timeline-offset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.timeline-offset-item {
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    transition: all var(--transition-fast);
+}
+
+.timeline-offset-item:hover {
+    border-color: var(--primary-color);
+    background: var(--bg-tertiary);
+}
+
+.timeline-offset-grid {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr auto;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.timeline-offset-field label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.timeline-offset-field.offset-actions {
+    align-self: center;
+}
+
 .offset-platform-select {
-    flex: 1;
     min-width: 0;
 }
 
 .offset-platform-select[multiple] {
     min-height: 2.5rem;
+}
+
+@media (max-width: 768px) {
+    .timeline-offset-grid {
+        grid-template-columns: 1fr;
+    }
+    .timeline-offset-field.offset-actions {
+        justify-self: end;
+    }
 }
 
 .map-separator {
