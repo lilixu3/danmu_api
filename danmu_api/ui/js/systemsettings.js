@@ -988,18 +988,16 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             value = pairs.join(';');
             itemData = { key, value, description, type };
         } else if (type === 'timeline-offset') {
-            const offsetItems = document.querySelectorAll('#timeline-offset-container .timeline-offset-item:not(.timeline-offset-item-template)');
+            const offsetItems = document.querySelectorAll('#timeline-offset-container .timeline-offset-item');
             const pairs = [];
             offsetItems.forEach(item => {
-                const titleInput = item.querySelector('.offset-title-input');
-                const offsetInput = item.querySelector('.offset-value-input');
-                const titleValue = titleInput ? titleInput.value.trim() : '';
-                const offsetValue = offsetInput ? offsetInput.value.trim() : '';
-                const platformChips = item.querySelectorAll('.platform-chip.selected');
-                const platforms = Array.from(platformChips).map(chip => chip.dataset.value);
-                if (!titleValue || platforms.length === 0 || offsetValue === '') {
+                const titleValue = item.dataset.title ? item.dataset.title.trim() : '';
+                const offsetValue = item.dataset.offset ? item.dataset.offset.trim() : '';
+                const platformValueRaw = item.dataset.platforms ? item.dataset.platforms.trim() : '';
+                if (!titleValue || !offsetValue || !platformValueRaw) {
                     return;
                 }
+                const platforms = platformValueRaw.split(',').map(p => p.trim()).filter(p => p);
                 const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
                 pairs.push(titleValue + '@' + platformValue + '@' + offsetValue);
             });
@@ -1315,12 +1313,17 @@ function renderValueInput(item) {
             return { title: titleValue, platforms, offset: offsetValue };
         }).filter(Boolean);
 
-        const renderPlatformChips = (selectedPlatforms) => {
+        const renderPlatformChips = (selectedPlatforms, selectable = true) => {
             const normalized = selectedPlatforms && selectedPlatforms.includes('all') ? ['all'] : (selectedPlatforms || []);
             return options.map(opt => {
                 const label = opt === 'all' ? '全部' : opt;
                 const selected = normalized.includes(opt) ? 'selected' : '';
-                return '<button type="button" class="platform-chip ' + selected + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
+                const baseClass = selectable ? 'platform-chip' : 'platform-pill';
+                const activeClass = selected ? 'selected' : '';
+                if (selectable) {
+                    return '<button type="button" class="' + baseClass + ' ' + activeClass + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
+                }
+                return '<span class="' + baseClass + ' ' + activeClass + '">' + escapeHtml(label) + '</span>';
             }).join('');
         };
 
@@ -1336,52 +1339,42 @@ function renderValueInput(item) {
                         <span>新增规则</span>
                     </button>
                 </div>
-                <div class="timeline-offset-help">剧名与偏移在一行，平台单独一行选择。选择“all”表示全部平台。</div>
+                <div class="timeline-offset-help">点击“新增规则”填写：剧名、偏移量和平台。</div>
+                <div class="timeline-offset-form" id="timeline-offset-form" style="display: none;">
+                    <div class="timeline-offset-row">
+                        <div class="timeline-offset-field">
+                            <label>剧名</label>
+                            <input type="text" class="offset-title-input form-input" id="timeline-offset-title-input" placeholder="例如：庆余年">
+                        </div>
+                        <div class="timeline-offset-field offset-value-field">
+                            <label>偏移(秒)</label>
+                            <input type="number" step="0.1" class="offset-value-input form-input" id="timeline-offset-value-input" placeholder="-5">
+                        </div>
+                        <div class="timeline-offset-field offset-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideTimelineOffsetForm()">取消</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="confirmTimelineOffsetAdd()">添加</button>
+                        </div>
+                    </div>
+                    <div class="timeline-offset-platforms">
+                        <div class="timeline-offset-platforms-label">平台（可多选，all 表示全部）</div>
+                        <div class="timeline-offset-platforms-chips" id="timeline-offset-form-platforms">
+                            \${renderPlatformChips([], true)}
+                        </div>
+                    </div>
+                </div>
                 <div class="timeline-offset-list" id="timeline-offset-container">
                     \${offsetItems.map((item, index) => \`
-                        <div class="timeline-offset-item" data-index="\${index}">
-                            <div class="timeline-offset-row">
-                                <div class="timeline-offset-field">
-                                    <label>剧名</label>
-                                    <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年" value="\${escapeHtml(item.title)}">
-                                </div>
-                                <div class="timeline-offset-field offset-value-field">
-                                    <label>偏移(秒)</label>
-                                    <input type="number" step="0.1" class="offset-value-input form-input" placeholder="-5" value="\${escapeHtml(item.offset)}">
-                                </div>
-                                <div class="timeline-offset-field offset-actions">
-                                    <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
-                                </div>
+                        <div class="timeline-offset-item" data-index="\${index}" data-title="\${escapeHtml(item.title)}" data-offset="\${escapeHtml(item.offset)}" data-platforms="\${escapeHtml(item.platforms.join(','))}">
+                            <div class="timeline-offset-item-main">
+                                <div class="timeline-offset-item-title">\${escapeHtml(item.title)}</div>
+                                <div class="timeline-offset-item-offset">\${escapeHtml(item.offset)}s</div>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
                             </div>
-                            <div class="timeline-offset-platforms">
-                                <div class="timeline-offset-platforms-label">平台（可多选）</div>
-                                <div class="timeline-offset-platforms-chips">
-                                    \${renderPlatformChips(item.platforms)}
-                                </div>
+                            <div class="timeline-offset-item-platforms">
+                                \${renderPlatformChips(item.platforms, false)}
                             </div>
                         </div>
                     \`).join('')}
-                    <div class="timeline-offset-item timeline-offset-item-template" style="display: none;">
-                        <div class="timeline-offset-row">
-                            <div class="timeline-offset-field">
-                                <label>剧名</label>
-                                <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年">
-                            </div>
-                            <div class="timeline-offset-field offset-value-field">
-                                <label>偏移(秒)</label>
-                                <input type="number" step="0.1" class="offset-value-input form-input" placeholder="-5">
-                            </div>
-                            <div class="timeline-offset-field offset-actions">
-                                <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
-                            </div>
-                        </div>
-                        <div class="timeline-offset-platforms">
-                            <div class="timeline-offset-platforms-label">平台（可多选）</div>
-                            <div class="timeline-offset-platforms-chips">
-                                \${renderPlatformChips([])}
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         \`;
@@ -2515,17 +2508,13 @@ function removeMapItem(button) {
 }
 
 function addTimelineOffsetItem() {
-    const container = document.getElementById('timeline-offset-container');
-    if (!container) return;
-    const template = container.querySelector('.timeline-offset-item-template');
-    if (!template) return;
-    const newItem = template.cloneNode(true);
-    newItem.style.display = 'block';
-    newItem.classList.remove('timeline-offset-item-template');
-    newItem.classList.add('timeline-offset-item');
-    const index = container.querySelectorAll('.timeline-offset-item:not(.timeline-offset-item-template)').length;
-    newItem.setAttribute('data-index', index);
-    container.appendChild(newItem);
+    const form = document.getElementById('timeline-offset-form');
+    if (!form) return;
+    form.style.display = 'block';
+    const titleInput = document.getElementById('timeline-offset-title-input');
+    if (titleInput) {
+        titleInput.focus();
+    }
 }
 
 function removeTimelineOffsetItem(button) {
@@ -2535,12 +2524,60 @@ function removeTimelineOffsetItem(button) {
     }
 }
 
+function hideTimelineOffsetForm() {
+    const form = document.getElementById('timeline-offset-form');
+    if (!form) return;
+    form.style.display = 'none';
+    const titleInput = document.getElementById('timeline-offset-title-input');
+    const offsetInput = document.getElementById('timeline-offset-value-input');
+    if (titleInput) titleInput.value = '';
+    if (offsetInput) offsetInput.value = '';
+    const chips = form.querySelectorAll('.platform-chip');
+    chips.forEach(chip => chip.classList.remove('selected'));
+}
+
+function confirmTimelineOffsetAdd() {
+    const container = document.getElementById('timeline-offset-container');
+    const form = document.getElementById('timeline-offset-form');
+    if (!container || !form) return;
+    const titleInput = document.getElementById('timeline-offset-title-input');
+    const offsetInput = document.getElementById('timeline-offset-value-input');
+    const titleValue = titleInput ? titleInput.value.trim() : '';
+    const offsetValue = offsetInput ? offsetInput.value.trim() : '';
+    const selected = Array.from(form.querySelectorAll('.platform-chip.selected')).map(chip => chip.dataset.value);
+    if (!titleValue || !offsetValue || selected.length === 0) {
+        customAlert('请填写剧名、偏移量并选择平台', '⚠️ 提示');
+        return;
+    }
+    const platforms = selected.includes('all') ? ['all'] : selected;
+    const item = document.createElement('div');
+    item.className = 'timeline-offset-item';
+    item.dataset.title = titleValue;
+    item.dataset.offset = offsetValue;
+    item.dataset.platforms = platforms.join(',');
+    const platformsHtml = platforms
+        .map(p => '<span class="platform-pill ' + (p === 'all' ? 'selected' : '') + '">' + escapeHtml(p === 'all' ? '全部' : p) + '</span>')
+        .join('');
+    item.innerHTML = ''
+        + '<div class="timeline-offset-item-main">'
+        + '<div class="timeline-offset-item-title">' + escapeHtml(titleValue) + '</div>'
+        + '<div class="timeline-offset-item-offset">' + escapeHtml(offsetValue) + 's</div>'
+        + '<button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>'
+        + '</div>'
+        + '<div class="timeline-offset-item-platforms">'
+        + platformsHtml
+        + '</div>';
+    container.appendChild(item);
+    hideTimelineOffsetForm();
+}
+
 function toggleTimelineOffsetPlatform(button) {
     if (!button) return;
-    const item = button.closest('.timeline-offset-item');
-    if (!item) return;
+    const form = document.getElementById('timeline-offset-form');
+    if (!form) return;
+    if (!form.contains(button)) return;
     const value = button.dataset.value || '';
-    const chips = Array.from(item.querySelectorAll('.platform-chip'));
+    const chips = Array.from(form.querySelectorAll('.platform-chip'));
     const isAll = value === 'all';
 
     if (isAll) {
