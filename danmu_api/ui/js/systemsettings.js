@@ -988,18 +988,14 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             value = pairs.join(';');
             itemData = { key, value, description, type };
         } else if (type === 'timeline-offset') {
-            const offsetItems = document.querySelectorAll('#timeline-offset-container .timeline-offset-item');
+            const lineInputs = document.querySelectorAll('#timeline-offset-container .timeline-offset-line-input');
             const pairs = [];
-            offsetItems.forEach(item => {
-                const titleValue = item.dataset.title ? item.dataset.title.trim() : '';
-                const offsetValue = item.dataset.offset ? item.dataset.offset.trim() : '';
-                const platformValueRaw = item.dataset.platforms ? item.dataset.platforms.trim() : '';
-                if (!titleValue || !offsetValue || !platformValueRaw) {
-                    return;
-                }
-                const platforms = platformValueRaw.split(',').map(p => p.trim()).filter(p => p);
-                const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
-                pairs.push(titleValue + '@' + platformValue + '@' + offsetValue);
+            lineInputs.forEach(input => {
+                const lineValue = input.value ? input.value.trim() : '';
+                if (!lineValue) return;
+                const parts = lineValue.split('@').map(s => s.trim()).filter(s => s);
+                if (parts.length < 3) return;
+                pairs.push(lineValue);
             });
             value = pairs.join(';');
             itemData = { key, value, description, type };
@@ -1313,17 +1309,17 @@ function renderValueInput(item) {
             return { title: titleValue, platforms, offset: offsetValue };
         }).filter(Boolean);
 
-        const renderPlatformChips = (selectedPlatforms, selectable = true) => {
+        const buildLineValue = (titleValue, platforms, offsetValue) => {
+            const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
+            return titleValue + '@' + platformValue + '@' + offsetValue;
+        };
+
+        const renderPlatformChips = (selectedPlatforms) => {
             const normalized = selectedPlatforms && selectedPlatforms.includes('all') ? ['all'] : (selectedPlatforms || []);
             return options.map(opt => {
                 const label = opt === 'all' ? '全部' : opt;
                 const selected = normalized.includes(opt) ? 'selected' : '';
-                const baseClass = selectable ? 'platform-chip' : 'platform-pill';
-                const activeClass = selected ? 'selected' : '';
-                if (selectable) {
-                    return '<button type="button" class="' + baseClass + ' ' + activeClass + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
-                }
-                return '<span class="' + baseClass + ' ' + activeClass + '">' + escapeHtml(label) + '</span>';
+                return '<button type="button" class="platform-chip ' + selected + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
             }).join('');
         };
 
@@ -1358,21 +1354,15 @@ function renderValueInput(item) {
                     <div class="timeline-offset-platforms">
                         <div class="timeline-offset-platforms-label">平台（可多选，all 表示全部）</div>
                         <div class="timeline-offset-platforms-chips" id="timeline-offset-form-platforms">
-                            \${renderPlatformChips([], true)}
+                            \${renderPlatformChips([])}
                         </div>
                     </div>
                 </div>
                 <div class="timeline-offset-list" id="timeline-offset-container">
                     \${offsetItems.map((item, index) => \`
-                        <div class="timeline-offset-item" data-index="\${index}" data-title="\${escapeHtml(item.title)}" data-offset="\${escapeHtml(item.offset)}" data-platforms="\${escapeHtml(item.platforms.join(','))}">
-                            <div class="timeline-offset-item-main">
-                                <div class="timeline-offset-item-title">\${escapeHtml(item.title)}</div>
-                                <div class="timeline-offset-item-offset">\${escapeHtml(item.offset)}s</div>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
-                            </div>
-                            <div class="timeline-offset-item-platforms">
-                                \${renderPlatformChips(item.platforms, false)}
-                            </div>
+                        <div class="timeline-offset-line" data-index="\${index}">
+                            <input type="text" class="timeline-offset-line-input form-input" value="\${escapeHtml(buildLineValue(item.title, item.platforms, item.offset))}" readonly>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
                         </div>
                     \`).join('')}
                 </div>
@@ -2518,8 +2508,8 @@ function addTimelineOffsetItem() {
 }
 
 function removeTimelineOffsetItem(button) {
-    const item = button.closest('.timeline-offset-item');
-    if (item && !item.classList.contains('timeline-offset-item-template')) {
+    const item = button.closest('.timeline-offset-line');
+    if (item) {
         item.remove();
     }
 }
@@ -2550,23 +2540,21 @@ function confirmTimelineOffsetAdd() {
         return;
     }
     const platforms = selected.includes('all') ? ['all'] : selected;
+    const lineValue = titleValue + '@' + (platforms.includes('all') ? 'all' : platforms.join('&')) + '@' + offsetValue;
     const item = document.createElement('div');
-    item.className = 'timeline-offset-item';
-    item.dataset.title = titleValue;
-    item.dataset.offset = offsetValue;
-    item.dataset.platforms = platforms.join(',');
-    const platformsHtml = platforms
-        .map(p => '<span class="platform-pill ' + (p === 'all' ? 'selected' : '') + '">' + escapeHtml(p === 'all' ? '全部' : p) + '</span>')
-        .join('');
-    item.innerHTML = ''
-        + '<div class="timeline-offset-item-main">'
-        + '<div class="timeline-offset-item-title">' + escapeHtml(titleValue) + '</div>'
-        + '<div class="timeline-offset-item-offset">' + escapeHtml(offsetValue) + 's</div>'
-        + '<button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>'
-        + '</div>'
-        + '<div class="timeline-offset-item-platforms">'
-        + platformsHtml
-        + '</div>';
+    item.className = 'timeline-offset-line';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'timeline-offset-line-input form-input';
+    input.value = lineValue;
+    input.readOnly = true;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-danger btn-sm';
+    btn.textContent = '删除';
+    btn.addEventListener('click', () => removeTimelineOffsetItem(btn));
+    item.appendChild(input);
+    item.appendChild(btn);
     container.appendChild(item);
     hideTimelineOffsetForm();
 }
