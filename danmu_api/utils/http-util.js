@@ -38,7 +38,7 @@ export async function httpGet(url, options = {}) {
     }
 
     // 设置超时时间（默认5秒）
-    const timeout = parseInt(globals.vodRequestTimeout || '5000', 10) || 5000;
+    const timeout = parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -46,13 +46,22 @@ export async function httpGet(url, options = {}) {
     linkSignal(options.signal, controller);
 
     try {
-      const response = await fetch(url, {
+      const fetchOptions = {
         method: 'GET',
         headers: {
           ...options.headers,
         },
         signal: controller.signal
-      });
+      };
+
+      // 支持重定向控制：redirect 或 allow_redirects（与 iOS/requests 习惯对齐）
+      if (typeof options.allow_redirects === 'boolean') {
+        fetchOptions.redirect = options.allow_redirects ? 'follow' : 'manual';
+      } else if (options.redirect) {
+        fetchOptions.redirect = options.redirect;
+      }
+
+      const response = await fetch(url, fetchOptions);
 
       clearTimeout(timeoutId);
 
@@ -67,16 +76,22 @@ export async function httpGet(url, options = {}) {
 
         // 先拿二进制
         const arrayBuffer = await response.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
 
-        // 转换为 Base64
-        let binary = '';
-        const chunkSize = 0x8000; // 分块防止大文件卡死
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          let chunk = uint8Array.subarray(i, i + chunkSize);
-          binary += String.fromCharCode.apply(null, chunk);
+        // Node 环境优先使用 Buffer，提高性能并避免 btoa 在部分运行时不存在的问题
+        if (typeof Buffer !== 'undefined') {
+          data = Buffer.from(arrayBuffer).toString('base64');
+        } else {
+          const uint8Array = new Uint8Array(arrayBuffer);
+
+          // 转换为 Base64（浏览器/Worker 兜底实现）
+          let binary = '';
+          const chunkSize = 0x8000; // 分块防止大文件卡死
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          data = btoa(binary); // 得到 base64 字符串
         }
-        data = btoa(binary); // 得到 base64 字符串
 
       } else if (options.zlibMode) {
         log("info", "zlib模式")
@@ -84,20 +99,37 @@ export async function httpGet(url, options = {}) {
         // 获取 ArrayBuffer
         const arrayBuffer = await response.arrayBuffer();
 
-        // 使用 DecompressionStream 进行解压
-        // "deflate" 对应 zlib 的 inflate
-        const decompressionStream = new DecompressionStream("deflate");
-        const decompressedStream = new Response(
-          new Blob([arrayBuffer]).stream().pipeThrough(decompressionStream)
-        );
-
-        // 读取解压后的文本
         let decodedData;
-        try {
-          decodedData = await decompressedStream.text();
-        } catch (e) {
-          log("error", "[请求模拟] 解压缩失败", e);
-          throw e;
+
+        // 优先使用 Web 标准的 DecompressionStream（Cloudflare Workers / 部分 Node 运行时）
+        if (typeof DecompressionStream !== 'undefined') {
+          // 使用 DecompressionStream 进行解压
+          // "deflate" 对应 zlib 的 inflate
+          const decompressionStream = new DecompressionStream("deflate");
+          const decompressedStream = new Response(
+            new Blob([arrayBuffer]).stream().pipeThrough(decompressionStream)
+          );
+
+          try {
+            decodedData = await decompressedStream.text();
+          } catch (e) {
+            log("error", "[请求模拟] 解压缩失败", e);
+            throw e;
+          }
+        } else {
+          // Node 兜底：使用 zlib 解压（避免 DecompressionStream 不存在导致崩溃）
+          try {
+            const { inflateSync, inflateRawSync } = await import('node:zlib');
+            const buf = Buffer.from(arrayBuffer);
+            try {
+              decodedData = inflateSync(buf).toString('utf-8');
+            } catch (e) {
+              decodedData = inflateRawSync(buf).toString('utf-8');
+            }
+          } catch (e) {
+            log("error", "[请求模拟] Node zlib 解压失败", e);
+            throw e;
+          }
         }
 
         data = decodedData; // 更新解压后的数据
@@ -139,7 +171,8 @@ export async function httpGet(url, options = {}) {
       return {
         data: parsedData,
         status: response.status,
-        headers: headers
+        headers: headers,
+        url: response.url
       };
 
     } catch (error) {
@@ -200,7 +233,7 @@ export async function httpPost(url, body, options = {}) {
     }
 
     // 设置超时时间（默认5秒）
-    const timeout = parseInt(globals.vodRequestTimeout || '5000', 10) || 5000;
+    const timeout = parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 

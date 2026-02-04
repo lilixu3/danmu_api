@@ -2,7 +2,6 @@ import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { jsonResponse, xmlResponse } from "./http-util.js";
 import { traditionalized } from './zh-util.js';
-
 // =====================
 // danmu处理相关函数
 // =====================
@@ -44,7 +43,6 @@ export function groupDanmusByMinute(filteredDanmus, n) {
   const groupedByTime = filteredDanmus.reduce((acc, danmu) => {
     // 获取时间：优先使用 t 字段，如果没有则使用 p 的第一个值
     const time = danmu.t !== undefined ? danmu.t : parseFloat(danmu.p.split(',')[0]);
-    
     // 确定分组键：n=0时使用精确时间(保留2位小数)，否则使用分钟索引
     const groupKey = n === 0 ? time.toFixed(2) : Math.floor(time / (n * 60));
 
@@ -82,12 +80,10 @@ export function groupDanmusByMinute(filteredDanmus, n) {
     // 转换为结果格式
     return Object.keys(groupedByMessage).map(message => {
       const data = groupedByMessage[message];
-      
       // 计算显示计数：总次数除以源数量，四舍五入
       // 过滤因多源合并产生的自然重复
       let displayCount = Math.round(data.count / sourceCount);
       if (displayCount < 1) displayCount = 1;
-
       return {
         cid: data.cid,
         p: data.p,
@@ -135,6 +131,7 @@ export function limitDanmusByCount(filteredDanmus, danmuLimit) {
 export function convertToDanmakuJson(contents, platform) {
   let danmus = [];
   let cidCounter = 1;
+  const danmuFontSize = globals.danmuFontSize || 25;
 
   // 统一处理输入为数组
   let items = [];
@@ -175,13 +172,13 @@ export function convertToDanmakuJson(contents, platform) {
       time = (item.progress / 1000).toFixed(2);
       mode = item.mode || 1;
       color = item.color || 16777215;
-      m = item.content;
+      m = item.content.replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
     } else if ("timepoint" in item) {
       // 处理对象数组输入
       time = parseFloat(item.timepoint).toFixed(2);
       mode = item.ct || 0;
       color = item.color || 16777215;
-      m = item.content;
+      m = item.content.replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
     } else {
       if (!("p" in item)) {
         continue;
@@ -205,13 +202,15 @@ export function convertToDanmakuJson(contents, platform) {
         // 其他格式，尝试从第3或第4位获取颜色
         color = pValues[3] || pValues[2] || 16777215;
       }
-      m = item.m;
+      m = item.m.replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
     }
 
+    // 输出为 dandanplay 风格的 p 字段：time,mode,color,size,[platform]
     attributes = [
       time,
       mode,
       color,
+      danmuFontSize,
       `[${platform}]`
     ].join(",");
 
@@ -234,9 +233,9 @@ export function convertToDanmakuJson(contents, platform) {
     return null; // 如果不是有效的正则格式则返回 null
   }).filter(regex => regex !== null); // 过滤掉无效的项
 
-  log("info", `原始屏蔽词字符串: ${globals.blockedWords}`);
+  log("debug", `原始屏蔽词字符串: ${globals.blockedWords}`);
   const regexArrayToString = array => Array.isArray(array) ? array.map(regex => regex.toString()).join('\n') : String(array);
-  log("info", `屏蔽词列表: ${regexArrayToString(regexArray)}`);
+  log("debug", `屏蔽词列表: ${regexArrayToString(regexArray)}`);
 
   // 过滤列表
   const filteredDanmus = danmus.filter(item => {
@@ -244,16 +243,46 @@ export function convertToDanmakuJson(contents, platform) {
   });
 
   // 按n分钟内去重
-  log("info", `去重分钟数: ${globals.groupMinute}`);
+  log("debug", `去重分钟数: ${globals.groupMinute}`);
   const groupedDanmus = groupDanmusByMinute(filteredDanmus, globals.groupMinute);
 
   // 应用弹幕转换规则（在去重和限制弹幕数之后）
   let convertedDanmus = limitDanmusByCount(groupedDanmus, globals.danmuLimit);
-  if (globals.convertTopBottomToScroll || globals.convertColor === 'white' || globals.convertColor === 'color') {
+  
+  // 解析颜色配置
+  let shouldConvertColor = false;
+  let colorList = [];
+  const convertColorValue = globals.convertColor;
+  
+  if (convertColorValue && convertColorValue !== 'default') {
+    shouldConvertColor = true;
+    
+    if (convertColorValue === 'white') {
+      // 向后兼容：转换为白色
+      colorList = [16777215];
+    } else if (convertColorValue === 'color') {
+      // 向后兼容：使用预设的随机颜色列表（白色概率更高）
+      colorList = [16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 
+                   16744319, 16752762, 16774799, 9498256, 8388564, 8900346, 14204888, 16758465];
+    } else {
+      // 新格式：解析十进制颜色值列表
+      colorList = convertColorValue.split(',')
+        .map(v => v.trim())
+        .filter(v => v && !isNaN(v))
+        .map(v => parseInt(v, 10));
+      
+      // 如果解析后列表为空，则不转换
+      if (colorList.length === 0) {
+        shouldConvertColor = false;
+      }
+    }
+  }
+  
+  if (globals.convertTopBottomToScroll || shouldConvertColor) {
     let topBottomCount = 0;
     let colorCount = 0;
 
-    convertedDanmus = convertedDanmus.map(danmu => {
+    convertedDanmus = groupedDanmus.map(danmu => {
       const pValues = danmu.p.split(',');
       if (pValues.length < 3) return danmu;
 
@@ -269,20 +298,16 @@ export function convertToDanmakuJson(contents, platform) {
       }
 
       // 2. 弹幕转换颜色
-      // 2.1 将彩色弹幕转换为白色
-      if (globals.convertColor === 'white' && color !== 16777215) {
-        colorCount++;
-        color = 16777215;
-        modified = true;
-      }
-      // 2.2 将白色弹幕转换为随机颜色，白、红、橙、黄、绿、青、蓝、紫、粉（模拟真实情况，增加白色出现概率）
-      let colors = [16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 
-                    16744319, 16752762, 16774799, 9498256, 8388564, 8900346, 14204888, 16758465];
-      let randomColor = colors[Math.floor(Math.random() * colors.length)];
-      if (globals.convertColor === 'color' && color === 16777215 && color !== randomColor) {
-        colorCount++;
-        color = randomColor;
-        modified = true;
+      if (shouldConvertColor && colorList.length > 0) {
+        // 从颜色列表中随机选择一个颜色
+        const randomColor = colorList[Math.floor(Math.random() * colorList.length)];
+        
+        // 只有当颜色不同时才转换
+        if (color !== randomColor) {
+          colorCount++;
+          color = randomColor;
+          modified = true;
+        }
       }
 
       if (modified) {
@@ -299,8 +324,10 @@ export function convertToDanmakuJson(contents, platform) {
     if (colorCount > 0) {
       log("info", `[danmu convert] 转换了 ${colorCount} 条弹幕颜色`);
     }
+    if (shouldConvertColor && colorList.length > 0) {
+      log("info", `[danmu convert] 颜色列表: [${colorList.join(', ')}]`);
+    }
   }
-
   // 根据 danmuSimplifiedTraditional 设置转换弹幕文本
   if (globals.danmuSimplifiedTraditional === 'traditional') {
     convertedDanmus = convertedDanmus.map(danmu => ({
@@ -309,7 +336,6 @@ export function convertToDanmakuJson(contents, platform) {
     }));
     log("info", `[danmu convert] 转换了 ${convertedDanmus.length} 条弹幕为繁体字`);
   }
-
   log("info", `danmus_original: ${danmus.length}`);
   log("info", `danmus_filter: ${filteredDanmus.length}`);
   log("info", `danmus_group: ${groupedDanmus.length}`);
@@ -370,7 +396,7 @@ function buildBilibiliDanmuP(comment) {
   const timeNum = parseFloat(pValues[0]) || 0;
   const time = timeNum.toFixed(1); // 时间（秒，保留1位小数）
   const mode = pValues[1] || '1'; // 类型（1=滚动, 4=底部, 5=顶部）
-  const fontSize = '25'; // 字体大小（25=中, 18=小）
+  const fontSize = String(globals.danmuFontSize || 25); // 字体大小（25=中, 18=小）
 
   // 颜色字段（输入总是4字段格式：时间,类型,颜色,平台）
   const color = pValues[2] || '16777215'; // 默认白色
@@ -399,6 +425,7 @@ function escapeXmlAttr(str) {
 function escapeXmlText(str) {
   if (!str) return '';
   return String(str)
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');

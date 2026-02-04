@@ -1,218 +1,148 @@
-import { createRequire } from 'module';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import http from 'http';
-import https from 'https';
-import zlib from 'zlib';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+// server.js - Node 本地/Docker 启动入口（ESM）
+// 目标：
+// 1) Node >= 18 直接使用内置 fetch/Request/Response，移除 node-fetch + 兼容 shim
+// 2) .env 自动生成 + 热加载，但不会误删系统环境变量
+// 3) 9321 主服务 + 5321 简单代理服务（用于正向代理/调试）
+
+import fs from 'node:fs';
+import path from 'node:path';
+import http from 'node:http';
+import https from 'node:https';
+import { fileURLToPath } from 'node:url';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
 import dotenv from 'dotenv';
-import { Request as NodeFetchRequest } from 'node-fetch';
+import chokidar from 'chokidar';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+
 import { handleRequest } from './worker.js';
 
-// =====================
-// server.js - 本地node智能启动脚本：根据 Node.js 环境自动选择最优启动模式
-// =====================
-
-// 导入 ES module 兼容层（始终加载，但内部会根据需要启用）
-import './esm-shim.cjs';
-
-// 构建 CommonJS 环境下才有的全局变量
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
-
-// 配置文件路径在项目根目录（server.js 的上一级目录）
-const configDir = path.join(__dirname, '..', 'config');
-const configExampleDir = path.join(__dirname, '..', 'config_example');
-const envPath = path.join(configDir, '.env');
 
 // 保存系统环境变量的副本，确保它们具有最高优先级
 const systemEnvBackup = { ...process.env };
 
+// =============== 出口 GZIP 压缩（Node 本地/Docker） ===============
+// 说明：
+// - 仅在客户端声明支持 gzip（Accept-Encoding 包含 gzip）时启用
+// - 仅对文本类响应（json/xml/text 等）启用，避免对二进制/图片等做无意义压缩
+// - 仅对超过阈值的响应启用，避免小包负优化
+//
+// ⚠️ 这里不引入额外环境变量，保持“开箱即用 + 不显得乱”。
+const GZIP_MIN_BYTES = 1024;     // 小于此大小不压缩（避免 gzip 头开销）
+const GZIP_LEVEL = 6;           // 0-9，默认 6 在压缩率与 CPU 之间较均衡
+const gzipAsync = promisify(gzipCb);
 
-// 引入 zlib 模块，用于响应数据的 GZIP 压缩
-// (注：zlib 已在顶部 import，此处保留原版注释意图说明)
+// 配置文件路径在项目根目录（server.js 的上一级目录）
+const projectRoot = path.join(__dirname, '..');
+const configDir = path.join(projectRoot, 'config');
+const envPath = path.join(configDir, '.env');
+const envExamplePath = path.join(configDir, '.env.example');
 
-// 在启动时检查并复制配置文件
-checkAndCopyConfigFiles();
+// 仅追踪由 dotenv 写入到 process.env 的键（用于热更新时安全清理）
+let dotenvKeys = new Set();
 
-// 初始加载
-loadEnv();
-
-/**
- * 检查并自动复制配置文件
- * 在Node环境下，如果config目录下没有.env，则自动从.env.example拷贝一份生成.env
- * 在Docker环境下，如果config目录不存在或缺少配置文件，则从config_example目录复制
- */
+// =============== 配置文件自动生成 ===============
 function checkAndCopyConfigFiles() {
-  const envExamplePath = path.join(configDir, '.env.example');
-  const configExampleEnvPath = path.join(configExampleDir, '.env.example');
+  try {
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
 
-  const envExists = fs.existsSync(envPath);
-  const envExampleExists = fs.existsSync(envExamplePath);
-  const configExampleExists = fs.existsSync(configExampleDir);
-  const configExampleEnvExists = fs.existsSync(configExampleEnvPath);
+    if (fs.existsSync(envPath)) {
+      console.log('[server] Configuration file exists, skipping auto-copy');
+      return;
+    }
 
-  // 如果存在.env，则不需要复制
-  if (envExists) {
-    console.log('[server] Configuration files exist, skipping auto-copy');
+    if (fs.existsSync(envExamplePath)) {
+      fs.copyFileSync(envExamplePath, envPath);
+      console.log('[server] Copied .env.example to .env successfully');
+      return;
+    }
+
+    console.log('[server] .env.example not found, cannot auto-copy');
+  } catch (err) {
+    console.log('[server] Error during config auto-copy:', err?.message || err);
+  }
+}
+
+// =============== 环境变量加载（系统 env 优先） ===============
+function loadEnv() {
+  // 先清理旧的 dotenvKeys（只清理 dotenv 写入的，不碰系统变量）
+  for (const k of dotenvKeys) {
+    if (!(k in systemEnvBackup)) {
+      delete process.env[k];
+    }
+  }
+  dotenvKeys = new Set();
+
+  if (!fs.existsSync(envPath)) {
+    // 恢复系统环境变量的值，确保它们具有最高优先级
+    Object.assign(process.env, systemEnvBackup);
+    console.log('[server] .env not found, using system environment variables only');
     return;
   }
 
-  // 首先尝试从config目录下的.env.example复制
-  if (envExampleExists) {
-    try {
-      // 从.env.example复制到.env
-      fs.copyFileSync(envExamplePath, envPath);
-      console.log('[server] Copied .env.example to .env successfully');
-    } catch (error) {
-      console.log('[server] Error copying .env.example to .env:', error.message);
+  // dotenv 解析（不自动写入），避免覆盖系统 env
+  const parsed = dotenv.parse(fs.readFileSync(envPath, 'utf8'));
+  for (const [k, v] of Object.entries(parsed)) {
+    if (!(k in systemEnvBackup)) {
+      process.env[k] = v;
+      dotenvKeys.add(k);
     }
-  } 
-  // 如果config目录下没有.env.example，但在config_example目录下有，则从config_example复制
-  else if (configExampleExists && configExampleEnvExists) {
-    try {
-      // 确保config目录存在
-      if (!fs.existsSync(configDir)) {
-        fs.mkdirSync(configDir, { recursive: true });
-        console.log('[server] Created config directory');
-      }
-
-      // 从config_example/.env.example复制到config/.env
-      fs.copyFileSync(configExampleEnvPath, envPath);
-      console.log('[server] Copied config_example/.env.example to config/.env successfully');
-    } catch (error) {
-      console.log('[server] Error copying config_example files to config directory:', error.message);
-    }
-  } else {
-    console.log('[server] .env.example not found in config or config_example, cannot auto-copy');
   }
+
+  // 最后恢复系统环境变量，确保最高优先级
+  Object.assign(process.env, systemEnvBackup);
+
+  console.log('[server] .env loaded successfully');
 }
 
-/**
- * 加载环境变量
- * 加载 .env 文件（低优先级），并在最后恢复系统环境变量的值以确保最高优先级
- */
-function loadEnv() {
-  try {
-    // 加载 .env 文件（低优先级）
-    dotenv.config({ path: envPath, override: true });
-
-    // 最后，恢复系统环境变量的值，确保它们具有最高优先级
-    for (const [key, value] of Object.entries(systemEnvBackup)) {
-      process.env[key] = value;
-    }
-
-    console.log('[server] .env file loaded successfully');
-  } catch (e) {
-    console.log('[server] dotenv not available or .env file not found, using system environment variables');
-  }
-}
-
-// 监听 .env 文件变化（仅在文件存在时）
+// =============== .env 热更新 ===============
 let envWatcher = null;
 let reloadTimer = null;
 let mainServer = null;
 let proxyServer = null;
 
-/**
- * 设置 .env 文件监听器
- * 实现配置文件的热重载功能
- */
-async function setupEnvWatcher() {
-  const envExists = fs.existsSync(envPath);
-
-  if (!envExists) {
+function setupEnvWatcher() {
+  if (!fs.existsSync(envPath)) {
     console.log('[server] .env not found, skipping file watcher');
     return;
   }
 
-  try {
-    const chokidarModule = await import('chokidar');
-    const chokidar = chokidarModule.default || chokidarModule;
+  envWatcher = chokidar.watch([envPath], {
+    persistent: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 100,
+      pollInterval: 100,
+    },
+  });
 
-    const watchPaths = [];
-    if (envExists) watchPaths.push(envPath);
+  envWatcher.on('change', (changedPath) => {
+    if (reloadTimer) clearTimeout(reloadTimer);
 
-    envWatcher = chokidar.watch(watchPaths, {
-      persistent: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 100,
-        pollInterval: 100
-      }
-    });
-
-    envWatcher.on('change', (changedPath) => {
-      // 防抖：避免短时间内多次触发
-      if (reloadTimer) {
-        clearTimeout(reloadTimer);
-      }
-
-      reloadTimer = setTimeout(() => {
-        const fileName = path.basename(changedPath);
-        console.log(`[server] ${fileName} changed, reloading environment variables...`);
-
-        // 读取新的配置文件内容
-        try {
-          const newEnvKeys = new Set();
-
-          // 如果是 .env 文件变化
-          if (changedPath === envPath && fs.existsSync(envPath)) {
-            const envContent = fs.readFileSync(envPath, 'utf8');
-            const lines = envContent.split('\n');
-
-            // 解析 .env 文件中的所有键
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (trimmed && !trimmed.startsWith('#')) {
-                const match = trimmed.match(/^([^=]+)=/);
-                if (match) {
-                  newEnvKeys.add(match[1]);
-                }
-              }
-            }
-          }
-
-          // 删除 process.env 中旧的键（不在新配置文件中的键）
-          for (const key of Object.keys(process.env)) {
-            if (!newEnvKeys.has(key)) {
-              delete process.env[key];
-            }
-          }
-
-          // 清除 dotenv 缓存并重新加载环境变量
-          loadEnv();
-
-          console.log('[server] Environment variables reloaded successfully');
-          console.log('[server] Updated keys:', Array.from(newEnvKeys).join(', '));
-        } catch (error) {
-          console.log('[server] Error reloading configuration files:', error.message);
-        }
-
+    reloadTimer = setTimeout(() => {
+      console.log(`[server] ${path.basename(changedPath)} changed, reloading environment variables...`);
+      try {
+        loadEnv();
+        console.log('[server] Environment variables reloaded successfully');
+        console.log('[server] dotenv keys:', Array.from(dotenvKeys).join(', '));
+      } catch (err) {
+        console.log('[server] Error reloading .env:', err?.message || err);
+      } finally {
         reloadTimer = null;
-      }, 200); // 200ms 防抖
-    });
+      }
+    }, 200);
+  });
 
-    envWatcher.on('unlink', (deletedPath) => {
-      const fileName = path.basename(deletedPath);
-      console.log(`[server] ${fileName} deleted, using remaining configuration files`);
-    });
+  envWatcher.on('error', (error) => {
+    console.log('[server] File watcher error:', error?.message || error);
+  });
 
-    envWatcher.on('error', (error) => {
-      console.log('[server] File watcher error:', error.message);
-    });
-
-    const watchedFiles = watchPaths.map(p => path.basename(p)).join(' and ');
-    console.log(`[server] Configuration file watcher started for: ${watchedFiles}`);
-  } catch (e) {
-    console.log('[server] chokidar not available, configuration hot reload disabled');
-  }
+  console.log('[server] Configuration file watcher started for: .env');
 }
 
-/**
- * 优雅关闭：清理文件监听器并关闭服务器
- */
 function cleanupWatcher() {
   if (envWatcher) {
     console.log('[server] Closing file watcher...');
@@ -223,250 +153,337 @@ function cleanupWatcher() {
     clearTimeout(reloadTimer);
     reloadTimer = null;
   }
-  // 优雅关闭主服务器
   if (mainServer) {
     console.log('[server] Closing main server...');
-    mainServer.close(() => {
-      console.log('[server] Main server closed');
-    });
+    mainServer.close(() => console.log('[server] Main server closed'));
   }
-  // 优雅关闭代理服务器
   if (proxyServer) {
     console.log('[server] Closing proxy server...');
-    proxyServer.close(() => {
-      console.log('[server] Proxy server closed');
-    });
+    proxyServer.close(() => console.log('[server] Proxy server closed'));
   }
-  // 给服务器一点时间关闭后退出
+
   setTimeout(() => {
     console.log('[server] Exit complete.');
     process.exit(0);
   }, 500);
 }
 
-// 监听进程退出信号
 process.on('SIGTERM', cleanupWatcher);
 process.on('SIGINT', cleanupWatcher);
 
-/**
- * 创建主业务服务器实例 (端口 9321)
- * 将 Node.js 请求转换为 Web API Request，并调用 worker.js 处理
- */
+// =============== 工具：Header 规范化 ===============
+function normalizeHeaders(nodeHeaders) {
+  const headers = {};
+  for (const [k, v] of Object.entries(nodeHeaders || {})) {
+    if (typeof v === 'undefined') continue;
+    headers[k] = Array.isArray(v) ? v.join(',') : String(v);
+  }
+  return headers;
+}
+
+async function readBody(req) {
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+function getClientIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    const ip = forwardedFor.split(',')[0].trim();
+    return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  }
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) {
+    const ip = String(realIp);
+    return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  }
+  const ip = req.socket?.remoteAddress || 'unknown';
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
+// =============== 工具：GZIP 决策与日志 ===============
+function clientAcceptsGzip(req) {
+  const ae = req.headers?.['accept-encoding'];
+  if (!ae) return false;
+  const v = Array.isArray(ae) ? ae.join(',') : String(ae);
+  return v.toLowerCase().includes('gzip');
+}
+
+function isCompressibleContentType(contentType = '') {
+  const ct = String(contentType).toLowerCase();
+  if (!ct) return false;
+
+  // 常见文本类
+  if (ct.startsWith('text/')) return true;
+  if (ct.includes('json')) return true;
+  if (ct.includes('xml')) return true;
+  if (ct.includes('javascript')) return true;
+  if (ct.includes('svg')) return true;
+  return false;
+}
+
+function appendVary(existing, value) {
+  if (!existing) return value;
+  const current = Array.isArray(existing) ? existing.join(',') : String(existing);
+  const parts = current.split(',').map(s => s.trim()).filter(Boolean);
+  const lower = parts.map(s => s.toLowerCase());
+  if (!lower.includes(value.toLowerCase())) {
+    parts.push(value);
+  }
+  return parts.join(', ');
+}
+
+function shouldLogGzip(req) {
+  // 仅在弹幕相关接口上强制打印 gzip 决策，避免日志过于吵
+  // 你如果希望所有接口都打印，可以把这里改为：return true;
+  const u = req?.url || '';
+  return u.includes('/api/v2/comment') || u.includes('/api/v2/segmentcomment');
+}
+
+function logGzipDecision({ enabled, req, contentType, rawBytes, gzBytes, reason }) {
+  const url = req?.url || '';
+  const method = req?.method || 'GET';
+  const ct = contentType ? String(contentType) : '';
+
+  if (enabled) {
+    const ratio = rawBytes > 0 ? ((gzBytes / rawBytes) * 100).toFixed(1) : '0.0';
+    console.log(`[GZIP] on  ${method} ${url} | ${rawBytes}B -> ${gzBytes}B (${ratio}%) | ${ct}`);
+  } else {
+    // 仅在弹幕接口，或客户端声明支持 gzip 时打印关闭原因
+    if (shouldLogGzip(req) || clientAcceptsGzip(req)) {
+      console.log(`[GZIP] off ${method} ${url} | ${rawBytes}B | ${ct}${reason ? ` | reason=${reason}` : ''}`);
+    }
+  }
+}
+
+// =============== 主业务服务器（9321） ===============
 function createServer() {
   return http.createServer(async (req, res) => {
     try {
-      // 构造完整的请求 URL
       const fullUrl = `http://${req.headers.host}${req.url}`;
+      const clientIp = getClientIp(req);
 
-      // 获取请求客户端的ip，兼容反向代理场景
-      let clientIp = 'unknown';
-      
-      // 优先级：X-Forwarded-For > X-Real-IP > 直接连接IP
-      const forwardedFor = req.headers['x-forwarded-for'];
-      if (forwardedFor) {
-        // X-Forwarded-For 可能包含多个IP（代理链），第一个是真实客户端IP
-        clientIp = forwardedFor.split(',')[0].trim();
-        console.log(`[server] Using X-Forwarded-For IP: ${clientIp}`);
-      } else if (req.headers['x-real-ip']) {
-        clientIp = req.headers['x-real-ip'];
-        console.log(`[server] Using X-Real-IP: ${clientIp}`);
-      } else {
-        // req.connection 在新版 Node 已废弃，改用 req.socket
-        clientIp = req.socket.remoteAddress || 'unknown';
-        console.log(`[server] Using direct connection IP: ${clientIp}`);
-      }
-      
-      // 清理IPv6前缀（如果存在）
-      if (clientIp && clientIp.startsWith('::ffff:')) {
-        clientIp = clientIp.substring(7);
-      }
+      const method = req.method || 'GET';
+      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH') ? await readBody(req) : undefined;
 
-      // 异步读取 POST/PUT 请求的请求体
-      let body;
-      if (req.method === 'POST' || req.method === 'PUT') {
-        body = await new Promise((resolve) => {
-          let data = '';
-          req.on('data', chunk => data += chunk);
-          req.on('end', () => resolve(data));
-        });
-      }
-
-      // 创建一个 Web API 兼容的 Request 对象
-      const webRequest = new NodeFetchRequest(fullUrl, {
-        method: req.method,
-        headers: req.headers,
-        body: body || undefined, // 对于 GET/HEAD 等请求，body 为 undefined
+      const webRequest = new Request(fullUrl, {
+        method,
+        headers: normalizeHeaders(req.headers),
+        body: body && body.length ? body : undefined,
       });
 
-      // 调用核心处理函数，并标识平台为 "node"
-      const webResponse = await handleRequest(webRequest, process.env, "node", clientIp);
+      const webResponse = await handleRequest(webRequest, process.env, 'node', clientIp);
 
-      // 将 Web API Response 对象转换为 Node.js 响应
       res.statusCode = webResponse.status;
-      
-      // 净化 Header：透传上游头信息，但强制移除传输相关字段 (Encoding/Length)
-      // (防止 Node.js 自动解压后，Header 仍残留 Gzip 标识导致客户端解析乱码)
+
+      // Header 透传：移除与传输编码相关的字段（我们会在出口统一处理）
+      // 避免出现：body 已是解压后的数据，但 header 仍残留 Content-Encoding 导致客户端解析异常
       webResponse.headers.forEach((value, key) => {
-          const lowerKey = key.toLowerCase();
-          if (lowerKey === 'content-encoding' || lowerKey === 'content-length') return;
-          res.setHeader(key, value);
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'content-encoding' || lowerKey === 'content-length') return;
+        res.setHeader(key, value);
       });
 
-      // [优化] GZIP 出口压缩策略
-      // 触发条件：客户端支持 + 文本类型(XML/JSON) + 体积 > 1KB
-      // 目的：在节省流量与 CPU 开销之间取得平衡，避免负优化小文件
-      const acceptEncoding = req.headers['accept-encoding'] || '';
       const contentType = webResponse.headers.get('content-type') || '';
+      const alreadyEncoded = Boolean(webResponse.headers.get('content-encoding'));
 
-      const responseData = await webResponse.arrayBuffer();
-      let buffer = Buffer.from(responseData);
+      // 统一按二进制读取
+      const ab = await webResponse.arrayBuffer();
+      let buffer = Buffer.from(ab);
 
-      if (acceptEncoding.includes('gzip') && buffer.length > 1024 &&
-          (contentType.includes('xml') || contentType.includes('json') || contentType.includes('text'))) {
-          try {
-              const compressed = zlib.gzipSync(buffer);
-              res.setHeader('Content-Encoding', 'gzip');
-              res.setHeader('Content-Length', compressed.length); // 更新为压缩后的大小
-              buffer = compressed;
-          } catch (error) {
-              console.error('[GZIP] Compression failed, falling back to raw:', error.message);
-          }
+      // [优化] 出口 gzip：仅在条件满足时启用
+      const canGzip = (
+        !alreadyEncoded &&
+        (webResponse.status !== 204 && webResponse.status !== 304) &&
+        (method !== 'HEAD') &&
+        clientAcceptsGzip(req) &&
+        isCompressibleContentType(contentType) &&
+        buffer.length >= GZIP_MIN_BYTES
+      );
+
+      if (canGzip) {
+        try {
+          const compressed = await gzipAsync(buffer, { level: GZIP_LEVEL });
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', appendVary(res.getHeader('Vary'), 'Accept-Encoding'));
+          res.setHeader('Content-Length', compressed.length);
+          logGzipDecision({
+            enabled: true,
+            req,
+            contentType,
+            rawBytes: buffer.length,
+            gzBytes: compressed.length,
+          });
+          buffer = compressed;
+        } catch (err) {
+          // 压缩失败时直接回退原始数据
+          logGzipDecision({
+            enabled: false,
+            req,
+            contentType,
+            rawBytes: buffer.length,
+            reason: `compress-failed:${err?.message || err}`
+          });
+        }
+      } else {
+        // 打印“未启用 gzip”的原因（便于你快速确认到底有没有生效）
+        let reason = '';
+        if (alreadyEncoded) reason = 'already-encoded';
+        else if (!clientAcceptsGzip(req)) reason = 'client-no-gzip';
+        else if (!isCompressibleContentType(contentType)) reason = 'non-text-type';
+        else if (buffer.length < GZIP_MIN_BYTES) reason = `too-small(<${GZIP_MIN_BYTES})`;
+        else if (method === 'HEAD') reason = 'HEAD';
+        else if (webResponse.status === 204 || webResponse.status === 304) reason = `status-${webResponse.status}`;
+        logGzipDecision({ enabled: false, req, contentType, rawBytes: buffer.length, reason });
       }
 
-      // 兜底处理：如果最终未压缩，必须补发原始数据的 Content-Length
+      // Node 在 res.end(Buffer) 时通常会自动补 Content-Length，
+      // 但我们在 gzip 分支会明确设置；这里再兜底一次，确保日志/客户端一致。
       if (!res.hasHeader('Content-Length')) {
-          res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Content-Length', buffer.length);
       }
 
-      // 发送响应数据
       res.end(buffer);
     } catch (error) {
-      console.error('Server error:', error);
+      console.error('[server] Server error:', error);
       res.statusCode = 500;
       res.end('Internal Server Error');
     }
   });
 }
 
-/**
- * 创建代理服务器 (端口 5321)
- * 处理通用代理请求，支持配置正向代理和请求熔断
- */
+// =============== 代理服务器（5321） ===============
 function createProxyServer() {
-  return http.createServer((req, res) => {
-    // 使用 new URL 解析参数，逻辑与 url.parse 保持一致
-    const reqUrlObj = new URL(req.url, `http://${req.headers.host}`);
-    const queryObject = Object.fromEntries(reqUrlObj.searchParams);
+  return http.createServer(async (req, res) => {
+    try {
+      const urlObj = new URL(req.url, 'http://localhost');
 
-    if (queryObject.url) {
-      // 解析 PROXY_URL 配置（统一处理代理和反向代理）
-      const proxyConfig = process.env.PROXY_URL || '';
-      let forwardProxy = null;      // 正向代理（传统代理）
+      // 仅提供 /proxy 入口，避免误用为通用 HTTP 服务
+      if (urlObj.pathname !== '/proxy') {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not Found');
+        return;
+      }
 
-      if (proxyConfig) {
-        // 支持多个配置，用逗号分隔
-        const proxyConfigs = proxyConfig.split(',').map(s => s.trim()).filter(s => s);
-        
-        for (const config of proxyConfigs) {
-          // 通用忽略逻辑：忽略所有专用反代和万能反代规则
-          if (/^@/.test(config) || /^[\w-]+@http/i.test(config)) {
-            continue;
-          }
-          // 正向代理：http://proxy.com:port 或 socks5://proxy.com:port
-          forwardProxy = config.trim();
-          console.log('[Proxy Server] Forward proxy detected:', forwardProxy);
-          // 找到第一个有效代理就停止，避免逻辑混乱
-          break; 
+      // 可选：为本地代理增加额外鉴权（防止将端口暴露公网后变成开放代理）
+      const proxyToken = process.env.LOCAL_PROXY_TOKEN;
+      if (proxyToken) {
+        const provided = req.headers['x-proxy-token'];
+        if (provided !== proxyToken) {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Forbidden');
+          return;
         }
       }
-      const targetUrl = queryObject.url;
-      console.log('[Proxy Server] Target URL:', targetUrl);
-      
-      const originalUrlObj = new URL(targetUrl);
-      let options = {
-        hostname: originalUrlObj.hostname,
-        port: originalUrlObj.port || (originalUrlObj.protocol === 'https:' ? 443 : 80),
-        path: originalUrlObj.pathname + originalUrlObj.search,
-        method: 'GET',
-        headers: { ...req.headers } // 传递原始请求头
-      };
-      
-      // Host 头必须被移除，以便 protocol.request 根据 options.hostname 设置正确的值
-      delete options.headers.host; 
-      
-      let protocol = originalUrlObj.protocol === 'https:' ? https : http;
 
-      // 处理正向代理逻辑
-      if (forwardProxy) {
-        // 正向代理模式：使用 HttpsProxyAgent
-        console.log('[Proxy Server] Using forward proxy agent:', forwardProxy);
-        options.agent = new HttpsProxyAgent(forwardProxy);
-      } else {
-        // 直连模式
-        console.log('[Proxy Server] No proxy configured, direct connection');
+      const target = urlObj.searchParams.get('url');
+
+      if (!target) {
+        res.statusCode = 400;
+        res.end('Bad Request: Missing url parameter');
+        return;
       }
 
+      // 只允许 http/https
+      let targetUrl;
+      try {
+        targetUrl = new URL(target);
+      } catch (e) {
+        res.statusCode = 400;
+        res.end('Bad Request: Invalid url format');
+        return;
+      }
+      if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+        res.statusCode = 400;
+        res.end('Bad Request: Only http/https are allowed');
+        return;
+      }
+
+      // 解析 PROXY_URL（仅取第一个正向代理配置；忽略反代/万能反代规则）
+      const proxyConfig = (process.env.PROXY_URL || '').split(',').map(s => s.trim()).filter(Boolean);
+      const forwardProxy = proxyConfig.find(c => c && !/^@/.test(c) && !/^[\w-]+@http/i.test(c)) || null;
+
+      const protocol = targetUrl.protocol === 'https:' ? https : http;
+      const method = req.method || 'GET';
+      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH') ? await readBody(req) : undefined;
+
+      const headers = normalizeHeaders(req.headers);
+      delete headers.host; // 让上游自动填充
+
+      const options = {
+        hostname: targetUrl.hostname,
+        port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
+        path: targetUrl.pathname + targetUrl.search,
+        method,
+        headers,
+        agent: forwardProxy ? new HttpsProxyAgent(forwardProxy) : undefined,
+      };
+
       const proxyReq = protocol.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
         proxyRes.pipe(res, { end: true });
       });
 
-      // 监听外部触发中断
-      // 当外部触发 abort() 时，这里的 req 会触发 'close'掐断 proxyReq
       req.on('close', () => {
         if (!res.writableEnded) {
-          console.log('[Proxy Server] Client disconnected prematurely. Destroying upstream request.');
           proxyReq.destroy();
         }
       });
 
       proxyReq.on('error', (err) => {
-        // 过滤掉因外部主动断开导致的 ECONNRESET / socket hang up 错误
         if (req.destroyed || req.aborted || err.code === 'ECONNRESET' || err.message === 'socket hang up') {
-            // 只有当响应还没结束时，才打印一条 Info 级别的日志，证明熔断成功
-            if (!res.writableEnded) {
-                console.log('[Proxy Server] Upstream connection closed (expected behavior due to client interrupt).');
-            }
-            return;
+          if (!res.writableEnded) {
+            console.log('[Proxy Server] Upstream connection closed (expected behavior due to client interrupt).');
+          }
+          return;
         }
-
-        console.error('Proxy request error:', err);
+        console.error('[Proxy Server] Proxy request error:', err);
         if (!res.headersSent) {
-            res.statusCode = 500;
-            res.end('Proxy Error: ' + err.message);
+          res.statusCode = 500;
+          res.end('Proxy Error: ' + err.message);
         }
       });
 
+      if (body && body.length) proxyReq.write(body);
       proxyReq.end();
-    } else {
-      res.statusCode = 400;
-      res.end('Bad Request: Missing URL parameter');
+    } catch (err) {
+      console.error('[Proxy Server] Error:', err);
+      if (!res.headersSent) res.statusCode = 500;
+      res.end('Proxy Error');
     }
   });
 }
 
-/**
- * 启动服务器
- * 启动主业务服务器和代理服务器
- */
-async function startServer() {
-  console.log('[server] Starting server...');
 
-  // 设置 .env 文件监听
-  await setupEnvWatcher();
 
-  // 启动主业务服务器 (9321)
-  mainServer = createServer();
-  mainServer.listen(9321, '0.0.0.0', () => {
-    console.log('Server running on http://0.0.0.0:9321');
-  });
-
-  // 启动5321端口的代理服务
-  proxyServer = createProxyServer();
-  proxyServer.listen(5321, '0.0.0.0', () => {
-    console.log('Proxy server running on http://0.0.0.0:5321');
-  });
+function hasForwardProxyConfig() {
+  const proxyConfig = (process.env.PROXY_URL || '').split(',').map(s => s.trim()).filter(Boolean);
+  return proxyConfig.some(c => c && !/^@/.test(c) && !/^[\w-]+@http/i.test(c));
 }
 
-// 启动
-startServer();
+// =============== 启动 ===============
+checkAndCopyConfigFiles();
+loadEnv();
+setupEnvWatcher();
+
+mainServer = createServer();
+mainServer.listen(9321, '0.0.0.0', () => {
+  console.log('Server running on http://0.0.0.0:9321');
+});
+
+if (hasForwardProxyConfig()) {
+  proxyServer = createProxyServer();
+  const bindHost = process.env.LOCAL_PROXY_BIND || '127.0.0.1';
+  proxyServer.listen(5321, bindHost, () => {
+    console.log(`Proxy server running on http://${bindHost}:5321 (local forward proxy helper)`);
+    if (bindHost !== '127.0.0.1' && !process.env.LOCAL_PROXY_TOKEN) {
+      console.warn('[proxy] Warning: LOCAL_PROXY_BIND is not 127.0.0.1 but LOCAL_PROXY_TOKEN is not set. This may expose an open proxy.');
+    }
+  });
+} else {
+  console.log('Proxy server disabled (no forward proxy configured in PROXY_URL).');
+}

@@ -644,5 +644,3 @@ export default class AnimekoSource extends BaseSource {
       });
   }
 }
-
-

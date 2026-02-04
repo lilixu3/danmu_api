@@ -469,14 +469,12 @@ function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
       return ep;
     }
   }
-
   // 策略2：使用数组索引
   if (platformEpisodes.length >= targetEpisode) {
     const fallbackEp = platformEpisodes[targetEpisode - 1];
     log("info", `Using fallback array index for episode ${targetEpisode}: ${fallbackEp.episodeTitle}`);
     return fallbackEp;
   }
-  
   // 策略3：使用episodeNumber字段匹配
   for (const ep of platformEpisodes) {
     if (ep.episodeNumber && parseInt(ep.episodeNumber, 10) === targetEpisode) {
@@ -1158,8 +1156,8 @@ export async function getComment(path, queryFormat, segmentFlag) {
   }
   log("info", `Fetched comment ID: ${commentId}`);
 
-  // 检查弹幕缓存
-  const cachedComments = getCommentCache(url);
+  // 检查弹幕缓存（分片列表请求不走弹幕缓存）
+  const cachedComments = !segmentFlag ? getCommentCache(url) : null;
   if (cachedComments !== null) {
     const responseData = { count: cachedComments.length, comments: cachedComments };
     return formatDanmuResponse(responseData, queryFormat);
@@ -1221,11 +1219,16 @@ export async function getComment(path, queryFormat, segmentFlag) {
   if (animeId && source) {
     setPreferByAnimeId(animeId, source);
     if (globals.localCacheValid && animeId) {
-        writeCacheToFile('lastSelectMap', JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
+        writeCacheToFile('lastSelectMap', Object.fromEntries(globals.lastSelectMap));
     }
     if (globals.redisValid && animeId) {
         setRedisKey('lastSelectMap', globals.lastSelectMap).catch(e => log("error", "Redis set error", e));
     }
+  }
+
+  // 分片列表请求：直接返回分片信息（不做 count/comments 包装，也不走 XML）
+  if (segmentFlag) {
+    return jsonResponse(danmus);
   }
 
   // 缓存弹幕结果
@@ -1253,37 +1256,122 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
       );
     }
 
-    videoUrl = videoUrl.trim();
+    const originalUrl = videoUrl.trim();
 
-    // 验证URL格式
-    if (!videoUrl.startsWith('http')) {
-      log("error", "Invalid url format, must start with http or https");
+    // 严格校验 URL：必须是 http/https，且不允许携带账号密码
+    let parsed;
+    try {
+      parsed = new URL(originalUrl);
+    } catch (e) {
+      log("error", "Invalid url format");
       return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Invalid url format, must start with http or https", count: 0, comments: [] },
+        { errorCode: 400, success: false, errorMessage: "Invalid url format", count: 0, comments: [] },
         400
       );
     }
 
-    log("info", `Processing comment request for URL: ${videoUrl}`);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      log("error", "Invalid url protocol, must be http or https");
+      return jsonResponse(
+        { errorCode: 400, success: false, errorMessage: "Invalid url protocol, must be http or https", count: 0, comments: [] },
+        400
+      );
+    }
 
-    let url = videoUrl;
-    // 检查弹幕缓存
-    const cachedComments = getCommentCache(url);
-    if (cachedComments !== null) {
-      const responseData = {
-        errorCode: 0,
-        success: true,
-        errorMessage: "",
-        count: cachedComments.length,
-        comments: cachedComments
-      };
-      return formatDanmuResponse(responseData, queryFormat);
+    if (parsed.username || parsed.password) {
+      log("error", "Invalid url format: credentials are not allowed");
+      return jsonResponse(
+        { errorCode: 400, success: false, errorMessage: "Invalid url format: credentials are not allowed", count: 0, comments: [] },
+        400
+      );
+    }
+
+
+    // 安全：默认禁止访问本地/内网地址，避免被当作 SSRF 入口
+    if (!globals.allowPrivateUrls) {
+      const host = parsed.hostname;
+
+      const deny = (msg) => jsonResponse(
+        { errorCode: 400, success: false, errorMessage: msg, count: 0, comments: [] },
+        400
+      );
+
+      const isIPv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+      const isIPv6 = host.includes(':');
+
+      // localhost / loopback
+      if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') {
+        log("error", "[Security] Blocked private/localhost url");
+        return deny("Private/localhost url is not allowed");
+      }
+
+      if (isIPv4) {
+        const parts = host.split('.').map(n => Number(n));
+        const invalid = parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255);
+        if (invalid) {
+          return deny("Invalid IP address");
+        }
+
+        const [a, b] = parts;
+
+        // RFC1918 / link-local / loopback / CGNAT / multicast 等常见内网与保留段
+        if (
+          a === 10 ||
+          a === 127 ||
+          (a === 192 && b === 168) ||
+          (a === 172 && b >= 16 && b <= 31) ||
+          (a === 169 && b === 254) ||
+          (a === 100 && b >= 64 && b <= 127) ||
+          a === 0 ||
+          a >= 224
+        ) {
+          log("error", "[Security] Blocked private IPv4 url");
+          return deny("Private IP url is not allowed");
+        }
+      }
+
+      if (isIPv6) {
+        const h = host.toLowerCase();
+        // ULA fc00::/7, link-local fe80::/10, loopback
+        if (
+          h === '::1' ||
+          h.startsWith('fe80:') ||
+          h.startsWith('fc') ||
+          h.startsWith('fd')
+        ) {
+          log("error", "[Security] Blocked private IPv6 url");
+          return deny("Private IP url is not allowed");
+        }
+      }
+    }
+
+    log("info", `Processing comment request for URL: ${originalUrl}`);
+
+    let url = originalUrl;
+
+    // 仅在“非分片列表”模式下启用弹幕缓存
+    if (!segmentFlag) {
+      const cachedComments = getCommentCache(url);
+      if (cachedComments !== null) {
+        const responseData = {
+          errorCode: 0,
+          success: true,
+          errorMessage: "",
+          count: cachedComments.length,
+          comments: cachedComments
+        };
+        return formatDanmuResponse(responseData, queryFormat);
+      }
     }
 
     log("info", "开始从本地请求弹幕...", url);
-    let danmus = [];
 
     // 根据URL域名判断平台并获取弹幕
+    let danmus = [];
+
+    // b23 解析（用于缓存与后续请求）
+    let resolvedUrl = url;
+
     if (url.includes('.qq.com')) {
       danmus = await tencentSource.getComments(url, "qq", segmentFlag);
     } else if (url.includes('.iqiyi.com')) {
@@ -1291,11 +1379,10 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     } else if (url.includes('.mgtv.com')) {
       danmus = await mangoSource.getComments(url, "imgo", segmentFlag);
     } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
-      // 如果是 b23.tv 短链接，先解析为完整 URL
       if (url.includes('b23.tv')) {
-        url = await bilibiliSource.resolveB23Link(url);
+        resolvedUrl = await bilibiliSource.resolveB23Link(url);
       }
-      danmus = await bilibiliSource.getComments(url, "bilibili1", segmentFlag);
+      danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag);
     } else if (url.includes('.youku.com')) {
       danmus = await youkuSource.getComments(url, "youku", segmentFlag);
     } else if (url.includes('.sohu.com')) {
@@ -1312,11 +1399,23 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
       }
     }
 
+    // 分片列表请求：直接返回分片信息（不做 count/comments 包装，也不走 XML）
+    if (segmentFlag) {
+      return jsonResponse(danmus);
+    }
+
+    // 兜底：确保为数组
+    if (danmus && danmus.comments) danmus = danmus.comments;
+    if (!Array.isArray(danmus)) danmus = [];
+
     log("info", `Successfully fetched ${danmus.length} comments from URL`);
 
-    // 缓存弹幕结果
+    // 缓存弹幕结果（b23 短链同时缓存原始URL与解析后的URL，避免重复解析）
     if (danmus.length > 0) {
-      setCommentCache(url, danmus);
+      setCommentCache(resolvedUrl || url, danmus);
+      if (originalUrl !== (resolvedUrl || url)) {
+        setCommentCache(originalUrl, danmus);
+      }
     }
 
     const responseData = {
@@ -1328,7 +1427,6 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     };
     return formatDanmuResponse(responseData, queryFormat);
   } catch (error) {
-    // 处理异常
     log("error", `Failed to process comment by URL request: ${error.message}`);
     return jsonResponse(
       { errorCode: 500, success: false, errorMessage: "Internal server error", count: 0, comments: [] },

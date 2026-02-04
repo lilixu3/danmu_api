@@ -14,7 +14,7 @@ export const Globals = {
 
   // 静态常量
   VERSION: '1.13.7',
-  MAX_LOGS: 1000, // 日志存储，最多保存 1000 行
+  MAX_LOGS: 500, // 日志存储，最多保存 500 行
   MAX_ANIMES: 100,
 
   // 运行时状态
@@ -158,7 +158,7 @@ export const Globals = {
         if (prop === 'version') return self.VERSION;
         if (prop === 'maxLogs') return self.MAX_LOGS;
         if (prop === 'maxAnimes') return self.MAX_ANIMES;
-        if (prop === 'maxLastSelectMap') return self.MAX_LAST_SELECT_MAP;
+        if (prop === 'maxLastSelectMap') return self.envs.MAX_LAST_SELECT_MAP;
 
         // 暴露方法
         if (prop === 'makeProxyUrl') return self.makeProxyUrl.bind(self);

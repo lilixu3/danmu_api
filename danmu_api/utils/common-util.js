@@ -273,3 +273,25 @@ export function validateType(value, expectedType) {
     throw new TypeError(`${value} 必须是 ${expectedType}，但传入的是 ${fieldName}`);
   }
 }
+
+/**
+ * 解析布尔类型参数（来自 query/body/env 等）
+ * 兼容：true/false, 1/0, "true"/"false", "1"/"0", "yes"/"no", "on"/"off"
+ * @param {any} value - 输入值
+ * @param {boolean} [defaultValue=false] - 默认值
+ * @returns {boolean}
+ */
+export function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+
+  const str = String(value).trim().toLowerCase();
+  if (str === '') return defaultValue;
+
+  if (['true', '1', 'yes', 'y', 'on'].includes(str)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(str)) return false;
+
+  return defaultValue;
+}
+

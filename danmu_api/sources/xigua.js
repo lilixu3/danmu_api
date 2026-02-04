@@ -31,7 +31,7 @@ class XiguaSource extends BaseSource {
 
       if (sectionMatch) {
         const sectionContent = sectionMatch[1]; // 获取s-long-video-card内的内容
-        
+
         // 使用正则表达式匹配每个视频条目
         const videoRegex = /<div class="s-long-video">[\s\S]*?(?=<div class="s-long-video">|$)/g;
         const videoCards = sectionContent.match(videoRegex) || [];
@@ -40,7 +40,7 @@ class XiguaSource extends BaseSource {
           // 提取URL
           const urlMatch = card.match(/href="(\/video\/\d+)"/);
           const url = urlMatch ? `https://m.ixigua.com${urlMatch[1]}` : '';
-          
+
           // 提取标题
           const titleMatch = card.match(/<h3 class="s-long-video-info-title">[\s\S]*?title="([^"]+)"/);
           const title = titleMatch ? titleMatch[1] : '';
@@ -54,18 +54,18 @@ class XiguaSource extends BaseSource {
           }
           // 替换HTML实体 &amp; 为 &
           img = img.replace(/&amp;/g, '&');
-          
+
           // 提取类型和年份 (格式: 电视剧/中国大陆/2006)
           const typeYearMatch = card.match(/<p>([^<]+\/[^<]+\/\d{4})<\/p>/);
           let type = '';
           let year = '';
-          
+
           if (typeYearMatch) {
             const parts = typeYearMatch[1].split('/');
             type = parts[0] || ''; // 电视剧
             year = parts[2] || ''; // 2006
           }
-          
+
           if (url && title) {
             animes.push({
               name: title,
@@ -101,7 +101,7 @@ class XiguaSource extends BaseSource {
       // https://m.ixigua.com/video/6551333775337325060
       const itemId = id.split('/').pop();
       const detailUrl = `https://m.ixigua.com/video/${itemId}`;
-      
+
       const resp = await httpGet(detailUrl, {
         headers: {
           "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/17.5 Mobile/15A5370a Safari/602.1"
@@ -150,7 +150,7 @@ class XiguaSource extends BaseSource {
           // 提取并解析JSON数据
           const episodesJsonStr = episodesMatch[0].replace(/"episodes_list"\s*:\s*/, '');
           const episodes = JSON.parse(episodesJsonStr);
-          
+
           // 生成播放链接列表
           const playlistUrls = episodes.map(ep => ({
             seq_num: ep.seq_num,
@@ -159,10 +159,10 @@ class XiguaSource extends BaseSource {
             gid: ep.gid,
             cover_image_url: ep.cover_image_url
           }));
-          
+
           // 如果需要，可以返回或进一步处理这个列表
           return playlistUrls;
-          
+
         } catch (e) {
           log("error", '解析episodes_list失败:', e);
         }
@@ -241,7 +241,7 @@ class XiguaSource extends BaseSource {
 
   async getEpisodeDanmu(id) {
     log("info", "开始从本地请求西瓜视频弹幕...", id);
-    
+
     // 获取弹幕分段数据
     const segmentResult = await this.getEpisodeDanmuSegments(id);
     if (!segmentResult || !segmentResult.segmentList || segmentResult.segmentList.length === 0) {
@@ -254,25 +254,25 @@ class XiguaSource extends BaseSource {
     // 并发请求所有弹幕段，限制并发数量为50
     const MAX_CONCURRENT = 100;
     const allComments = [];
-    
+
     // 将segmentList分批处理，每批最多MAX_CONCURRENT个请求
     for (let i = 0; i < segmentList.length; i += MAX_CONCURRENT) {
       const batch = segmentList.slice(i, i + MAX_CONCURRENT);
-      
+
       // 并发处理当前批次的请求
       const batchPromises = batch.map(segment => this.getEpisodeSegmentDanmu(segment));
       const batchResults = await Promise.allSettled(batchPromises);
-      
+
       // 处理结果
       for (let j = 0; j < batchResults.length; j++) {
         const result = batchResults[j];
         const segment = batch[j];
         const start = segment.segment_start;
         const end = segment.segment_end;
-        
+
         if (result.status === 'fulfilled') {
           const comments = result.value;
-          
+
           if (comments && comments.length > 0) {
             allComments.push(...comments);
           }
@@ -280,7 +280,7 @@ class XiguaSource extends BaseSource {
           log("error", `获取弹幕段失败 (${start}-${end}s):`, result.reason.message);
         }
       }
-      
+
       // 批次之间稍作延迟，避免过于频繁的请求
       if (i + MAX_CONCURRENT < segmentList.length) {
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -320,7 +320,7 @@ class XiguaSource extends BaseSource {
       });
 
       const danmuUrl = `https://ib.snssdk.com/vapp/danmaku/list/v1/?${danmuQueryString}`;
-      
+
       segmentList.push({
         "type": "xigua",
         "segment_start": segmentStart,

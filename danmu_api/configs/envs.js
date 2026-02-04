@@ -23,10 +23,15 @@ export class Envs {
    */
   static get(key, defaultValue, type = 'string', encrypt = false) {
     let value;
-    if (typeof this.env !== 'undefined' && this.env[key]) {
+
+    // IMPORTANT:
+    // Use existence checks instead of truthy checks, so values like 0 / false / '' are treated as "set".
+    const hasKey = (obj, k) => obj && Object.prototype.hasOwnProperty.call(obj, k);
+
+    if (typeof this.env !== 'undefined' && hasKey(this.env, key)) {
       value = this.env[key];
       this.originalEnvVars.set(key, value);
-    } else if (typeof process !== 'undefined' && process.env?.[key]) {
+    } else if (typeof process !== 'undefined' && process.env && hasKey(process.env, key)) {
       value = process.env[key];
       this.originalEnvVars.set(key, value);
     } else {
@@ -120,34 +125,6 @@ export class Envs {
 
     return orderArr.length > 0 ? orderArr : ['360', 'vod', 'renren', 'hanjutv'];
   }
-
-  /**
-   * 解析平台排序
-   * 支持单个平台或通过&连接的组合平台（如 bilibili1&dandan）
-   * @returns {Array} 平台排序数组
-   */
-  static resolvePlatformOrder() {
-    const rawOrder = this.get('PLATFORM_ORDER', '', 'string');
-    
-    const orderArr = rawOrder
-      .split(',')
-      .map(s => s.trim())
-      .filter(item => {
-        if (!item) return false;
-        // 如果包含 &，则分割校验每一部分是否有效
-        if (item.includes('&')) {
-            const parts = item.split('&').map(p => p.trim());
-            return parts.every(p => this.ALLOWED_PLATFORMS.includes(p));
-        }
-        // 单个平台直接校验
-        return this.ALLOWED_PLATFORMS.includes(item);
-      });
-
-    this.accessedEnvVars.set('PLATFORM_ORDER', orderArr);
-
-    return orderArr.length > 0 ? [...orderArr, null] : [null];
-  }
-
   /**
    * 解析源合并配置
    * 从环境变量 MERGE_SOURCE_PAIRS 获取配置
@@ -187,6 +164,30 @@ export class Envs {
         return { primary, secondaries: validSecondaries };
       })
       .filter(Boolean);
+  }
+  /**
+   * 解析平台排序
+   * 支持单个平台或通过&连接的组合平台（如 bilibili1&dandan）
+   * @returns {Array} 平台排序数组
+   */
+  static resolvePlatformOrder() {
+    const rawOrder = this.get('PLATFORM_ORDER', '', 'string');
+
+    const orderArr = rawOrder
+      .split(',')
+      .map(s => s.trim())
+      .filter(item => {
+        if (!item) return false;
+        if (item.includes('&')) {
+          const parts = item.split('&').map(p => p.trim());
+          return parts.every(p => this.ALLOWED_PLATFORMS.includes(p));
+        }
+        return this.ALLOWED_PLATFORMS.includes(item);
+      });
+
+    this.accessedEnvVars.set('PLATFORM_ORDER', orderArr);
+
+    return orderArr.length > 0 ? [...orderArr, null] : [null];
   }
 
   /**
@@ -248,6 +249,7 @@ export class Envs {
       return new RegExp(`^(.*?)(?:${defaultFilter})(.*?)$`, 'i');
     }
   }
+
   /**
    * 获取记录的原始环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
@@ -255,8 +257,7 @@ export class Envs {
   static getOriginalEnvVars() {
     return this.originalEnvVars;
   }
-
-  /**
+/**
    * 解析剧名映射表
    * @returns {Map} 剧名映射表
    */
@@ -281,7 +282,6 @@ export class Envs {
 
     return mappingTable;
   }
-
   /**
    * 获取记录的环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
@@ -298,7 +298,7 @@ export class Envs {
    */
   static load(env = {}) {
     this.env = env;
-    
+
     // 环境变量分类和描述映射
     const envVarConfig = {
       // API配置
@@ -315,8 +315,7 @@ export class Envs {
       'VOD_REQUEST_TIMEOUT': { category: 'source', type: 'number', description: 'VOD请求超时时间，默认10000', min: 5000, max: 30000 },
       'BILIBILI_COOKIE': { category: 'source', type: 'text', description: 'B站Cookie' },
       'YOUKU_CONCURRENCY': { category: 'source', type: 'number', description: '优酷并发配置，默认8', min: 1, max: 16 },
-      'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },
-      
+      'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },      
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置，可以配置自动匹配时的优选平台。\n当配置合并平台的时候，可以指定期望的合并源，\n示例：一个结果返回了“dandan&bilibili1&animeko”和“youku”时，\n当配置“youku”时返回“youku” \n当配置“dandan&animeko”时返回“dandan&bilibili1&animeko”' },
       'EPISODE_TITLE_FILTER': { category: 'match', type: 'text', description: '剧集标题过滤规则' },
@@ -331,13 +330,16 @@ export class Envs {
       'DANMU_LIMIT': { category: 'danmu', type: 'number', description: '弹幕数量限制，单位为k，即千：默认 0，表示不限制弹幕数', min: 0, max: 100 },
       'DANMU_SIMPLIFIED_TRADITIONAL': { category: 'danmu', type: 'select', options: ['default', 'simplified', 'traditional'], description: '弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）' },
       'CONVERT_TOP_BOTTOM_TO_SCROLL': { category: 'danmu', type: 'boolean', description: '顶部/底部弹幕转换为浮动弹幕' },
-      'CONVERT_COLOR': { category: 'danmu', type: 'select', options: ['default', 'white', 'color'], description: '弹幕转换颜色配置' },
+      'CONVERT_COLOR': { category: 'danmu', type: 'color-list', description: '自定义随机转换颜色池（支持手动配置/排序/删除，支持真随机添加，为空则不转换）' },
+      'DANMU_FONT_SIZE': { category: 'danmu', type: 'number', description: '弹幕字体大小（B站标准），默认25', min: 10, max: 100 },
       'DANMU_OUTPUT_FORMAT': { category: 'danmu', type: 'select', options: ['json', 'xml'], description: '弹幕输出格式，默认json' },
       'DANMU_PUSH_URL': { category: 'danmu', type: 'text', description: '弹幕推送地址，示例 http://127.0.0.1:9978/action?do=refresh&type=danmaku&path= ' },
 
       // 缓存配置
       'SEARCH_CACHE_MINUTES': { category: 'cache', type: 'number', description: '搜索结果缓存时间(分钟)，默认1', min: 1, max: 120 },
       'COMMENT_CACHE_MINUTES': { category: 'cache', type: 'number', description: '弹幕缓存时间(分钟)，默认1', min: 1, max: 120 },
+      'SEARCH_CACHE_MAX_ITEMS': { category: 'cache', type: 'number', description: '搜索缓存最大条目数（0表示不限制），默认300', min: 0, max: 50000 },
+      'COMMENT_CACHE_MAX_ITEMS': { category: 'cache', type: 'number', description: '弹幕缓存最大条目数（0表示不限制），默认300', min: 0, max: 50000 },
       'REMEMBER_LAST_SELECT': { category: 'cache', type: 'boolean', description: '记住手动选择结果' },
       'MAX_LAST_SELECT_MAP': { category: 'cache', type: 'number', description: '记住上次选择映射缓存大小限制', min: 10, max: 1000 },
       'UPSTASH_REDIS_REST_URL': { category: 'cache', type: 'text', description: 'Upstash Redis请求链接' },
@@ -351,8 +353,9 @@ export class Envs {
       'DEPLOY_PLATFROM_PROJECT': { category: 'system', type: 'text', description: '部署平台项目名称' },
       'DEPLOY_PLATFROM_TOKEN': { category: 'system', type: 'text', description: '部署平台访问令牌' },
       'NODE_TLS_REJECT_UNAUTHORIZED': { category: 'system', type: 'number', description: '在建立 HTTPS 连接时是否验证服务器的 SSL/TLS 证书，0表示忽略，默认为1', min: 0, max: 1 },
+      'ALLOW_PRIVATE_URLS': { category: 'system', type: 'boolean', description: '是否允许访问本地/内网 URL（默认 false，开启可能存在 SSRF 风险）' },
     };
-    
+
     return {
       vodAllowedPlatforms: this.VOD_ALLOWED_PLATFORMS,
       allowedPlatforms: this.ALLOWED_PLATFORMS,
@@ -374,15 +377,27 @@ export class Envs {
       danmuLimit: this.get('DANMU_LIMIT', 0, 'number'), // 等间隔采样限制弹幕总数，单位为k，即千：默认 0，表示不限制弹幕数，若改为5，弹幕总数在超过5000的情况下会将弹幕数控制在5000
       proxyUrl: this.get('PROXY_URL', '', 'string', true), // 代理/反代地址
       danmuSimplifiedTraditional: this.get('DANMU_SIMPLIFIED_TRADITIONAL', 'default', 'string'), // 弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）
+      danmuFontSize: (() => {
+        const raw = this.get('DANMU_FONT_SIZE', 25, 'string');
+        let v = parseInt(raw, 10);
+        if (isNaN(v) || v <= 0) v = 25;
+        v = Math.min(Math.max(v, 10), 100);
+        // 覆盖 accessedEnvVars 为最终数值，便于 UI 预览
+        this.accessedEnvVars.set('DANMU_FONT_SIZE', v);
+        return v;
+      })(),
       danmuPushUrl: this.get('DANMU_PUSH_URL', '', 'string'), // 代理/反代地址
       tmdbApiKey: this.get('TMDB_API_KEY', '', 'string', true), // TMDB API KEY
       redisUrl: this.get('UPSTASH_REDIS_REST_URL', '', 'string', true), // upstash redis url
       redisToken: this.get('UPSTASH_REDIS_REST_TOKEN', '', 'string', true), // upstash redis url
       rateLimitMaxRequests: this.get('RATE_LIMIT_MAX_REQUESTS', 3, 'number'), // 限流配置：时间窗口内最大请求次数（默认 3，0表示不限流）
       enableEpisodeFilter: this.get('ENABLE_EPISODE_FILTER', false, 'boolean'), // 集标题过滤开关配置（默认 false，禁用过滤）
-      logLevel: this.get('LOG_LEVEL', 'info', 'string'), // 日志级别配置（默认 info，可选值：error, warn, info）
+      logLevel: this.get('LOG_LEVEL', 'info', 'string'), // 日志级别配置（默认 info，可选值：debug, info, warn, error）
+      allowPrivateUrls: this.get('ALLOW_PRIVATE_URLS', false, 'boolean'), // 是否允许访问本地/内网 URL（默认 false）
       searchCacheMinutes: this.get('SEARCH_CACHE_MINUTES', 1, 'number'), // 搜索结果缓存时间配置（分钟，默认 1）
       commentCacheMinutes: this.get('COMMENT_CACHE_MINUTES', 1, 'number'), // 弹幕缓存时间配置（分钟，默认 1）
+      searchCacheMaxItems: this.get('SEARCH_CACHE_MAX_ITEMS', 300, 'number'), // 搜索缓存最大条目数（默认 300，0表示不限制）
+      commentCacheMaxItems: this.get('COMMENT_CACHE_MAX_ITEMS', 300, 'number'), // 弹幕缓存最大条目数（默认 300，0表示不限制）
       convertTopBottomToScroll: this.get('CONVERT_TOP_BOTTOM_TO_SCROLL', false, 'boolean'), // 顶部/底部弹幕转换为浮动弹幕配置（默认 false，禁用转换）
       convertColor: this.get('CONVERT_COLOR', 'default', 'string'), // 弹幕转换颜色配置，支持 default、white、color（默认 default，禁用转换）
       danmuOutputFormat: this.get('DANMU_OUTPUT_FORMAT', 'json', 'string'), // 弹幕输出格式配置（默认 json，可选值：json, xml）

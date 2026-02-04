@@ -12,10 +12,11 @@ RUN npm install
 
 # 复制所有源代码
 COPY danmu_api/ ./danmu_api/
-COPY config/ ./config_example/
+COPY config/ ./config/
 
 # 暴露端口
 EXPOSE 9321
+EXPOSE 5321
 
 # 启动命令
 CMD ["node", "danmu_api/server.js"]

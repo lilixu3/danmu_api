@@ -8,6 +8,36 @@ let fs, path;
 // cache数据结构处理函数
 // =====================
 
+function parseCacheContent(raw) {
+    if (raw === null || raw === undefined) return null;
+    let v = raw;
+    if (typeof v === 'string') v = v.trim();
+    if (v === '') return null;
+
+    // First parse if it's a JSON string
+    if (typeof v === 'string') {
+        try {
+            v = JSON.parse(v);
+        } catch {
+            return null;
+        }
+    }
+
+    // Handle double-encoded JSON
+    if (typeof v === 'string') {
+        const s = v.trim();
+        if (s !== '') {
+            try {
+                v = JSON.parse(s);
+            } catch {
+                // keep as string if second parse fails
+            }
+        }
+    }
+
+    return v;
+}
+
 // 检查搜索缓存是否有效（未过期）
 export function isSearchCacheValid(keyword) {
     if (!globals.searchCache.has(keyword)) {
@@ -324,8 +354,7 @@ export function getDirname() {
 export function readCacheFromFile(key) {
   const cacheFilePath = path.join(getDirname(), '..', '..', '.cache', `${key}`);
   if (fs.existsSync(cacheFilePath)) {
-    const fileContent = fs.readFileSync(cacheFilePath, 'utf8');
-    return JSON.parse(fileContent);
+    return fs.readFileSync(cacheFilePath, 'utf8');
   }
   return null;
 }
@@ -343,14 +372,27 @@ export async function getLocalCaches() {
       log("info", 'getLocalCaches start.');
 
       // 从本地缓存文件读取数据并恢复到 globals 中
-      globals.animes = JSON.parse(readCacheFromFile('animes')) || globals.animes;
-      globals.episodeIds = JSON.parse(readCacheFromFile('episodeIds')) || globals.episodeIds;
-      globals.episodeNum = JSON.parse(readCacheFromFile('episodeNum')) || globals.episodeNum;
+      const animes = parseCacheContent(readCacheFromFile('animes'));
+      const episodeIds = parseCacheContent(readCacheFromFile('episodeIds'));
+      let episodeNum = parseCacheContent(readCacheFromFile('episodeNum'));
+
+      if (typeof episodeNum === 'string') {
+        const n = Number(episodeNum);
+        if (Number.isFinite(n)) episodeNum = n;
+      }
+
+      if (animes !== null && animes !== undefined) globals.animes = animes;
+      if (episodeIds !== null && episodeIds !== undefined) globals.episodeIds = episodeIds;
+      if (episodeNum !== null && episodeNum !== undefined) globals.episodeNum = episodeNum;
 
       // 恢复 lastSelectMap 并转换为 Map 对象
-      const lastSelectMapData = readCacheFromFile('lastSelectMap');
+      const lastSelectMapData = parseCacheContent(readCacheFromFile('lastSelectMap'));
       if (lastSelectMapData) {
-        globals.lastSelectMap = new Map(Object.entries(JSON.parse(lastSelectMapData)));
+        if (lastSelectMapData instanceof Map) {
+          globals.lastSelectMap = lastSelectMapData;
+        } else if (typeof lastSelectMapData === 'object') {
+          globals.lastSelectMap = new Map(Object.entries(lastSelectMapData));
+        }
         log("info", `Restored lastSelectMap from local cache with ${globals.lastSelectMap.size} entries`);
       }
 
@@ -384,11 +426,11 @@ export async function updateLocalCaches() {
     ];
 
     for (const { key, value } of variables) {
-      // 对于 lastSelectMap（Map 对象），需要转换为普通对象后再序列化
-      const serializedValue = key === 'lastSelectMap' ? JSON.stringify(Object.fromEntries(value)) : JSON.stringify(value);
+      const valueToWrite = key === 'lastSelectMap' ? Object.fromEntries(value) : value;
+      const serializedValue = JSON.stringify(valueToWrite);
       const currentHash = simpleHash(serializedValue);
       if (currentHash !== globals.lastHashes[key]) {
-        writeCacheToFile(key, serializedValue);
+        writeCacheToFile(key, valueToWrite);
         updates.push({ key, hash: currentHash });
       }
     }
