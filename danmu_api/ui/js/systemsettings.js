@@ -992,13 +992,11 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             const pairs = [];
             offsetItems.forEach(item => {
                 const titleInput = item.querySelector('.offset-title-input');
-                const platformSelect = item.querySelector('.offset-platform-select');
                 const offsetInput = item.querySelector('.offset-value-input');
                 const titleValue = titleInput ? titleInput.value.trim() : '';
                 const offsetValue = offsetInput ? offsetInput.value.trim() : '';
-                const platforms = platformSelect
-                    ? Array.from(platformSelect.selectedOptions).map(opt => opt.value)
-                    : [];
+                const platformChips = item.querySelectorAll('.platform-chip.selected');
+                const platforms = Array.from(platformChips).map(chip => chip.dataset.value);
                 if (!titleValue || platforms.length === 0 || offsetValue === '') {
                     return;
                 }
@@ -1317,11 +1315,12 @@ function renderValueInput(item) {
             return { title: titleValue, platforms, offset: offsetValue };
         }).filter(Boolean);
 
-        const renderOptions = (selectedPlatforms) => {
+        const renderPlatformChips = (selectedPlatforms) => {
+            const normalized = selectedPlatforms && selectedPlatforms.includes('all') ? ['all'] : (selectedPlatforms || []);
             return options.map(opt => {
                 const label = opt === 'all' ? '全部' : opt;
-                const selected = selectedPlatforms.includes(opt) ? 'selected' : '';
-                return '<option value="' + escapeHtml(opt) + '" ' + selected + '>' + escapeHtml(label) + '</option>';
+                const selected = normalized.includes(opt) ? 'selected' : '';
+                return '<button type="button" class="platform-chip ' + selected + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
             }).join('');
         };
 
@@ -1337,20 +1336,14 @@ function renderValueInput(item) {
                         <span>新增规则</span>
                     </button>
                 </div>
-                <div class="timeline-offset-help">选择“all”表示全部平台，偏移量单位为秒（可为负数）。</div>
+                <div class="timeline-offset-help">剧名与偏移在一行，平台单独一行选择。选择“all”表示全部平台。</div>
                 <div class="timeline-offset-list" id="timeline-offset-container">
                     \${offsetItems.map((item, index) => \`
                         <div class="timeline-offset-item" data-index="\${index}">
-                            <div class="timeline-offset-grid">
+                            <div class="timeline-offset-row">
                                 <div class="timeline-offset-field">
                                     <label>剧名</label>
                                     <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年" value="\${escapeHtml(item.title)}">
-                                </div>
-                                <div class="timeline-offset-field">
-                                    <label>平台</label>
-                                    <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                                        \${renderOptions(item.platforms)}
-                                    </select>
                                 </div>
                                 <div class="timeline-offset-field offset-value-field">
                                     <label>偏移(秒)</label>
@@ -1360,19 +1353,19 @@ function renderValueInput(item) {
                                     <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
                                 </div>
                             </div>
+                            <div class="timeline-offset-platforms">
+                                <div class="timeline-offset-platforms-label">平台（可多选）</div>
+                                <div class="timeline-offset-platforms-chips">
+                                    \${renderPlatformChips(item.platforms)}
+                                </div>
+                            </div>
                         </div>
                     \`).join('')}
                     <div class="timeline-offset-item timeline-offset-item-template" style="display: none;">
-                        <div class="timeline-offset-grid">
+                        <div class="timeline-offset-row">
                             <div class="timeline-offset-field">
                                 <label>剧名</label>
                                 <input type="text" class="offset-title-input form-input" placeholder="例如：庆余年">
-                            </div>
-                            <div class="timeline-offset-field">
-                                <label>平台</label>
-                                <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
-                                    \${renderOptions([])}
-                                </select>
                             </div>
                             <div class="timeline-offset-field offset-value-field">
                                 <label>偏移(秒)</label>
@@ -1380,6 +1373,12 @@ function renderValueInput(item) {
                             </div>
                             <div class="timeline-offset-field offset-actions">
                                 <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
+                            </div>
+                        </div>
+                        <div class="timeline-offset-platforms">
+                            <div class="timeline-offset-platforms-label">平台（可多选）</div>
+                            <div class="timeline-offset-platforms-chips">
+                                \${renderPlatformChips([])}
                             </div>
                         </div>
                     </div>
@@ -2536,14 +2535,27 @@ function removeTimelineOffsetItem(button) {
     }
 }
 
-function normalizeTimelineOffsetSelection(selectEl) {
-    if (!selectEl) return;
-    const selected = Array.from(selectEl.selectedOptions).map(opt => opt.value);
-    if (selected.includes('all') && selected.length > 1) {
-        Array.from(selectEl.options).forEach(opt => {
-            opt.selected = opt.value === 'all';
+function toggleTimelineOffsetPlatform(button) {
+    if (!button) return;
+    const item = button.closest('.timeline-offset-item');
+    if (!item) return;
+    const value = button.dataset.value || '';
+    const chips = Array.from(item.querySelectorAll('.platform-chip'));
+    const isAll = value === 'all';
+
+    if (isAll) {
+        chips.forEach(chip => {
+            chip.classList.toggle('selected', chip.dataset.value === 'all');
         });
+        return;
     }
+
+    button.classList.toggle('selected');
+    chips.forEach(chip => {
+        if (chip.dataset.value === 'all') {
+            chip.classList.remove('selected');
+        }
+    });
 }
 // 点击模态框背景关闭
 document.addEventListener('click', function(e) {
