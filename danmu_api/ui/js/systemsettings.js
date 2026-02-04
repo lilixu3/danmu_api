@@ -1003,7 +1003,7 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
                     return;
                 }
                 const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
-                pairs.push(`${titleValue}@${platformValue}@${offsetValue}`);
+                pairs.push(titleValue + '@' + platformValue + '@' + offsetValue);
             });
             value = pairs.join(';');
             itemData = { key, value, description, type };
