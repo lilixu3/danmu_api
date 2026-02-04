@@ -13,6 +13,8 @@ export class Envs {
   static ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'animeko', 'custom']; // 全部源允许的播放平台
   static ALLOWED_SOURCES = ['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'animeko', 'custom']; // 允许的源
   static MERGE_ALLOWED_SOURCES = ['tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'animeko']; // 允许的源合并
+  static TIMELINE_OFFSET_ALL = 'all';
+  static TIMELINE_OFFSET_ALLOWED_PLATFORMS = Envs.ALLOWED_PLATFORMS;
 
   /**
    * 获取环境变量
@@ -282,6 +284,65 @@ export class Envs {
 
     return mappingTable;
   }
+
+  /**
+   * 解析剧名-平台-偏移量配置
+   * @returns {Array} 偏移配置数组 [{ title, platforms, offset, all }]
+   */
+  static resolveTitlePlatformOffsetRules() {
+    const config = this.get('TITLE_PLATFORM_OFFSET_TABLE', '', 'string').trim();
+    if (!config) return [];
+
+    const allowedPlatforms = new Set(this.TIMELINE_OFFSET_ALLOWED_PLATFORMS || []);
+
+    return config
+      .split(';')
+      .map(item => item.trim())
+      .filter(Boolean)
+      .map(item => {
+        const parts = item.split('@');
+        if (parts.length < 3) return null;
+
+        const offsetRaw = parts.pop().trim();
+        const platformsRaw = parts.pop().trim();
+        const title = parts.join('@').trim();
+
+        if (!title || !platformsRaw) return null;
+
+        const offset = parseFloat(offsetRaw);
+        if (Number.isNaN(offset)) return null;
+
+        const platformParts = platformsRaw
+          .split(/[&,]/)
+          .map(p => p.trim())
+          .filter(Boolean);
+
+        const hasAll = platformParts.some(p => {
+          const lowered = p.toLowerCase();
+          return lowered === this.TIMELINE_OFFSET_ALL || lowered === '*';
+        });
+
+        if (hasAll) {
+          return {
+            title,
+            platforms: [this.TIMELINE_OFFSET_ALL],
+            offset,
+            all: true
+          };
+        }
+
+        const platforms = [...new Set(platformParts.filter(p => allowedPlatforms.has(p)))];
+        if (platforms.length === 0) return null;
+
+        return {
+          title,
+          platforms,
+          offset,
+          all: false
+        };
+      })
+      .filter(Boolean);
+  }
   /**
    * 获取记录的环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
@@ -300,6 +361,7 @@ export class Envs {
     this.env = env;
 
     // 环境变量分类和描述映射
+    const timelineOffsetOptions = [this.TIMELINE_OFFSET_ALL, ...(this.TIMELINE_OFFSET_ALLOWED_PLATFORMS || [])];
     const envVarConfig = {
       // API配置
       'TOKEN': { category: 'api', type: 'text', description: 'API访问令牌' },
@@ -334,6 +396,7 @@ export class Envs {
       'DANMU_FONT_SIZE': { category: 'danmu', type: 'number', description: '弹幕字体大小（B站标准），默认25', min: 10, max: 100 },
       'DANMU_OUTPUT_FORMAT': { category: 'danmu', type: 'select', options: ['json', 'xml'], description: '弹幕输出格式，默认json' },
       'DANMU_PUSH_URL': { category: 'danmu', type: 'text', description: '弹幕推送地址，示例 http://127.0.0.1:9978/action?do=refresh&type=danmaku&path= ' },
+      'TITLE_PLATFORM_OFFSET_TABLE': { category: 'danmu', type: 'timeline-offset', options: timelineOffsetOptions, description: '剧名-平台-时间轴偏移配置，格式：剧名@平台1&平台2@-5;剧名2@all@5（all 表示全部平台），偏移单位为秒' },
 
       // 缓存配置
       'SEARCH_CACHE_MINUTES': { category: 'cache', type: 'number', description: '搜索结果缓存时间(分钟)，默认1', min: 1, max: 120 },
@@ -404,6 +467,7 @@ export class Envs {
       strictTitleMatch: this.get('STRICT_TITLE_MATCH', false, 'boolean'), // 严格标题匹配模式配置（默认 false，宽松模糊匹配）
       titleToChinese: this.get('TITLE_TO_CHINESE', false, 'boolean'), // 外语标题转换中文开关
       titleMappingTable: this.resolveTitleMappingTable(), // 剧名映射表，用于自动匹配时替换标题进行搜索
+      titlePlatformOffsetRules: this.resolveTitlePlatformOffsetRules(), // 剧名-平台-时间轴偏移配置
       rememberLastSelect: this.get('REMEMBER_LAST_SELECT', true, 'boolean'), // 是否记住手动选择结果，用于match自动匹配时优选上次的选择（默认 true，记住）
       MAX_LAST_SELECT_MAP: this.get('MAX_LAST_SELECT_MAP', 100, 'number'), // 记住上次选择映射缓存大小限制（默认 100）
       deployPlatformAccount: this.get('DEPLOY_PLATFROM_ACCOUNT', '', 'string', true), // 部署平台账号ID配置（默认空）

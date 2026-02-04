@@ -210,7 +210,10 @@ function getTypeBadge(type) {
         boolean: '布尔',
         number: '数字',
         select: '单选',
-        'multi-select': '多选'
+        'multi-select': '多选',
+        map: '映射',
+        'timeline-offset': '偏移',
+        'color-list': '颜色'
     };
     return badges[type] || '文本';
 }

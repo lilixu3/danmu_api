@@ -561,6 +561,15 @@ export const formsCssContent = /* css */ `
     min-width: 0;
 }
 
+.offset-platform-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.offset-platform-select[multiple] {
+    min-height: 2.5rem;
+}
+
 .map-separator {
     font-weight: bold;
     color: var(--text-secondary);

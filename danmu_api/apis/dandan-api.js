@@ -8,6 +8,7 @@ import {
     updateLocalCaches
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
+import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
 import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER } from "../utils/merge-util.js";
@@ -1039,10 +1040,11 @@ export async function getBangumi(path) {
  * @param {string} url 聚合URL
  * @returns {Promise<Array>} 合并后的弹幕列表
  */
-async function fetchMergedComments(url) {
+async function fetchMergedComments(url, offsetContext = {}) {
   const parts = url.split(MERGE_DELIMITER);
   const sourceNames = parts.map(part => part.split(':')[0]).filter(Boolean);
   const sourceTag = sourceNames.join('＆');
+  const { animeTitle, episodeTitle } = offsetContext || {};
 
   log("info", `[Merge] 开始获取 [${sourceTag}] 聚合弹幕...`);
 
@@ -1102,7 +1104,13 @@ async function fetchMergedComments(url) {
           try {
             // 获取原始数据 -> 格式化
             const raw = await sourceInstance.getEpisodeDanmu(realId);
-            const formatted = sourceInstance.formatComments(raw);
+            let formatted = sourceInstance.formatComments(raw);
+            const offsetSeconds = resolveTimelineOffsetSeconds({
+              animeTitle,
+              episodeTitle,
+              source: sourceName
+            });
+            formatted = applyOffsetToFormattedComments(formatted, offsetSeconds);
             stats[sourceName] = formatted.length;
             return formatted;
           } catch (e) {
@@ -1147,6 +1155,14 @@ export async function getComment(path, queryFormat, segmentFlag) {
   let url = findUrlById(commentId);
   let title = findTitleById(commentId);
   let plat = title ? (title.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
+  const [animeId, source] = findAnimeIdByCommentId(commentId);
+  const animeTitle = animeId ? (globals.animes.find(anime => anime.animeId === animeId)?.animeTitle || '') : '';
+  const offsetSeconds = resolveTimelineOffsetSeconds({
+    animeTitle,
+    episodeTitle: title,
+    platform: plat,
+    source
+  });
   log("info", "comment url...", url);
   log("info", "comment title...", title);
   log("info", "comment platform...", plat);
@@ -1167,55 +1183,54 @@ export async function getComment(path, queryFormat, segmentFlag) {
   let danmus = [];
 
   if (url && url.includes(MERGE_DELIMITER)) {
-    danmus = await fetchMergedComments(url);
+    danmus = await fetchMergedComments(url, { animeTitle, episodeTitle: title });
   } else {
     if (url.includes('.qq.com')) {
-      danmus = await tencentSource.getComments(url, plat, segmentFlag);
+      danmus = await tencentSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.iqiyi.com')) {
-      danmus = await iqiyiSource.getComments(url, plat, segmentFlag);
+      danmus = await iqiyiSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.mgtv.com')) {
-      danmus = await mangoSource.getComments(url, plat, segmentFlag);
+      danmus = await mangoSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
       // 如果是 b23.tv 短链接，先解析为完整 URL
       if (url.includes('b23.tv')) {
         url = await bilibiliSource.resolveB23Link(url);
       }
-      danmus = await bilibiliSource.getComments(url, plat, segmentFlag);
+      danmus = await bilibiliSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.youku.com')) {
-      danmus = await youkuSource.getComments(url, plat, segmentFlag);
+      danmus = await youkuSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.sohu.com')) {
-      danmus = await sohuSource.getComments(url, plat, segmentFlag);
+      danmus = await sohuSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.le.com')) {
-      danmus = await leshiSource.getComments(url, plat, segmentFlag);
+      danmus = await leshiSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     } else if (url.includes('.douyin.com') || url.includes('.ixigua.com')) {
-      danmus = await xiguaSource.getComments(url, plat, segmentFlag);
+      danmus = await xiguaSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
     }
 
     // 请求其他平台弹幕
     const urlPattern = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(\/.*)?$/i;
     if (!urlPattern.test(url)) {
       if (plat === "renren") {
-        danmus = await renrenSource.getComments(url, plat, segmentFlag);
+        danmus = await renrenSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       } else if (plat === "hanjutv") {
-        danmus = await hanjutvSource.getComments(url, plat, segmentFlag);
+        danmus = await hanjutvSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       } else if (plat === "bahamut") {
-        danmus = await bahamutSource.getComments(url, plat, segmentFlag);
+        danmus = await bahamutSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       } else if (plat === "dandan") {
-        danmus = await dandanSource.getComments(url, plat, segmentFlag);
+        danmus = await dandanSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       } else if (plat === "custom") {
-        danmus = await customSource.getComments(url, plat, segmentFlag);
+        danmus = await customSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       } else if (plat === "animeko") {
-        danmus = await animekoSource.getComments(url, plat, segmentFlag);
+        danmus = await animekoSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
       }
     }
 
     // 如果弹幕为空，则请求第三方弹幕服务器作为兜底
     if ((!danmus || danmus.length === 0) && urlPattern.test(url)) {
-      danmus = await otherSource.getComments(url, "other_server", segmentFlag);
+      danmus = await otherSource.getComments(url, "other_server", segmentFlag, null, offsetSeconds);
     }
   }
 
-  const [animeId, source] = findAnimeIdByCommentId(commentId);
   if (animeId && source) {
     setPreferByAnimeId(animeId, source);
     if (globals.localCacheValid && animeId) {
@@ -1372,30 +1387,60 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     // b23 解析（用于缓存与后续请求）
     let resolvedUrl = url;
 
+    const findOffsetContextByUrls = (candidateUrls) => {
+      for (const candidateUrl of candidateUrls) {
+        if (!candidateUrl) continue;
+        for (const anime of globals.animes || []) {
+          const link = (anime.links || []).find(item => item.url === candidateUrl);
+          if (link) {
+            return {
+              animeTitle: anime.animeTitle || '',
+              episodeTitle: link.title || ''
+            };
+          }
+        }
+      }
+      return { animeTitle: '', episodeTitle: '' };
+    };
+
+    const resolveOffsetSecondsForPlatform = (platform, candidateUrls) => {
+      const { animeTitle, episodeTitle } = findOffsetContextByUrls(candidateUrls);
+      return resolveTimelineOffsetSeconds({ animeTitle, episodeTitle, platform });
+    };
+
     if (url.includes('.qq.com')) {
-      danmus = await tencentSource.getComments(url, "qq", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('qq', [url]);
+      danmus = await tencentSource.getComments(url, "qq", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.iqiyi.com')) {
-      danmus = await iqiyiSource.getComments(url, "qiyi", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('qiyi', [url]);
+      danmus = await iqiyiSource.getComments(url, "qiyi", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.mgtv.com')) {
-      danmus = await mangoSource.getComments(url, "imgo", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('imgo', [url]);
+      danmus = await mangoSource.getComments(url, "imgo", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
       if (url.includes('b23.tv')) {
         resolvedUrl = await bilibiliSource.resolveB23Link(url);
       }
-      danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('bilibili1', [resolvedUrl, url]);
+      danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.youku.com')) {
-      danmus = await youkuSource.getComments(url, "youku", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('youku', [url]);
+      danmus = await youkuSource.getComments(url, "youku", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.sohu.com')) {
-      danmus = await sohuSource.getComments(url, "sohu", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('sohu', [url]);
+      danmus = await sohuSource.getComments(url, "sohu", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.le.com')) {
-      danmus = await leshiSource.getComments(url, "leshi", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('leshi', [url]);
+      danmus = await leshiSource.getComments(url, "leshi", segmentFlag, null, offsetSeconds);
     } else if (url.includes('.douyin.com') || url.includes('.ixigua.com')) {
-      danmus = await xiguaSource.getComments(url, "xigua", segmentFlag);
+      const offsetSeconds = resolveOffsetSecondsForPlatform('xigua', [url]);
+      danmus = await xiguaSource.getComments(url, "xigua", segmentFlag, null, offsetSeconds);
     } else {
       // 如果不是已知平台，尝试第三方弹幕服务器
       const urlPattern = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(\/.*)?$/i;
       if (urlPattern.test(url)) {
-        danmus = await otherSource.getComments(url, "other_server", segmentFlag);
+        const offsetSeconds = resolveOffsetSecondsForPlatform('other_server', [url]);
+        danmus = await otherSource.getComments(url, "other_server", segmentFlag, null, offsetSeconds);
       }
     }
 

@@ -602,10 +602,11 @@ function renderEnvList() {
                          item.type === 'select' ? 'select' :
                          item.type === 'multi-select' ? 'multi' :
                          item.type === 'map' ? 'map' :
+                         item.type === 'timeline-offset' ? 'offset' :
                          item.type === 'color-list' ? 'color' : 'text';
         const badgeClass = item.type === 'multi-select' ? 'multi' : 
                           item.type === 'color-list' ? 'color' :
-                          item.type === 'map' ? 'map' : '';
+                          (item.type === 'map' || item.type === 'timeline-offset') ? 'map' : '';
 
         return \`
             <div class="env-item" style="animation: fadeInUp 0.3s ease-out \${index * 0.05}s backwards;">
@@ -986,6 +987,26 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             });
             value = pairs.join(';');
             itemData = { key, value, description, type };
+        } else if (type === 'timeline-offset') {
+            const offsetItems = document.querySelectorAll('#timeline-offset-container .timeline-offset-item:not(.timeline-offset-item-template)');
+            const pairs = [];
+            offsetItems.forEach(item => {
+                const titleInput = item.querySelector('.offset-title-input');
+                const platformSelect = item.querySelector('.offset-platform-select');
+                const offsetInput = item.querySelector('.offset-value-input');
+                const titleValue = titleInput ? titleInput.value.trim() : '';
+                const offsetValue = offsetInput ? offsetInput.value.trim() : '';
+                const platforms = platformSelect
+                    ? Array.from(platformSelect.selectedOptions).map(opt => opt.value)
+                    : [];
+                if (!titleValue || platforms.length === 0 || offsetValue === '') {
+                    return;
+                }
+                const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
+                pairs.push(`${titleValue}@${platformValue}@${offsetValue}`);
+            });
+            value = pairs.join(';');
+            itemData = { key, value, description, type };
         } else if (type === 'color-list') {
             // 安全获取 text-value
             const hiddenInput = document.getElementById('text-value');
@@ -1275,6 +1296,68 @@ function renderValueInput(item) {
                 <span>添加映射项</span>
             </button>
         \`;
+
+    } else if (type === 'timeline-offset') {
+        const options = item && item.options ? item.options : [];
+        const entries = value ? value.split(';').map(entry => entry.trim()).filter(entry => entry) : [];
+        const offsetItems = entries.map(entry => {
+            const parts = entry.split('@');
+            if (parts.length < 3) return null;
+            const offsetValue = parts.pop().trim();
+            const platformsRaw = parts.pop().trim();
+            const titleValue = parts.join('@').trim();
+            if (!titleValue) return null;
+            let platforms = platformsRaw
+                .split(/[&,]/)
+                .map(p => p.trim())
+                .filter(p => p);
+            if (platforms.some(p => p.toLowerCase() === 'all' || p === '*')) {
+                platforms = ['all'];
+            }
+            return { title: titleValue, platforms, offset: offsetValue };
+        }).filter(Boolean);
+
+        const renderOptions = (selectedPlatforms) => {
+            return options.map(opt => {
+                const label = opt === 'all' ? '全部' : opt;
+                const selected = selectedPlatforms.includes(opt) ? 'selected' : '';
+                return `<option value="${escapeHtml(opt)}" ${selected}>${escapeHtml(label)}</option>`;
+            }).join('');
+        };
+
+        container.innerHTML = `
+            <label class="form-label">时间轴偏移配置</label>
+            <div class="map-container" id="timeline-offset-container">
+                ${offsetItems.map((item, index) => `
+                    <div class="timeline-offset-item map-item" data-index="${index}">
+                        <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名" value="${escapeHtml(item.title)}">
+                        <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
+                            ${renderOptions(item.platforms)}
+                        </select>
+                        <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)" value="${escapeHtml(item.offset)}">
+                        <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
+                    </div>
+                `).join('')}
+                <div class="timeline-offset-item-template map-item" style="display: none;">
+                    <input type="text" class="offset-title-input map-input-left form-input" placeholder="剧名">
+                    <select class="form-select offset-platform-select" multiple onchange="normalizeTimelineOffsetSelection(this)">
+                        ${renderOptions([])}
+                    </select>
+                    <input type="number" step="0.1" class="offset-value-input map-input-right form-input" placeholder="偏移量(秒)">
+                    <button type="button" class="btn btn-danger btn-sm map-remove-btn" onclick="removeTimelineOffsetItem(this)">删除</button>
+                </div>
+            </div>
+            <div class="form-help" style="margin-top: 0.5rem;">
+                选择“all”表示全部平台；偏移量单位为秒，可为负数
+            </div>
+            <button type="button" class="btn btn-primary" onclick="addTimelineOffsetItem()" style="margin-top: 1rem;">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
+                    <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
+                </svg>
+                <span>添加偏移项</span>
+            </button>
+        `;
 
     } else if (type === 'color-list') {
         // 默认颜色池（与后端 danmu-util.js 保持一致）
@@ -2401,6 +2484,37 @@ function removeMapItem(button) {
     const item = button.closest('.map-item');
     if (item && !item.classList.contains('map-item-template')) {
         item.remove();
+    }
+}
+
+function addTimelineOffsetItem() {
+    const container = document.getElementById('timeline-offset-container');
+    if (!container) return;
+    const template = container.querySelector('.timeline-offset-item-template');
+    if (!template) return;
+    const newItem = template.cloneNode(true);
+    newItem.style.display = 'flex';
+    newItem.classList.remove('timeline-offset-item-template');
+    newItem.classList.add('timeline-offset-item');
+    const index = container.querySelectorAll('.timeline-offset-item:not(.timeline-offset-item-template)').length;
+    newItem.setAttribute('data-index', index);
+    container.appendChild(newItem);
+}
+
+function removeTimelineOffsetItem(button) {
+    const item = button.closest('.timeline-offset-item');
+    if (item && !item.classList.contains('timeline-offset-item-template')) {
+        item.remove();
+    }
+}
+
+function normalizeTimelineOffsetSelection(selectEl) {
+    if (!selectEl) return;
+    const selected = Array.from(selectEl.selectedOptions).map(opt => opt.value);
+    if (selected.includes('all') && selected.length > 1) {
+        Array.from(selectEl.options).forEach(opt => {
+            opt.selected = opt.value === 'all';
+        });
     }
 }
 // 点击模态框背景关闭
