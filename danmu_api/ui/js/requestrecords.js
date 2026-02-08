@@ -36,12 +36,12 @@ function renderRequestRecordsList(records) {
     if (!container) return;
 
     if (!records || records.length === 0) {
-        container.innerHTML = `
+        container.innerHTML = \`
             <div class="request-records-empty">
                 <div class="request-records-empty-icon">📭</div>
                 <div class="request-records-empty-text">暂无请求记录</div>
             </div>
-        `;
+        \`;
         return;
     }
 
@@ -52,24 +52,24 @@ function renderRequestRecordsList(records) {
         const timeText = record.timestamp ? new Date(record.timestamp).toLocaleString('zh-CN') : '未知时间';
         const paramsText = formatRequestParams(record.params);
 
-        return `
+        return \`
             <div class="form-card request-record-card">
                 <div class="request-record-header">
-                    <span class="request-record-method">${method}</span>
-                    <span class="request-record-path">${path || '未知接口'}</span>
+                    <span class="request-record-method">\${method}</span>
+                    <span class="request-record-path">\${path || '未知接口'}</span>
                 </div>
                 <div class="request-record-meta">
-                    <span class="request-record-ip">${clientIp}</span>
-                    <span class="request-record-time">${timeText}</span>
+                    <span class="request-record-ip">\${clientIp}</span>
+                    <span class="request-record-time">\${timeText}</span>
                 </div>
-                ${paramsText ? `
+                \${paramsText ? \`
                     <div class="request-record-params">
                         <div class="request-record-params-title">请求参数</div>
-                        <pre>${paramsText}</pre>
+                        <pre>\${paramsText}</pre>
                     </div>
-                ` : ''}
+                \` : ''}
             </div>
-        `;
+        \`;
     }).join('');
 }
 
@@ -79,9 +79,9 @@ async function refreshRequestRecords() {
     if (!container) return;
 
     requestRecordsLoading = true;
-    container.innerHTML = `
+    container.innerHTML = \`
         <div class="request-records-loading">正在获取请求记录...</div>
-    `;
+    \`;
 
     try {
         const response = await fetch(buildApiUrl('/api/reqrecords'));
@@ -97,12 +97,12 @@ async function refreshRequestRecords() {
     } catch (error) {
         console.error('获取请求记录失败:', error);
         renderRequestRecordsSummary(0, 0);
-        container.innerHTML = `
+        container.innerHTML = \`
             <div class="request-records-empty">
                 <div class="request-records-empty-icon">⚠️</div>
-                <div class="request-records-empty-text">${error.message || '获取失败'}</div>
+                <div class="request-records-empty-text">\${error.message || '获取失败'}</div>
             </div>
-        `;
+        \`;
     } finally {
         requestRecordsLoading = false;
     }
