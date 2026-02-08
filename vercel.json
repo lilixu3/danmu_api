@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "danmu_api/vercel.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/danmu_api/vercel.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/danmu_api/vercel.js"
+    },
+    {
+      "src": "/([^/]+)/api/(.*)",
+      "dest": "/danmu_api/vercel.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/danmu_api/vercel.js"
+    }
+  ]
+}
