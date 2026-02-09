@@ -55,6 +55,14 @@ const apiConfigs = {
                 required: true, 
                 placeholder: '示例: 生万物',
                 description: '输入完整的动漫名称'
+            },
+            { 
+                name: 'episode', 
+                label: '集', 
+                type: 'text', 
+                required: false, 
+                placeholder: '示例: 1, movie',
+                description: '可选，指定集（数字或标识）'
             }
         ]
     },
