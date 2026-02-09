@@ -26,6 +26,23 @@ jobs:
         with:
           node-version: "20"
 
+      - name: 写入 Codex 配置
+        run: |
+          mkdir -p ~/.codex
+          cat > ~/.codex/config.toml <<'EOF'
+          model_provider = "crs"
+          model = "gpt-5.2-codex"
+
+          [model_providers.crs]
+          name = "crs"
+          base_url = "https://capi.quan2go.com/openai"
+          wire_api = "responses"
+          requires_openai_auth = true
+
+          [features]
+          remote_models = false
+          EOF
+
       - name: 配置 Git
         run: |
           git config user.name "github-actions[bot]"
