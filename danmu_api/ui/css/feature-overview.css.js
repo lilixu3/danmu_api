@@ -829,6 +829,25 @@ export const overviewCssContent = /* css */ `/* ================================
     color: #e2e8f0;
 }
 
+.log-line-structured {
+    padding: 0.08rem 0;
+}
+
+.log-line-text-structured {
+    line-height: 1.38;
+    letter-spacing: 0;
+}
+
+.log-terminal.log-wrap-enabled .log-line-text-structured {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.log-terminal.log-wrap-disabled .log-line-text-structured {
+    white-space: pre;
+}
+
 .log-line-error .log-line-level,
 .log-line-error .log-line-text {
     color: #fca5a5;
