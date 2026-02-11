@@ -50,7 +50,6 @@
 3. 纯响应式规则仅放在 `responsive.css.js`。
 4. 若新增功能页，建议新增 `feature-xxx.css.js`，不要继续堆叠到现有大文件中。
 5. 禁止在已废弃文件 `base.css.js`、`colors.css.js`、`components.css.js`、`cookie-editor.css.js`、`dynamic.css.js`、`forms.css.js`、`mode-badge.css.js` 中新增或恢复样式。
-6. 提交说明正文禁止使用字面量 `\n`，必须使用真实换行分条描述。
 
 ## 功能概览
 
