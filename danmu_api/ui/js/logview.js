@@ -26,7 +26,7 @@ function formatLogTime(value) {
     const text = String(value).trim();
 
     // 已是 HH:MM[:SS] 格式
-    if (/^\d{2}:\d{2}(:\d{2})?$/.test(text)) {
+    if (/^\\d{2}:\\d{2}(:\\d{2})?$/.test(text)) {
         return text.length === 5 ? text + ':00' : text;
     }
 
@@ -73,7 +73,7 @@ function highlightLogMatch(text, keyword) {
     const safeText = escapeLogText(text);
     if (!keyword) return safeText;
 
-    const escapedKeyword = keyword.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
+    const escapedKeyword = keyword.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
     const reg = new RegExp(escapedKeyword, 'gi');
 
     return safeText.replace(reg, match => '<mark class="log-highlight">' + match + '</mark>');
@@ -84,7 +84,7 @@ function highlightLogMatch(text, keyword) {
    ======================================== */
 function parseLogLine(line) {
     const rawLine = String(line || '').trimEnd();
-    const match = rawLine.match(/^\[([^\]]+)\]\s+([a-zA-Z]+):\s*([\s\S]*)$/);
+    const match = rawLine.match(/^\\[([^\\]]+)\\]\\s+([a-zA-Z]+):\\s*([\\s\\S]*)$/);
 
     if (match) {
         const parsedType = normalizeLogType(match[2]);
@@ -319,7 +319,7 @@ async function copyVisibleLogs() {
         return;
     }
 
-    const text = filteredLogs.map(log => \`[\${log.timestamp}] \${log.type.toUpperCase()}: \${log.message}\`).join('\n');
+    const text = filteredLogs.map(log => \`[\${log.timestamp}] \${log.type.toUpperCase()}: \${log.message}\`).join('\\n');
 
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -352,13 +352,13 @@ async function fetchRealLogs() {
         }
 
         const logText = await response.text();
-        const rawLines = logText.split('\n');
+        const rawLines = logText.split('\\n');
         const mergedLines = [];
 
         rawLines.forEach(line => {
             if (!line) return;
 
-            const isNewRecord = /^\[[^\]]+\]\s+[a-zA-Z]+:\s*/.test(line);
+            const isNewRecord = /^\\[[^\\]]+\\]\\s+[a-zA-Z]+:\\s*/.test(line);
             if (isNewRecord) {
                 mergedLines.push(line);
                 return;
@@ -371,7 +371,7 @@ async function fetchRealLogs() {
                 return;
             }
 
-            mergedLines[mergedLines.length - 1] += '\n' + line;
+            mergedLines[mergedLines.length - 1] += '\\n' + line;
         });
 
         logs = mergedLines.map(line => {
@@ -465,7 +465,7 @@ function exportLogs() {
         return;
     }
 
-    const logText = filteredLogs.map(log => \`[\${log.timestamp}] \${getLogTypeText(log.type).toUpperCase()}: \${log.message}\`).join('\n');
+    const logText = filteredLogs.map(log => \`[\${log.timestamp}] \${getLogTypeText(log.type).toUpperCase()}: \${log.message}\`).join('\\n');
 
     const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
