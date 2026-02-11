@@ -167,7 +167,7 @@ function renderLogs() {
     container.innerHTML = filteredLogs.map(log => {
         const level = normalizeLogType(log.type);
         const levelLabel = getLogTypeText(level).toUpperCase();
-        const singleLineMessage = String(log.message || '').replace(/\s*\n\s*/g, ' ⏎ ');
+        const singleLineMessage = String(log.message || '').replace(/\\s*\\n\\s*/g, ' ⏎ ');
 
         return \`
             <div class="log-line log-line-\${level}">
