@@ -149,204 +149,17 @@ function normalizeLogLineBreaks(message) {
 }
 
 /* ========================================
-   紧凑化普通日志文本
-   ======================================== */
-function compactLogText(message) {
-    return normalizeLogLineBreaks(message)
-        .replace(/[ \\t]*\\n+[ \\t]*/g, ' ')
-        .replace(/[ \\t]{2,}/g, ' ')
-        .trim();
-}
-
-/* ========================================
-   查找 JSON 片段结束位置
-   ======================================== */
-function findJsonSegmentEnd(text, startIndex) {
-    const openingChar = text[startIndex];
-    const stack = [openingChar];
-
-    let inString = false;
-    let escaped = false;
-
-    for (let index = startIndex + 1; index < text.length; index += 1) {
-        const char = text[index];
-
-        if (inString) {
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-
-            if (char === '\\\\') {
-                escaped = true;
-                continue;
-            }
-
-            if (char === '"') {
-                inString = false;
-            }
-            continue;
-        }
-
-        if (char === '"') {
-            inString = true;
-            continue;
-        }
-
-        if (char === '{' || char === '[') {
-            stack.push(char);
-            continue;
-        }
-
-        if (char === '}' || char === ']') {
-            const lastOpening = stack[stack.length - 1];
-            const matched = (lastOpening === '{' && char === '}') || (lastOpening === '[' && char === ']');
-
-            if (!matched) {
-                return -1;
-            }
-
-            stack.pop();
-            if (stack.length === 0) {
-                return index;
-            }
-        }
-    }
-
-    return -1;
-}
-
-/* ========================================
-   判断是否使用标准 JSON 展示
-   ======================================== */
-function shouldUseStructuredJson(rawSegment, parsedValue) {
-    if (!parsedValue || typeof parsedValue !== 'object') {
-        return false;
-    }
-
-    if (rawSegment.length >= 80) {
-        return true;
-    }
-
-    if (Array.isArray(parsedValue)) {
-        return parsedValue.length >= 3;
-    }
-
-    return Object.keys(parsedValue).length >= 4;
-}
-
-/* ========================================
-   提取并格式化 JSON 片段
-   ======================================== */
-function collectFormattedJsonSegments(message) {
-    const segments = [];
-    let cursor = 0;
-
-    while (cursor < message.length) {
-        const nextObjectIndex = message.indexOf('{', cursor);
-        const nextArrayIndex = message.indexOf('[', cursor);
-
-        let startIndex = -1;
-        if (nextObjectIndex === -1) {
-            startIndex = nextArrayIndex;
-        } else if (nextArrayIndex === -1) {
-            startIndex = nextObjectIndex;
-        } else {
-            startIndex = Math.min(nextObjectIndex, nextArrayIndex);
-        }
-
-        if (startIndex === -1) {
-            break;
-        }
-
-        const endIndex = findJsonSegmentEnd(message, startIndex);
-        if (endIndex === -1) {
-            cursor = startIndex + 1;
-            continue;
-        }
-
-        const rawSegment = message.slice(startIndex, endIndex + 1);
-
-        try {
-            const parsedValue = JSON.parse(rawSegment);
-            if (!shouldUseStructuredJson(rawSegment, parsedValue)) {
-                cursor = endIndex + 1;
-                continue;
-            }
-
-            segments.push({
-                start: startIndex,
-                end: endIndex + 1,
-                formatted: JSON.stringify(parsedValue, null, 2)
-            });
-
-            cursor = endIndex + 1;
-        } catch {
-            cursor = startIndex + 1;
-        }
-    }
-
-    return segments;
-}
-
-/* ========================================
-   格式化日志文本（展示用）
+   日志文本展示（原样输出）
    ======================================== */
 function formatLogMessageForDisplay(message) {
-    const normalizedMessage = normalizeLogLineBreaks(message).trim();
-    if (!normalizedMessage) {
-        return { text: '', structured: false };
-    }
-
-    try {
-        const parsedValue = JSON.parse(normalizedMessage);
-        if (shouldUseStructuredJson(normalizedMessage, parsedValue)) {
-            return {
-                text: JSON.stringify(parsedValue, null, 2),
-                structured: true
-            };
-        }
-    } catch {
-        // 保持普通日志流程
-    }
-
-    const segments = collectFormattedJsonSegments(normalizedMessage);
-    if (segments.length === 0) {
-        return {
-            text: compactLogText(normalizedMessage),
-            structured: false
-        };
-    }
-
-    const lines = [];
-    let cursor = 0;
-
-    segments.forEach(segment => {
-        const prefix = compactLogText(normalizedMessage.slice(cursor, segment.start));
-        if (prefix) {
-            lines.push(prefix);
-        }
-
-        lines.push(segment.formatted);
-        cursor = segment.end;
-    });
-
-    const suffix = compactLogText(normalizedMessage.slice(cursor));
-    if (suffix) {
-        lines.push(suffix);
-    }
-
-    return {
-        text: lines.join('\\n'),
-        structured: true
-    };
+    return normalizeLogLineBreaks(message);
 }
 
 /* ========================================
-   日志文本紧凑化（复制/导出用）
+   日志文本导出（原样输出）
    ======================================== */
 function formatLogMessageForPlainText(message) {
-    return compactLogText(message);
+    return normalizeLogLineBreaks(message);
 }
 
 /* ========================================
@@ -375,16 +188,12 @@ function renderLogs() {
     container.innerHTML = filteredLogs.map(log => {
         const level = normalizeLogType(log.type);
         const levelLabel = getLogTypeText(level).toUpperCase();
-        const formattedMessage = formatLogMessageForDisplay(log.message);
-        const textClass = formattedMessage.structured ? 'log-line-text log-line-text-structured' : 'log-line-text';
-        const lineClass = formattedMessage.structured
-            ? 'log-line log-line-' + level + ' log-line-structured'
-            : 'log-line log-line-' + level;
+        const displayMessage = formatLogMessageForDisplay(log.message);
 
-        return '<div class="' + lineClass + '">' +
+        return '<div class="log-line log-line-' + level + '">' +
             '<span class="log-line-time">[' + escapeLogText(log.timestamp) + ']</span>' +
             '<span class="log-line-level">' + escapeLogText(levelLabel) + '</span>' +
-            '<span class="' + textClass + '">' + highlightLogMatch(formattedMessage.text, keyword) + '</span>' +
+            '<span class="log-line-text">' + highlightLogMatch(displayMessage, keyword) + '</span>' +
             '</div>';
     }).join('');
 

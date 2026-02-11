@@ -827,24 +827,17 @@ export const overviewCssContent = /* css */ `/* ================================
     flex: 1;
     min-width: 0;
     color: #e2e8f0;
-}
-
-.log-line-structured {
-    padding: 0.08rem 0;
-}
-
-.log-line-text-structured {
-    line-height: 1.38;
+    line-height: 1.35;
     letter-spacing: 0;
 }
 
-.log-terminal.log-wrap-enabled .log-line-text-structured {
+.log-terminal.log-wrap-enabled .log-line-text {
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;
 }
 
-.log-terminal.log-wrap-disabled .log-line-text-structured {
+.log-terminal.log-wrap-disabled .log-line-text {
     white-space: pre;
 }
 
