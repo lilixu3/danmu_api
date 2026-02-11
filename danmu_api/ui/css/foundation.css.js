@@ -1,8 +1,6 @@
 // language=CSS
-export const baseCssContent = /* css */ `/* ========================================
-   基础样式（不含 Design Tokens）
-   - 主题/颜色/阴影/圆角等变量已迁移到 tokens.css.js
-   - 本文件负责 reset、基础排版、布局骨架与通用结构样式
+export const foundationCssContent = /* css */ `/* ========================================
+   全局基础与布局骨架（重置、容器、页脚、加载、关键帧）
    ======================================== */
 
 /* ========================================
@@ -264,23 +262,6 @@ body {
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
 }
-
-/* ========================================
-   工具类
-   ======================================== */
-.text-center {
-    text-align: center;
-}
-
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mt-3 { margin-top: 1.5rem; }
-.mt-4 { margin-top: 2rem; }
-
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.mb-3 { margin-bottom: 1.5rem; }
-.mb-4 { margin-bottom: 2rem; }
 
 /* ========================================
    动画关键帧

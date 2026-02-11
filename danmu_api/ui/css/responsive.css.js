@@ -1,5 +1,8 @@
 // language=CSS
-export const responsiveCssContent = /* css */ `
+export const responsiveCssContent = /* css */ `/* ========================================
+   响应式覆盖（断点、设备特性与无障碍偏好）
+   ======================================== */
+
 /* ========================================
    响应式断点定义
    ======================================== */
@@ -1062,6 +1065,7 @@ export const responsiveCssContent = /* css */ `
         --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
     }
 }
+
 /* ========================================
    深色模式 - 移动端顶栏增强
    ======================================== */
@@ -1170,6 +1174,80 @@ export const responsiveCssContent = /* css */ `
             transform: scale(1.1);
             opacity: 0.8;
         }
+    }
+}
+
+/* ========================================
+   响应式适配
+   ======================================== */
+@media (max-width: 767px) {
+    .api-mode-tabs {
+        width: 100%;
+    }
+
+    .api-mode-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+    }
+
+    .api-mode-tab .btn-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    .danmu-method-tabs {
+        width: 100%;
+    }
+
+    .danmu-method-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 0.625rem 0.875rem;
+        font-size: 0.875rem;
+    }
+
+    .danmu-info-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .danmu-actions {
+        width: 100%;
+    }
+
+    .danmu-actions .btn {
+        flex: 1;
+    }
+
+    .danmu-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .danmu-list-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .danmu-list-filters {
+        width: 100%;
+    }
+
+    .danmu-filter-btn {
+        flex: 1;
+        text-align: center;
+        font-size: 0.75rem;
+        padding: 0.375rem 0.5rem;
+    }
+
+    .danmu-item {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .danmu-item-time {
+        width: fit-content;
     }
 }
 `;

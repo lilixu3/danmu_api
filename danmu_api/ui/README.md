@@ -2,6 +2,7 @@
 
 - [UI 系统使用说明](#ui-系统使用说明)
 - [功能概览](#功能概览)
+- [CSS 架构维护指南](#css-架构维护指南)
 - [访问方式](#访问方式)
 - [功能详解](#功能详解)
   - [1. 配置预览](#1-配置预览)
@@ -24,6 +25,32 @@
 # UI 系统使用说明
 
 本项目包含一个基于 Web 的用户界面，用于管理和配置弹幕 API 服务。以下是 UI 系统的详细使用说明。
+
+
+## CSS 架构维护指南
+
+当前 UI 样式已按“职责单一”重构，建议按以下入口维护：
+
+- `css/tokens.css.js`：全局设计变量（颜色、阴影、圆角、过渡等）
+- `css/foundation.css.js`：全局重置、布局骨架、页脚与加载层
+- `css/shell.css.js`：应用壳层（侧边栏、导航、版本卡、主题按钮）
+- `css/components-shared.css.js`：可复用组件（按钮、卡片、模态、请求记录）
+- `css/forms-controls.css.js`：表单控件（输入、开关、标签、映射配置）
+- `css/feature-overview.css.js`：配置预览与日志模块
+- `css/feature-settings.css.js`：系统配置模块（颜色池、Cookie 编辑器、环境变量）
+- `css/feature-api.css.js`：接口调试与弹幕测试模块
+- `css/status.css.js`：运行状态/模式状态类
+- `css/theme-dark.css.js`：深色主题补充覆盖
+- `css/responsive.css.js`：响应式断点与设备适配
+
+维护约定：
+
+1. 新样式优先放入对应模块，避免跨文件重复定义同一选择器。
+2. 深色模式差异统一收敛到 `theme-dark.css.js`。
+3. 纯响应式规则仅放在 `responsive.css.js`。
+4. 若新增功能页，建议新增 `feature-xxx.css.js`，不要继续堆叠到现有大文件中。
+5. 禁止在已废弃文件 `base.css.js`、`colors.css.js`、`components.css.js`、`cookie-editor.css.js`、`dynamic.css.js`、`forms.css.js`、`mode-badge.css.js` 中新增或恢复样式。
+6. 提交说明正文禁止使用字面量 `\n`，必须使用真实换行分条描述。
 
 ## 功能概览
 

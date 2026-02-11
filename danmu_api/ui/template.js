@@ -1,11 +1,15 @@
 import { globals } from "../configs/globals.js";
 import { tokensCssContent } from "./css/tokens.css.js";
-import { baseCssContent } from "./css/base.css.js";
-import { componentsCssContent } from "./css/components.css.js";
-import { cookieEditorCssContent } from "./css/cookie-editor.css.js";
-import { formsCssContent } from "./css/forms.css.js";
+import { foundationCssContent } from "./css/foundation.css.js";
+import { shellCssContent } from "./css/shell.css.js";
+import { sharedComponentsCssContent } from "./css/components-shared.css.js";
+import { formsControlsCssContent } from "./css/forms-controls.css.js";
+import { overviewCssContent } from "./css/feature-overview.css.js";
+import { settingsCssContent } from "./css/feature-settings.css.js";
+import { apiFeatureCssContent } from "./css/feature-api.css.js";
+import { statusCssContent } from "./css/status.css.js";
+import { themeDarkCssContent } from "./css/theme-dark.css.js";
 import { responsiveCssContent } from "./css/responsive.css.js";
-import { dynamicCssContent } from "./css/dynamic.css.js";
 import { mainJsContent } from "./js/main.js";
 import { previewJsContent } from "./js/preview.js";
 import { logviewJsContent } from "./js/logview.js";
@@ -13,8 +17,6 @@ import { apitestJsContent } from "./js/apitest.js";
 import { pushDanmuJsContent } from "./js/pushdanmu.js";
 import { requestRecordsJsContent } from "./js/requestrecords.js";
 import { systemSettingsJsContent } from "./js/systemsettings.js";
-import { modeBadgeCssContent } from "./css/mode-badge.css.js";
-import { colorsCssContent } from "./css/colors.css.js";
 // language=HTML
 export const HTML_TEMPLATE = /* html */ `
 <!DOCTYPE html>
@@ -36,13 +38,15 @@ export const HTML_TEMPLATE = /* html */ `
         })();
     </script>
     <style>${tokensCssContent}</style>
-    <style>${baseCssContent}</style>
-    <style>${colorsCssContent}</style>
-    <style>${componentsCssContent}</style>
-    <style>${cookieEditorCssContent}</style>
-    <style>${formsCssContent}</style>
-    <style>${modeBadgeCssContent}</style>
-    <style>${dynamicCssContent}</style>
+    <style>${foundationCssContent}</style>
+    <style>${shellCssContent}</style>
+    <style>${sharedComponentsCssContent}</style>
+    <style>${formsControlsCssContent}</style>
+    <style>${overviewCssContent}</style>
+    <style>${settingsCssContent}</style>
+    <style>${apiFeatureCssContent}</style>
+    <style>${statusCssContent}</style>
+    <style>${themeDarkCssContent}</style>
     <style>${responsiveCssContent}</style>
 </head>
 
