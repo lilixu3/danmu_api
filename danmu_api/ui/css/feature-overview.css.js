@@ -571,10 +571,11 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 0.36rem;
+    width: 100%;
     margin-bottom: 0.65rem;
     padding: 0.34rem;
     border: 1px solid var(--border-color);
@@ -587,9 +588,11 @@ export const overviewCssContent = /* css */ `/* ================================
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.38rem;
-    height: 30px;
-    padding: 0 0.72rem;
+    gap: 0.34rem;
+    width: 100%;
+    min-width: 0;
+    height: 31px;
+    padding: 0 0.58rem;
     border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
@@ -626,13 +629,10 @@ export const overviewCssContent = /* css */ `/* ================================
     background: #f59e0b;
 }
 
-.log-filter-btn[data-filter="info"] .filter-icon {
-    background: #3b82f6;
+.log-filter-btn[data-filter="all"] .filter-icon {
+    background: #64748b;
 }
 
-.log-filter-btn[data-filter="success"] .filter-icon {
-    background: #22c55e;
-}
 
 .filter-text {
     font-size: 0.78125rem;

@@ -240,9 +240,7 @@ function updateLogFilterBadges() {
     const counts = {
         all: logs.length,
         error: logs.filter(l => l.type === 'error').length,
-        warn: logs.filter(l => l.type === 'warn').length,
-        info: logs.filter(l => l.type === 'info').length,
-        success: logs.filter(l => l.type === 'success').length
+        warn: logs.filter(l => l.type === 'warn').length
     };
 
     Object.keys(counts).forEach(type => {

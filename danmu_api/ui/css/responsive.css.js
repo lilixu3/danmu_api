@@ -618,9 +618,15 @@ export const responsiveCssContent = /* css */ `/* ==============================
         gap: 0.35rem;
     }
 
+    .log-filters {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.3rem;
+    }
+
     .log-filter-btn {
-        flex: 0 0 auto;
-        min-width: 72px;
+        width: 100%;
+        min-width: 0;
+        padding: 0 0.4rem;
     }
 
     .log-search-group {
@@ -805,7 +811,19 @@ export const responsiveCssContent = /* css */ `/* ==============================
         font-size: 0.72rem;
     }
 
-    .log-filter-btn,
+    .log-filters {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.24rem;
+    }
+
+    .log-filter-btn {
+        width: 100%;
+        min-width: 0;
+        height: 28px;
+        padding: 0 0.28rem;
+        font-size: 0.66rem;
+    }
+
     .log-tool-btn {
         min-width: 70px;
         height: 28px;

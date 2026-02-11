@@ -289,29 +289,19 @@ export const HTML_TEMPLATE = /* html */ `
                 
                 <!-- 日志过滤器 -->
                 <div class="log-filters">
-                    <button class="log-filter-btn active" data-filter="all" onclick="setLogFilter('all')">
+                    <button class="log-filter-btn active" data-filter="all" onclick="setLogFilter('all')" type="button">
                         <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">全部</span>
                         <span class="filter-badge">0</span>
                     </button>
-                    <button class="log-filter-btn" data-filter="error" onclick="setLogFilter('error')">
+                    <button class="log-filter-btn" data-filter="error" onclick="setLogFilter('error')" type="button">
                         <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">错误</span>
                         <span class="filter-badge">0</span>
                     </button>
-                    <button class="log-filter-btn" data-filter="warn" onclick="setLogFilter('warn')">
+                    <button class="log-filter-btn" data-filter="warn" onclick="setLogFilter('warn')" type="button">
                         <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">警告</span>
-                        <span class="filter-badge">0</span>
-                    </button>
-                    <button class="log-filter-btn" data-filter="info" onclick="setLogFilter('info')">
-                        <span class="filter-icon" aria-hidden="true"></span>
-                        <span class="filter-text">信息</span>
-                        <span class="filter-badge">0</span>
-                    </button>
-                    <button class="log-filter-btn" data-filter="success" onclick="setLogFilter('success')">
-                        <span class="filter-icon" aria-hidden="true"></span>
-                        <span class="filter-text">成功</span>
                         <span class="filter-badge">0</span>
                     </button>
                 </div>
