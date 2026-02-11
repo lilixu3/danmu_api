@@ -598,24 +598,34 @@ export const responsiveCssContent = /* css */ `/* ==============================
         box-sizing: border-box;
     }
 
-    .log-top-actions,
+    .log-top-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+    }
+
+    .log-action-btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 34px;
+    }
+
     .log-filters,
     .log-toolbar {
         width: 100%;
-        padding: 0.45rem;
-        gap: 0.4rem;
+        padding: 0.4rem;
+        gap: 0.35rem;
     }
 
-    .log-action-btn,
-    .log-filter-btn,
-    .log-tool-btn {
-        flex: 1;
-        min-width: 84px;
+    .log-filter-btn {
+        flex: 0 0 auto;
+        min-width: 72px;
     }
 
     .log-search-group {
         min-width: 100%;
-        padding: 0.38rem 0.48rem;
+        padding: 0.36rem 0.46rem;
     }
 
     .log-toolbar-actions {
@@ -626,7 +636,13 @@ export const responsiveCssContent = /* css */ `/* ==============================
     .log-toolbar-status {
         width: 100%;
         margin-right: 0;
-        margin-bottom: 0.1rem;
+        margin-bottom: 0;
+        padding: 0;
+    }
+
+    .log-tool-btn {
+        flex: 1;
+        min-width: 86px;
     }
 
     .log-terminal {
@@ -772,25 +788,34 @@ export const responsiveCssContent = /* css */ `/* ==============================
         padding: 0.75rem 0.875rem;
     }
 
-    .log-top-actions,
-    .log-filters,
-    .log-toolbar {
-        padding: 0.4rem;
-        gap: 0.32rem;
+    .log-top-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem;
     }
 
-    .log-action-btn,
+    .log-filters,
+    .log-toolbar {
+        padding: 0.34rem;
+        gap: 0.28rem;
+    }
+
+    .log-action-btn {
+        min-height: 32px;
+        padding: 0 0.46rem;
+        font-size: 0.72rem;
+    }
+
     .log-filter-btn,
     .log-tool-btn {
-        min-width: 76px;
-        height: 30px;
-        padding: 0 0.5rem;
-        font-size: 0.7rem;
+        min-width: 70px;
+        height: 28px;
+        padding: 0 0.45rem;
+        font-size: 0.68rem;
     }
 
     .log-toolbar-status {
-        font-size: 0.7rem;
-        padding: 0.16rem 0.45rem;
+        font-size: 0.68rem;
+        padding: 0;
     }
 
     .log-line {
