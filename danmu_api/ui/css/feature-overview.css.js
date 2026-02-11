@@ -689,7 +689,8 @@ export const overviewCssContent = /* css */ `/* ================================
     overflow-x: auto;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     color: #e2e8f0;
-    line-height: 1.55;
+    line-height: 1.4;
+    font-variant-ligatures: none;
 }
 
 .log-terminal.log-wrap-enabled {
@@ -697,7 +698,7 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-terminal.log-wrap-enabled .log-line {
-    white-space: pre-wrap;
+    white-space: normal;
     word-break: break-word;
 }
 
@@ -710,9 +711,11 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-line {
-    display: block;
-    padding: 0.22rem 0;
-    border-bottom: 1px dashed rgba(148, 163, 184, 0.12);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    padding: 0.06rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
     font-size: 0.825rem;
     letter-spacing: 0.01em;
 }
@@ -723,18 +726,20 @@ export const overviewCssContent = /* css */ `/* ================================
 
 .log-line-time {
     color: #94a3b8;
-    margin-right: 0.5rem;
+    flex: 0 0 auto;
 }
 
 .log-line-level {
-    display: inline-block;
-    min-width: 3.6em;
-    margin-right: 0.55rem;
+    display: block;
+    min-width: 3.3em;
     font-weight: 700;
+    flex: 0 0 auto;
 }
 
 .log-line-text {
     color: #e2e8f0;
+    flex: 1;
+    min-width: 0;
 }
 
 .log-line-error .log-line-level,

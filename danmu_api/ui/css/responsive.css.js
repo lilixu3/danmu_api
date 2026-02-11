@@ -627,6 +627,8 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .log-line {
         font-size: 0.78rem;
+        gap: 0.35rem;
+        padding: 0.05rem 0;
     }
 
     .log-line-level {
@@ -770,6 +772,8 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .log-line {
         font-size: 0.75rem;
+        gap: 0.3rem;
+        padding: 0.04rem 0;
     }
     
     .search-btn-text {

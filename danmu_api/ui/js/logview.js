@@ -167,12 +167,13 @@ function renderLogs() {
     container.innerHTML = filteredLogs.map(log => {
         const level = normalizeLogType(log.type);
         const levelLabel = getLogTypeText(level).toUpperCase();
+        const singleLineMessage = String(log.message || '').replace(/\s*\n\s*/g, ' ⏎ ');
 
         return \`
             <div class="log-line log-line-\${level}">
                 <span class="log-line-time">[\${escapeLogText(log.timestamp)}]</span>
                 <span class="log-line-level">\${escapeLogText(levelLabel)}</span>
-                <span class="log-line-text">\${highlightLogMatch(log.message, keyword)}</span>
+                <span class="log-line-text">\${highlightLogMatch(singleLineMessage, keyword)}</span>
             </div>
         \`;
     }).join('');
