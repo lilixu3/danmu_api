@@ -280,7 +280,7 @@ export const HTML_TEMPLATE = /* html */ `
                         <p class="section-desc">实时监控系统运行日志，支持按类型筛选和自动刷新</p>
                     </div>
                     <div class="header-actions">
-                        <button class="btn btn-primary" onclick="refreshLogs()">
+                        <button class="btn btn-primary" id="refreshLogsBtn" onclick="refreshLogs()">
                             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                 <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-width="2"/>
                             </svg>
@@ -335,9 +335,32 @@ export const HTML_TEMPLATE = /* html */ `
                         <span class="filter-badge">0</span>
                     </button>
                 </div>
+
+                <div class="log-toolbar">
+                    <div class="log-search-group">
+                        <svg class="log-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input
+                            type="text"
+                            class="log-search-input"
+                            id="log-search-input"
+                            placeholder="搜索日志关键字（支持时间/级别/文本）"
+                            oninput="setLogSearch(this.value)"
+                        >
+                        <button class="log-search-clear" id="log-search-clear" onclick="clearLogSearch()" type="button" style="display: none;">清空</button>
+                    </div>
+                    <div class="log-toolbar-actions">
+                        <span class="log-toolbar-status" id="log-toolbar-status">显示 0 / 0 条</span>
+                        <button class="log-tool-btn active" id="log-wrap-toggle" onclick="toggleLogWrap()" type="button">自动换行</button>
+                        <button class="log-tool-btn active" id="log-autoscroll-toggle" onclick="toggleLogAutoScroll()" type="button">自动滚动</button>
+                        <button class="log-tool-btn" onclick="copyVisibleLogs()" type="button">复制当前</button>
+                    </div>
+                </div>
                 
                 <!-- 日志终端 -->
-                <div class="log-terminal" id="log-container">
+                <div class="log-terminal log-wrap-enabled" id="log-container" aria-live="polite" aria-label="系统日志输出">
                     <div class="log-empty-state">
                         <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-width="2"/>

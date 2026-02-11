@@ -597,6 +597,41 @@ export const responsiveCssContent = /* css */ `/* ==============================
         max-width: 100%;
         box-sizing: border-box;
     }
+
+    .log-toolbar {
+        padding: 0.65rem;
+    }
+
+    .log-search-group {
+        min-width: 100%;
+    }
+
+    .log-toolbar-actions {
+        width: 100%;
+    }
+
+    .log-toolbar-status {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 0.2rem;
+    }
+
+    .log-tool-btn {
+        flex: 1;
+        min-width: 92px;
+    }
+
+    .log-terminal {
+        padding: 0.75rem;
+    }
+
+    .log-line {
+        font-size: 0.78rem;
+    }
+
+    .log-line-level {
+        min-width: 3.3em;
+    }
     /* 成功动画 */
     .success-icon {
         font-size: 4rem;
@@ -725,6 +760,16 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
     .search-input-group .search-btn {
         padding: 0.75rem 0.875rem;
+    }
+
+    .log-tool-btn {
+        min-width: 80px;
+        padding: 0.32rem 0.55rem;
+        font-size: 0.72rem;
+    }
+
+    .log-line {
+        font-size: 0.75rem;
     }
     
     .search-btn-text {
