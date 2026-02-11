@@ -598,27 +598,35 @@ export const responsiveCssContent = /* css */ `/* ==============================
         box-sizing: border-box;
     }
 
+    .log-top-actions,
+    .log-filters,
     .log-toolbar {
-        padding: 0.65rem;
+        width: 100%;
+        padding: 0.45rem;
+        gap: 0.4rem;
+    }
+
+    .log-action-btn,
+    .log-filter-btn,
+    .log-tool-btn {
+        flex: 1;
+        min-width: 84px;
     }
 
     .log-search-group {
         min-width: 100%;
+        padding: 0.38rem 0.48rem;
     }
 
     .log-toolbar-actions {
         width: 100%;
+        gap: 0.35rem;
     }
 
     .log-toolbar-status {
         width: 100%;
         margin-right: 0;
-        margin-bottom: 0.2rem;
-    }
-
-    .log-tool-btn {
-        flex: 1;
-        min-width: 92px;
+        margin-bottom: 0.1rem;
     }
 
     .log-terminal {
@@ -626,13 +634,13 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
 
     .log-line {
-        font-size: 0.78rem;
-        gap: 0.35rem;
-        padding: 0.05rem 0;
+        font-size: 0.76rem;
+        gap: 0.3rem;
+        padding: 0;
     }
 
     .log-line-level {
-        min-width: 3.3em;
+        min-width: 2.9em;
     }
     /* 成功动画 */
     .success-icon {
@@ -764,16 +772,31 @@ export const responsiveCssContent = /* css */ `/* ==============================
         padding: 0.75rem 0.875rem;
     }
 
+    .log-top-actions,
+    .log-filters,
+    .log-toolbar {
+        padding: 0.4rem;
+        gap: 0.32rem;
+    }
+
+    .log-action-btn,
+    .log-filter-btn,
     .log-tool-btn {
-        min-width: 80px;
-        padding: 0.32rem 0.55rem;
-        font-size: 0.72rem;
+        min-width: 76px;
+        height: 30px;
+        padding: 0 0.5rem;
+        font-size: 0.7rem;
+    }
+
+    .log-toolbar-status {
+        font-size: 0.7rem;
+        padding: 0.16rem 0.45rem;
     }
 
     .log-line {
-        font-size: 0.75rem;
-        gap: 0.3rem;
-        padding: 0.04rem 0;
+        font-size: 0.72rem;
+        gap: 0.25rem;
+        padding: 0;
     }
     
     .search-btn-text {

@@ -279,58 +279,38 @@ export const HTML_TEMPLATE = /* html */ `
                         <h2 class="section-title">日志查看</h2>
                         <p class="section-desc">实时监控系统运行日志，支持按类型筛选和自动刷新</p>
                     </div>
-                    <div class="header-actions">
-                        <button class="btn btn-primary" id="refreshLogsBtn" onclick="refreshLogs()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-width="2"/>
-                            </svg>
-                            刷新
-                        </button>
-                        <button class="btn btn-secondary" id="autoRefreshBtn" onclick="toggleAutoRefresh()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
-                            </svg>
-                            自动刷新
-                        </button>
-                        <button class="btn btn-success" onclick="exportLogs()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-width="2"/>
-                            </svg>
-                            导出
-                        </button>
-                        <button class="btn btn-danger" onclick="clearLogs()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-width="2"/>
-                            </svg>
-                            清空
-                        </button>
+                    <div class="header-actions log-top-actions">
+                        <button class="btn log-action-btn" id="refreshLogsBtn" onclick="refreshLogs()" type="button">刷新</button>
+                        <button class="btn log-action-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" type="button">自动刷新</button>
+                        <button class="btn log-action-btn" onclick="exportLogs()" type="button">导出</button>
+                        <button class="btn log-action-btn log-action-danger" onclick="clearLogs()" type="button">清空</button>
                     </div>
                 </div>
                 
                 <!-- 日志过滤器 -->
                 <div class="log-filters">
                     <button class="log-filter-btn active" data-filter="all" onclick="setLogFilter('all')">
-                        <span class="filter-icon">📊</span>
+                        <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">全部</span>
                         <span class="filter-badge">0</span>
                     </button>
                     <button class="log-filter-btn" data-filter="error" onclick="setLogFilter('error')">
-                        <span class="filter-icon">❌</span>
+                        <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">错误</span>
                         <span class="filter-badge">0</span>
                     </button>
                     <button class="log-filter-btn" data-filter="warn" onclick="setLogFilter('warn')">
-                        <span class="filter-icon">⚠️</span>
+                        <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">警告</span>
                         <span class="filter-badge">0</span>
                     </button>
                     <button class="log-filter-btn" data-filter="info" onclick="setLogFilter('info')">
-                        <span class="filter-icon">ℹ️</span>
+                        <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">信息</span>
                         <span class="filter-badge">0</span>
                     </button>
                     <button class="log-filter-btn" data-filter="success" onclick="setLogFilter('success')">
-                        <span class="filter-icon">✅</span>
+                        <span class="filter-icon" aria-hidden="true"></span>
                         <span class="filter-text">成功</span>
                         <span class="filter-badge">0</span>
                     </button>

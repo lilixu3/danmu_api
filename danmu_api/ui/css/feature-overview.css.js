@@ -518,106 +518,185 @@ export const overviewCssContent = /* css */ `/* ================================
 /* ========================================
    日志查看组件
    ======================================== */
-.log-filters {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-}
-
-.log-filter-btn {
-    display: flex;
+.log-top-actions {
+    display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    padding: 0.75rem 1.25rem;
+    padding: 0.45rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     background: var(--bg-primary);
-    backdrop-filter: var(--blur-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-
-.log-filter-btn:hover {
-    background: var(--bg-secondary);
-    border-color: var(--primary-color);
-    transform: translateY(-2px);
     box-shadow: var(--shadow-sm);
 }
 
+.log-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0.45rem 0.85rem;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.log-action-btn:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-color);
+}
+
+.log-action-btn.active {
+    background: rgba(59, 130, 246, 0.16);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: var(--primary-color);
+}
+
+.log-action-btn.log-action-danger {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.32);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.log-action-btn.log-action-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.48);
+    color: #dc2626;
+}
+
+.log-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.7rem;
+    padding: 0.5rem 0.55rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.log-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 32px;
+    padding: 0 0.7rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.log-filter-btn:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.08);
+}
+
 .log-filter-btn.active {
-    background: var(--gradient-primary);
-    border-color: var(--primary-color);
-    color: white;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.5);
+    background: rgba(59, 130, 246, 0.16);
+    color: var(--primary-color);
 }
 
 .filter-icon {
-    font-size: 1.25rem;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #94a3b8;
+    flex-shrink: 0;
+}
+
+.log-filter-btn[data-filter="error"] .filter-icon {
+    background: #ef4444;
+}
+
+.log-filter-btn[data-filter="warn"] .filter-icon {
+    background: #f59e0b;
+}
+
+.log-filter-btn[data-filter="info"] .filter-icon {
+    background: #3b82f6;
+}
+
+.log-filter-btn[data-filter="success"] .filter-icon {
+    background: #22c55e;
 }
 
 .filter-text {
-    font-size: 0.9375rem;
+    font-size: 0.78125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
 }
 
 .filter-badge {
     display: none;
-    padding: 0.125rem 0.5rem;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 600;
-    min-width: 24px;
-    text-align: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 0.3rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--text-secondary);
 }
 
 .log-filter-btn.active .filter-badge {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(59, 130, 246, 0.18);
+    color: var(--primary-color);
 }
 
 .log-toolbar {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    padding: 0.75rem;
-    background: var(--bg-primary);
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+    padding: 0.55rem 0.6rem;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--bg-primary);
     box-shadow: var(--shadow-sm);
 }
 
 .log-search-group {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     flex: 1;
-    min-width: 220px;
-    background: var(--bg-secondary);
+    min-width: 240px;
+    padding: 0.42rem 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    padding: 0.45rem 0.55rem;
+    background: var(--bg-secondary);
 }
 
 .log-search-icon {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     color: var(--text-tertiary);
     flex-shrink: 0;
 }
 
 .log-search-input {
     flex: 1;
+    min-width: 100px;
     border: none;
+    outline: none;
     background: transparent;
     color: var(--text-primary);
-    font-size: 0.875rem;
-    outline: none;
-    min-width: 120px;
+    font-size: 0.8125rem;
 }
 
 .log-search-input::placeholder {
@@ -625,71 +704,80 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-search-clear {
-    border: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--primary-color);
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
     cursor: pointer;
-    padding: 0.125rem 0.25rem;
-    border-radius: var(--radius-sm);
+    padding: 0.18rem 0.36rem;
 }
 
 .log-search-clear:hover {
+    border-color: rgba(59, 130, 246, 0.35);
     background: rgba(59, 130, 246, 0.1);
 }
 
 .log-toolbar-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     flex-wrap: wrap;
 }
 
 .log-toolbar-status {
-    font-size: 0.8125rem;
+    margin-right: 0.2rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
-    margin-right: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(148, 163, 184, 0.08);
 }
 
 .log-tool-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-height: 30px;
+    padding: 0.32rem 0.6rem;
     border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     color: var(--text-secondary);
-    border-radius: var(--radius-sm);
-    padding: 0.35rem 0.7rem;
-    font-size: 0.75rem;
+    font-size: 0.71875rem;
     font-weight: 600;
+    line-height: 1.1;
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .log-tool-btn:hover {
-    border-color: var(--primary-color);
+    border-color: rgba(59, 130, 246, 0.45);
+    background: rgba(59, 130, 246, 0.08);
     color: var(--primary-color);
 }
 
 .log-tool-btn.active {
-    background: rgba(59, 130, 246, 0.12);
-    border-color: rgba(59, 130, 246, 0.35);
+    border-color: rgba(59, 130, 246, 0.45);
+    background: rgba(59, 130, 246, 0.16);
     color: var(--primary-color);
 }
 
 .log-terminal {
-    background: #0b1220;
-    backdrop-filter: var(--blur-md);
-    border-radius: var(--radius-lg);
-    padding: 0.875rem 1rem;
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    box-shadow: var(--shadow-md);
-    max-height: 600px;
+    max-height: 620px;
     overflow-y: auto;
     overflow-x: auto;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    padding: 0.72rem 0.85rem;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    background: #0b1220;
     color: #e2e8f0;
-    line-height: 1.4;
+    line-height: 1.28;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.8125rem;
     font-variant-ligatures: none;
 }
 
@@ -713,15 +801,13 @@ export const overviewCssContent = /* css */ `/* ================================
 .log-line {
     display: flex;
     align-items: flex-start;
-    gap: 0.45rem;
-    padding: 0.06rem 0;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-    font-size: 0.825rem;
-    letter-spacing: 0.01em;
+    gap: 0.34rem;
+    padding: 0.01rem 0;
+    letter-spacing: 0;
 }
 
-.log-line:last-child {
-    border-bottom: none;
+.log-line + .log-line {
+    margin-top: 0.02rem;
 }
 
 .log-line-time {
@@ -730,16 +816,15 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-line-level {
-    display: block;
-    min-width: 3.3em;
+    min-width: 2.95em;
     font-weight: 700;
     flex: 0 0 auto;
 }
 
 .log-line-text {
-    color: #e2e8f0;
     flex: 1;
     min-width: 0;
+    color: #e2e8f0;
 }
 
 .log-line-error .log-line-level,
@@ -762,43 +847,66 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .log-highlight {
-    padding: 0.06rem 0.18rem;
+    padding: 0.03rem 0.16rem;
     border-radius: 4px;
     background: rgba(250, 204, 21, 0.3);
     color: #fef9c3;
 }
 
-[data-theme="light"] .log-terminal {
-    background: #0f172a;
-    border-color: rgba(100, 116, 139, 0.35);
-}
-
+[data-theme="light"] .log-top-actions,
+[data-theme="light"] .log-filters,
 [data-theme="light"] .log-toolbar {
     background: #ffffff;
 }
 
+[data-theme="light"] .log-terminal {
+    background: #0f172a;
+    border-color: rgba(100, 116, 139, 0.34);
+}
+
+[data-theme="dark"] .log-top-actions,
+[data-theme="dark"] .log-filters,
 [data-theme="dark"] .log-toolbar {
-    background: rgba(15, 23, 42, 0.86);
+    background: rgba(15, 23, 42, 0.88);
+    border-color: rgba(99, 102, 241, 0.2);
 }
 
+[data-theme="dark"] .log-action-btn,
+[data-theme="dark"] .log-filter-btn,
+[data-theme="dark"] .log-tool-btn,
 [data-theme="dark"] .log-search-group {
-    background: rgba(15, 23, 42, 0.88);
-    border-color: rgba(99, 102, 241, 0.2);
+    background: rgba(15, 23, 42, 0.92);
+    border-color: rgba(99, 102, 241, 0.24);
 }
 
-[data-theme="dark"] .log-tool-btn {
-    background: rgba(15, 23, 42, 0.88);
-    border-color: rgba(99, 102, 241, 0.2);
-}
-
-[data-theme="dark"] .log-tool-btn.active {
-    background: rgba(99, 102, 241, 0.18);
+[data-theme="dark"] .log-action-btn:hover:not(:disabled),
+[data-theme="dark"] .log-action-btn.active,
+[data-theme="dark"] .log-filter-btn:hover,
+[data-theme="dark"] .log-filter-btn.active,
+[data-theme="dark"] .log-tool-btn:hover,
+[data-theme="dark"] .log-tool-btn.active,
+[data-theme="dark"] .log-search-clear:hover {
     border-color: rgba(129, 140, 248, 0.45);
+    background: rgba(99, 102, 241, 0.2);
     color: #c7d2fe;
 }
 
-[data-theme="dark"] .log-search-clear:hover {
-    background: rgba(129, 140, 248, 0.2);
+[data-theme="dark"] .log-action-btn.log-action-danger {
+    border-color: rgba(248, 113, 113, 0.45);
+    background: rgba(248, 113, 113, 0.16);
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .log-action-btn.log-action-danger:hover:not(:disabled) {
+    border-color: rgba(252, 165, 165, 0.58);
+    background: rgba(248, 113, 113, 0.22);
+    color: #fecaca;
+}
+
+[data-theme="dark"] .log-toolbar-status {
+    border-color: rgba(129, 140, 248, 0.28);
+    background: rgba(99, 102, 241, 0.14);
+    color: #cbd5e1;
 }
 
 [data-theme="dark"] .log-highlight {
@@ -806,10 +914,7 @@ export const overviewCssContent = /* css */ `/* ================================
     color: #fef3c7;
 }
 
-[data-theme="dark"] .log-empty-state {
-    color: #94a3b8;
-}
-
+[data-theme="dark"] .log-empty-state,
 [data-theme="dark"] .log-empty-state .empty-icon {
     color: #94a3b8;
 }

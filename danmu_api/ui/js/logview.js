@@ -142,6 +142,28 @@ function addLog(message, type = 'info') {
 }
 
 /* ========================================
+   日志文本紧凑化（展示用）
+   ======================================== */
+function formatLogMessageForDisplay(message) {
+    return String(message ?? '')
+        .replace(/\\r\\n?/g, '\\n')
+        .replace(/[ \\t]*\\n+[ \\t]*/g, ' ')
+        .replace(/[ \\t]{2,}/g, ' ')
+        .trim();
+}
+
+/* ========================================
+   日志文本紧凑化（复制/导出用）
+   ======================================== */
+function formatLogMessageForPlainText(message) {
+    return String(message ?? '')
+        .replace(/\\r\\n?/g, '\\n')
+        .replace(/[ \\t]*\\n+[ \\t]*/g, ' ')
+        .replace(/[ \\t]{2,}/g, ' ')
+        .trim();
+}
+
+/* ========================================
    渲染日志（终端文本流）
    ======================================== */
 function renderLogs() {
@@ -167,7 +189,7 @@ function renderLogs() {
     container.innerHTML = filteredLogs.map(log => {
         const level = normalizeLogType(log.type);
         const levelLabel = getLogTypeText(level).toUpperCase();
-        const singleLineMessage = String(log.message || '').replace(/\\s*\\n\\s*/g, ' ⏎ ');
+        const singleLineMessage = formatLogMessageForDisplay(log.message);
 
         return \`
             <div class="log-line log-line-\${level}">
@@ -320,7 +342,9 @@ async function copyVisibleLogs() {
         return;
     }
 
-    const text = filteredLogs.map(log => \`[\${log.timestamp}] \${log.type.toUpperCase()}: \${log.message}\`).join('\\n');
+    const text = filteredLogs
+        .map(log => \`[\${log.timestamp}] \${log.type.toUpperCase()}: \${formatLogMessageForPlainText(log.message)}\`)
+        .join('\\n');
 
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -427,27 +451,14 @@ function toggleAutoRefresh() {
         }
 
         isAutoRefreshing = false;
-        btn.innerHTML = \`
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" stroke-width="2"/>
-                <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
-            </svg>
-            自动刷新
-        \`;
-        btn.classList.remove('btn-success');
-        btn.classList.add('btn-secondary');
+        btn.textContent = '自动刷新';
+        btn.classList.remove('active');
         return;
     }
 
     isAutoRefreshing = true;
-    btn.innerHTML = \`
-        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
-        </svg>
-        停止刷新
-    \`;
-    btn.classList.remove('btn-secondary');
-    btn.classList.add('btn-success');
+    btn.textContent = '停止刷新';
+    btn.classList.add('active');
 
     fetchRealLogs();
     autoRefreshInterval = setInterval(() => {
@@ -466,7 +477,9 @@ function exportLogs() {
         return;
     }
 
-    const logText = filteredLogs.map(log => \`[\${log.timestamp}] \${getLogTypeText(log.type).toUpperCase()}: \${log.message}\`).join('\\n');
+    const logText = filteredLogs
+        .map(log => \`[\${log.timestamp}] \${getLogTypeText(log.type).toUpperCase()}: \${formatLogMessageForPlainText(log.message)}\`)
+        .join('\\n');
 
     const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
