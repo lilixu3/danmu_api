@@ -92,6 +92,10 @@ export default class HanjutvSource extends BaseSource {
     const key = String(keyword || '').trim();
     if (!key) return false;
 
+    const normalize = (text) => String(text || '').replace(/\s+/g, '').trim();
+    const normalizedKey = normalize(key);
+    if (!normalizedKey) return false;
+
     const values = [
       item?.name,
       item?.title,
@@ -103,10 +107,7 @@ export default class HanjutvSource extends BaseSource {
       item?.originalName,
     ].filter(Boolean);
 
-    return values.some((text) => {
-      const v = String(text);
-      return titleMatches(v, key) || v.includes(key);
-    });
+    return values.some((text) => normalize(text).includes(normalizedKey));
   }
 
   async searchByWeb(keyword) {
@@ -223,22 +224,6 @@ export default class HanjutvSource extends BaseSource {
     return [...items].sort((a, b) => score(b) - score(a));
   }
 
-  buildFallbackItems(items = [], currentItems = [], limit = 6) {
-    const exists = new Set((currentItems || []).map((item) => String(item?.sid || '')));
-
-    return this.sortSearchItems(items, '')
-      .filter((item) => {
-        if (!item?.sid) return false;
-        if (exists.has(String(item.sid))) return false;
-
-        const category = Number(item?.category || 0);
-        const count = Number(item?.count ?? item?.episodeCount ?? 0);
-        return category === 1 || count >= 6;
-      })
-      .slice(0, limit)
-      .map((item) => ({ ...item, keywordFallback: true }));
-  }
-
   async search(keyword) {
     try {
       const key = String(keyword || '').trim();
@@ -283,11 +268,6 @@ export default class HanjutvSource extends BaseSource {
 
         merged = this.dedupeBySid([...merged, ...indexAllList]);
         filtered = merged.filter((item) => this.matchKeyword(item, key));
-      }
-
-      if (filtered.length <= 1) {
-        const fallbackItems = this.buildFallbackItems(merged, filtered, 6);
-        filtered = this.dedupeBySid([...filtered, ...fallbackItems]);
       }
 
       filtered = this.sortSearchItems(filtered, key);
@@ -461,7 +441,7 @@ export default class HanjutvSource extends BaseSource {
     }
 
     const processHanjutvAnimes = await Promise.all(sourceAnimes
-      .filter((s) => s?.keywordFallback || titleMatches(s.name, queryTitle) || String(s.name || '').includes(queryTitle))
+      .filter((s) => this.matchKeyword(s, queryTitle) || titleMatches(s.name, queryTitle) || String(s.name || '').includes(queryTitle))
       .map(async (anime) => {
         try {
           const detail = await this.getDetail(anime.sid);
