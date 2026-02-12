@@ -25,12 +25,9 @@ export default class HanjutvSource extends BaseSource {
     this.seriesDetailCache = new Map();
     this.seriesEpisodesCache = new Map();
 
-    this.indexSearchCache = {
-      fetchedAt: 0,
-      keyword: "",
-      list: [],
-    };
+    this.indexSearchCache = new Map();
     this.indexCacheTtlMs = 10 * 60 * 1000;
+    this.maxIndexOffset = 1200;
   }
 
   getCurrentHeaders() {
@@ -356,28 +353,35 @@ export default class HanjutvSource extends BaseSource {
     return this.normalizeSearchItems(resp.data.seriesList);
   }
 
-  async searchByIndexKeyword(keyword) {
+  async searchByIndexKeyword(keyword, withKeywordParam = true) {
     const now = Date.now();
-    const cacheValid = this.indexSearchCache.keyword === keyword
-      && Array.isArray(this.indexSearchCache.list)
-      && this.indexSearchCache.list.length > 0
-      && (now - this.indexSearchCache.fetchedAt) < this.indexCacheTtlMs;
+    const cacheKey = `${withKeywordParam ? 'k' : 'all'}:${keyword}`;
+    const cacheEntry = this.indexSearchCache.get(cacheKey);
 
-    if (cacheValid) {
-      return this.indexSearchCache.list;
+    if (cacheEntry
+      && Array.isArray(cacheEntry.list)
+      && cacheEntry.list.length > 0
+      && (now - cacheEntry.fetchedAt) < this.indexCacheTtlMs) {
+      return cacheEntry.list;
     }
 
     const merged = [];
     const sidSet = new Set();
     let stalePages = 0;
 
-    for (let offset = 0; offset <= 400; offset += 20) {
+    for (let offset = 0; offset <= this.maxIndexOffset; offset += 20) {
       let items = [];
 
       try {
-        const resp = await this.appGet('/api/series/indexV2', {
+        const params = {
           offset,
-          k: keyword,
+        };
+        if (withKeywordParam) {
+          params.k = keyword;
+        }
+
+        const resp = await this.appGet('/api/series/indexV2', {
+          ...params,
         }, { timeout: 10000, retries: 1 });
 
         if (resp?.data?.rescode === 0 && Array.isArray(resp.data.seriesList)) {
@@ -404,13 +408,101 @@ export default class HanjutvSource extends BaseSource {
       }
     }
 
-    this.indexSearchCache = {
+    this.indexSearchCache.set(cacheKey, {
       fetchedAt: Date.now(),
-      keyword,
       list: merged,
-    };
+    });
 
     return merged;
+  }
+
+  scoreSearchItem(item, keyword) {
+    if (!item || typeof item !== 'object') return Number.NEGATIVE_INFINITY;
+
+    const title = String(item.name || '');
+    const key = String(keyword || '').trim();
+    const category = Number(item.category || 0);
+    const episodeCount = Number(item.count ?? item.episodeCount ?? item.totalCount ?? 0);
+    const updateTime = Number(item.updateTime || item.publishTime || 0);
+
+    let score = 0;
+
+    if (key && title === key) {
+      score += 150;
+    } else if (key && title.includes(key)) {
+      score += 90;
+    } else if (key && titleMatches(title, key)) {
+      score += 70;
+    }
+
+    if (category === 1) {
+      score += 30;
+    }
+
+    if (Number.isFinite(episodeCount)) {
+      if (episodeCount > 1) {
+        score += 20;
+      }
+      score += Math.min(episodeCount, 40) / 2;
+    }
+
+    if (item.refer) {
+      score += 8;
+    }
+
+    if (item?.image?.thumb || item?.image?.url) {
+      score += 2;
+    }
+
+    if (Number.isFinite(updateTime) && updateTime > 0) {
+      score += Math.min(updateTime / 1000000000000, 20);
+    }
+
+    return score;
+  }
+
+  mergeSeriesList(keyword, ...lists) {
+    const mergedMap = new Map();
+
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+
+      for (const item of list) {
+        if (!item?.sid) continue;
+
+        const sid = String(item.sid);
+        const current = mergedMap.get(sid);
+
+        if (!current) {
+          mergedMap.set(sid, item);
+          continue;
+        }
+
+        const currentScore = this.scoreSearchItem(current, keyword);
+        const nextScore = this.scoreSearchItem(item, keyword);
+        const preferred = nextScore >= currentScore ? item : current;
+        const backup = preferred === item ? current : item;
+
+        mergedMap.set(sid, {
+          ...backup,
+          ...preferred,
+          refer: preferred.refer || backup.refer || '',
+          image: {
+            ...(backup.image || {}),
+            ...(preferred.image || {}),
+          },
+        });
+      }
+    }
+
+    return Array.from(mergedMap.values()).sort((a, b) => {
+      const scoreDiff = this.scoreSearchItem(b, keyword) - this.scoreSearchItem(a, keyword);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      const at = Number(a.updateTime || a.publishTime || 0);
+      const bt = Number(b.updateTime || b.publishTime || 0);
+      return bt - at;
+    });
   }
 
   buildReferCandidates(sid, inputRefer = "") {
@@ -488,23 +580,36 @@ export default class HanjutvSource extends BaseSource {
     const key = String(keyword || "").trim();
     if (!key) return [];
 
-    let seriesList = [];
+    let s2List = [];
+    let indexKeywordList = [];
+    let indexAllList = [];
 
     try {
-      seriesList = await this.searchByS2(key);
+      s2List = await this.searchByS2(key);
     } catch (error) {
       log("info", `[Hanjutv] s2 搜索失败: ${error.message}`);
     }
 
-    if (!Array.isArray(seriesList) || seriesList.length === 0) {
+    try {
+      indexKeywordList = await this.searchByIndexKeyword(key, true);
+    } catch (error) {
+      log("info", `[Hanjutv] indexV2(k) 搜索失败: ${error.message}`);
+    }
+
+    const shouldFetchAllIndex = (s2List.length + indexKeywordList.length) <= 3;
+    if (shouldFetchAllIndex) {
       try {
-        seriesList = await this.searchByIndexKeyword(key);
+        indexAllList = await this.searchByIndexKeyword(key, false);
       } catch (error) {
-        log("info", `[Hanjutv] indexV2 搜索失败: ${error.message}`);
+        log("info", `[Hanjutv] indexV2(all) 搜索失败: ${error.message}`);
       }
     }
 
+    const seriesList = this.mergeSeriesList(key, s2List, indexKeywordList, indexAllList);
+
     const filtered = seriesList.filter((item) => titleMatches(item.name, key) || String(item.name || '').includes(key));
+
+    log("info", `[Hanjutv] 搜索候选统计 s2=${s2List.length}, indexK=${indexKeywordList.length}, indexAll=${indexAllList.length}, filtered=${filtered.length}`);
 
     filtered.forEach((item) => {
       this.sidMetaCache.set(item.sid, {
