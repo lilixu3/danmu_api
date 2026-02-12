@@ -14,13 +14,11 @@ export default class HanjutvSource extends BaseSource {
 
     this.apiHost = "https://hxqapi.hiyun.tv";
     this.currentUserAgent = "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)";
-    this.deviceHeaders = {
-      ...(globals?.hanjutvHeaders || {}),
-    };
+    this.deviceHeaders = this.resolveDynamicHeaders();
 
     this.decryptMode1SecKey = "34F9Q53w/HJW8E6Q";
     this.defaultSeriesRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
-    this.enableS5Search = globals?.hanjutvS5Enabled !== false;
+    this.enableS5Search = this.resolveS5SearchEnabled();
 
     this.sidMetaCache = new Map();
     this.seriesDetailCache = new Map();
@@ -29,6 +27,106 @@ export default class HanjutvSource extends BaseSource {
     this.indexSearchCache = new Map();
     this.indexCacheTtlMs = 10 * 60 * 1000;
     this.maxIndexOffset = 1200;
+  }
+
+  getEnvValue(key) {
+    if (typeof process !== 'undefined' && process?.env && process.env[key] !== undefined) {
+      return process.env[key];
+    }
+
+    if (globals?.env && Object.prototype.hasOwnProperty.call(globals.env, key)) {
+      return globals.env[key];
+    }
+
+    return undefined;
+  }
+
+  parseHeadersFromEnvJson() {
+    const candidates = [
+      this.getEnvValue('HANJUTV_HEADERS_JSON'),
+      this.getEnvValue('HXQ_HEADERS_JSON'),
+      this.getEnvValue('HANJUTV_HEADERS'),
+      this.getEnvValue('HXQ_HEADERS'),
+    ];
+
+    for (const raw of candidates) {
+      if (!raw || typeof raw !== 'string') continue;
+
+      const text = raw.trim();
+      if (!text || (!text.startsWith('{') && !text.startsWith('['))) continue;
+
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch {
+      }
+    }
+
+    return {};
+  }
+
+  resolveDynamicHeaders() {
+    const fromGlobals = (globals?.hanjutvHeaders && typeof globals.hanjutvHeaders === 'object')
+      ? globals.hanjutvHeaders
+      : {};
+
+    const fromEnvJson = this.parseHeadersFromEnvJson();
+
+    const read = (...keys) => {
+      for (const key of keys) {
+        const value = this.getEnvValue(key);
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          return String(value).trim();
+        }
+      }
+      return '';
+    };
+
+    const fromEnvSplit = {};
+    const envPairMap = {
+      didmd5: ['HANJUTV_DIDMD5', 'HXQ_DIDMD5'],
+      said: ['HANJUTV_SAID', 'HXQ_SAID'],
+      uk: ['HANJUTV_UK', 'HXQ_UK'],
+      'auth-token': ['HANJUTV_AUTH_TOKEN', 'HXQ_AUTH_TOKEN'],
+      'auth-uid': ['HANJUTV_AUTH_UID', 'HXQ_AUTH_UID'],
+      sign: ['HANJUTV_SIGN', 'HXQ_SIGN'],
+    };
+
+    Object.entries(envPairMap).forEach(([key, envKeys]) => {
+      const value = read(...envKeys);
+      if (!value) return;
+      fromEnvSplit[key] = value;
+    });
+
+    const merged = {
+      ...fromEnvJson,
+      ...fromGlobals,
+      ...fromEnvSplit,
+    };
+
+    Object.keys(merged).forEach((key) => {
+      if (merged[key] === undefined || merged[key] === null || String(merged[key]).trim() === '') {
+        delete merged[key];
+      }
+    });
+
+    return merged;
+  }
+
+  resolveS5SearchEnabled() {
+    const raw = this.getEnvValue('HANJUTV_S5_ENABLED') ?? this.getEnvValue('HXQ_S5_ENABLED');
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      return globals?.hanjutvS5Enabled !== false;
+    }
+
+    const text = String(raw).trim().toLowerCase();
+    if (['0', 'false', 'off', 'no', 'n'].includes(text)) {
+      return false;
+    }
+
+    return true;
   }
 
   getCurrentHeaders() {
