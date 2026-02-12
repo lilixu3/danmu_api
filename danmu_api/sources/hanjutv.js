@@ -5,7 +5,7 @@ import { httpGet } from "../utils/http-util.js";
 import { convertToAsciiSum, md5 } from "../utils/codec-util.js";
 import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
-import { titleMatches } from "../utils/common-util.js";
+import { normalizeSpaces, titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
 
 export default class HanjutvSource extends BaseSource {
@@ -338,19 +338,124 @@ export default class HanjutvSource extends BaseSource {
   }
 
   async searchByS2(keyword) {
-    const resp = await this.appGet('/api/search/s2', {
-      k: keyword,
-      page: 1,
-    }, {
-      timeout: 10000,
-      retries: 1,
-    });
+    const merged = [];
+    const sidSet = new Set();
+    let stalePages = 0;
 
-    if (!resp?.data || resp.data.rescode !== 0 || !Array.isArray(resp.data.seriesList)) {
-      return [];
+    for (let page = 1; page <= 5; page++) {
+      const resp = await this.appGet('/api/search/s2', {
+        k: keyword,
+        page,
+      }, {
+        timeout: 10000,
+        retries: 1,
+      });
+
+      if (!resp?.data || resp.data.rescode !== 0 || !Array.isArray(resp.data.seriesList)) {
+        stalePages += 1;
+        if (stalePages >= 1) break;
+        continue;
+      }
+
+      const items = this.normalizeSearchItems(resp.data.seriesList);
+      if (items.length === 0) {
+        stalePages += 1;
+        if (stalePages >= 1) break;
+        continue;
+      }
+
+      stalePages = 0;
+      for (const item of items) {
+        if (!item.sid || sidSet.has(item.sid)) continue;
+        sidSet.add(item.sid);
+        merged.push(item);
+      }
+
+      if (items.length < 20) {
+        break;
+      }
     }
 
-    return this.normalizeSearchItems(resp.data.seriesList);
+    return merged;
+  }
+
+  collectSearchMatchTexts(item) {
+    if (!item || typeof item !== 'object') return [];
+
+    const texts = [];
+    const seen = new Set();
+    const pushText = (value) => {
+      if (value === undefined || value === null) return;
+
+      if (Array.isArray(value)) {
+        value.forEach((entry) => pushText(entry));
+        return;
+      }
+
+      if (typeof value === 'object') {
+        Object.values(value).forEach((entry) => pushText(entry));
+        return;
+      }
+
+      const text = String(value).trim();
+      if (!text) return;
+      if (seen.has(text)) return;
+      seen.add(text);
+      texts.push(text);
+    };
+
+    const keys = [
+      'name', 'title', 'seriesName', 'showName',
+      'nameCn', 'cnName', 'zhName', 'subName', 'subTitle',
+      'originName', 'originalName', 'keyword', 'keywords',
+      'alias', 'aliases', 'aka', 'tags', 'tagNames',
+    ];
+
+    keys.forEach((key) => pushText(item[key]));
+    pushText(item.image);
+
+    return texts;
+  }
+
+  isSearchItemMatched(item, keyword) {
+    const key = String(keyword || '').trim();
+    if (!key) return false;
+
+    const normalizedKey = normalizeSpaces(key).toLowerCase();
+    const texts = this.collectSearchMatchTexts(item);
+
+    return texts.some((text) => {
+      if (titleMatches(text, key)) return true;
+      return normalizeSpaces(text).toLowerCase().includes(normalizedKey);
+    });
+  }
+
+  filterSearchItems(items, keyword) {
+    if (!Array.isArray(items)) return [];
+    return items.filter((item) => this.isSearchItemMatched(item, keyword));
+  }
+
+  buildFallbackSearchItems(items, currentItems, keyword, limit = 10) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    const currentSidSet = new Set((currentItems || []).map((item) => String(item?.sid || '')));
+
+    return items
+      .filter((item) => {
+        if (!item?.sid) return false;
+        if (currentSidSet.has(String(item.sid))) return false;
+
+        const category = Number(item.category || 0);
+        const episodeCount = Number(item.count ?? item.episodeCount ?? item.totalCount ?? 0);
+
+        return category === 1 || episodeCount >= 6;
+      })
+      .sort((a, b) => this.scoreSearchItem(b, keyword) - this.scoreSearchItem(a, keyword))
+      .slice(0, limit)
+      .map((item) => ({
+        ...item,
+        keywordFallback: true,
+      }));
   }
 
   async searchByIndexKeyword(keyword, withKeywordParam = true) {
@@ -596,7 +701,10 @@ export default class HanjutvSource extends BaseSource {
       log("info", `[Hanjutv] indexV2(k) 搜索失败: ${error.message}`);
     }
 
-    const shouldFetchAllIndex = (s2List.length + indexKeywordList.length) <= 3;
+    const primarySeriesList = this.mergeSeriesList(key, s2List, indexKeywordList);
+    let filtered = this.filterSearchItems(primarySeriesList, key);
+
+    const shouldFetchAllIndex = filtered.length <= 1;
     if (shouldFetchAllIndex) {
       try {
         indexAllList = await this.searchByIndexKeyword(key, false);
@@ -605,20 +713,34 @@ export default class HanjutvSource extends BaseSource {
       }
     }
 
-    const seriesList = this.mergeSeriesList(key, s2List, indexKeywordList, indexAllList);
+    const seriesList = this.mergeSeriesList(key, primarySeriesList, indexAllList);
+    filtered = this.filterSearchItems(seriesList, key);
 
-    const filtered = seriesList.filter((item) => titleMatches(item.name, key) || String(item.name || '').includes(key));
+    const fallbackItems = filtered.length <= 1
+      ? this.buildFallbackSearchItems(seriesList, filtered, key, 10)
+      : [];
 
-    log("info", `[Hanjutv] 搜索候选统计 s2=${s2List.length}, indexK=${indexKeywordList.length}, indexAll=${indexAllList.length}, filtered=${filtered.length}`);
+    const mergedFiltered = this.mergeSeriesList(key, filtered, fallbackItems);
+    mergedFiltered.forEach((item) => {
+      item.keywordMatched = this.isSearchItemMatched(item, key);
+      item.keywordFallback = Boolean(item.keywordFallback && !item.keywordMatched);
+    });
 
-    filtered.forEach((item) => {
+    const fallbackCount = mergedFiltered.filter((item) => item.keywordFallback).length;
+    log("info", `[Hanjutv] 搜索候选统计 s2=${s2List.length}, indexK=${indexKeywordList.length}, indexAll=${indexAllList.length}, filtered=${mergedFiltered.length}, fallback=${fallbackCount}`);
+    if (mergedFiltered.length <= 3) {
+      const preview = mergedFiltered.map((item) => `${item.name || '未知'}|sid=${item.sid}|c=${item.category || 0}|cnt=${item.count || 0}|m=${item.keywordMatched ? 1 : 0}|f=${item.keywordFallback ? 1 : 0}`).join(' ; ');
+      log("info", `[Hanjutv] 搜索候选预览 ${preview}`);
+    }
+
+    mergedFiltered.forEach((item) => {
       this.sidMetaCache.set(item.sid, {
         refer: item.refer || "",
         name: item.name || "",
       });
     });
 
-    return filtered;
+    return mergedFiltered;
   }
 
   async search(keyword) {
@@ -758,7 +880,7 @@ export default class HanjutvSource extends BaseSource {
     }
 
     const processHanjutvAnimes = await Promise.all(sourceAnimes
-      .filter(s => titleMatches(s.name, queryTitle))
+      .filter((anime) => anime?.keywordFallback || this.isSearchItemMatched(anime, queryTitle))
       .map(async (anime) => {
         try {
           const detail = await this.getDetail(anime.sid);
