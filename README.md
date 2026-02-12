@@ -197,6 +197,7 @@ node ./danmu_api/server.js
 | `RATE_LIMIT_MAX_REQUESTS` | 限流：同一 IP 1 分钟最大请求数（`0` 不限流） |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis（可选，用于持久化与稳定性） |
 | `SOURCE_ORDER` | 弹幕源优先级顺序（按需调整） |
+| `ANIME_TITLE_FILTER` | 剧名过滤正则（需启用 `ENABLE_EPISODE_FILTER`，为空则不过滤） |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时将繁体剧名自动转换为简体（默认 `false`） |
 | `OTHER_SERVER` | 兜底第三方弹幕服务器（可选） |
 | `PROXY_URL` | 代理/反代地址（部分源/接口可用） |
