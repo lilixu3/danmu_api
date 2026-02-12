@@ -20,6 +20,7 @@ export default class HanjutvSource extends BaseSource {
 
     this.decryptMode1SecKey = "34F9Q53w/HJW8E6Q";
     this.defaultSeriesRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
+    this.enableS5Search = globals?.hanjutvS5Enabled !== false;
 
     this.sidMetaCache = new Map();
     this.seriesDetailCache = new Map();
@@ -379,6 +380,35 @@ export default class HanjutvSource extends BaseSource {
     return merged;
   }
 
+  async searchByS5(keyword) {
+    const resp = await this.appGet('/api/search/s5', {
+      k: keyword,
+      page: 1,
+    }, {
+      timeout: 10000,
+      retries: 1,
+    });
+
+    if (!resp?.data || resp.data.rescode !== 0) {
+      return [];
+    }
+
+    if (Array.isArray(resp.data.seriesList)) {
+      return this.normalizeSearchItems(resp.data.seriesList);
+    }
+
+    const decryptedData = await this.decryptResponseDataIfNeeded(resp.data, 'search/s5');
+    if (!decryptedData || typeof decryptedData !== 'object') {
+      return [];
+    }
+
+    if (Array.isArray(decryptedData.seriesList)) {
+      return this.normalizeSearchItems(decryptedData.seriesList);
+    }
+
+    return this.extractSeriesItemsDeep(decryptedData);
+  }
+
   collectSearchMatchTexts(item) {
     if (!item || typeof item !== 'object') return [];
 
@@ -686,8 +716,17 @@ export default class HanjutvSource extends BaseSource {
     if (!key) return [];
 
     let s2List = [];
+    let s5List = [];
     let indexKeywordList = [];
     let indexAllList = [];
+
+    if (this.enableS5Search) {
+      try {
+        s5List = await this.searchByS5(key);
+      } catch (error) {
+        log("info", `[Hanjutv] s5 搜索失败: ${error.message}`);
+      }
+    }
 
     try {
       s2List = await this.searchByS2(key);
@@ -701,7 +740,7 @@ export default class HanjutvSource extends BaseSource {
       log("info", `[Hanjutv] indexV2(k) 搜索失败: ${error.message}`);
     }
 
-    const primarySeriesList = this.mergeSeriesList(key, s2List, indexKeywordList);
+    const primarySeriesList = this.mergeSeriesList(key, s5List, s2List, indexKeywordList);
     let filtered = this.filterSearchItems(primarySeriesList, key);
 
     const shouldFetchAllIndex = filtered.length <= 1;
@@ -727,7 +766,7 @@ export default class HanjutvSource extends BaseSource {
     });
 
     const fallbackCount = mergedFiltered.filter((item) => item.keywordFallback).length;
-    log("info", `[Hanjutv] 搜索候选统计 s2=${s2List.length}, indexK=${indexKeywordList.length}, indexAll=${indexAllList.length}, filtered=${mergedFiltered.length}, fallback=${fallbackCount}`);
+    log("info", `[Hanjutv] 搜索候选统计 s5=${s5List.length}, s2=${s2List.length}, indexK=${indexKeywordList.length}, indexAll=${indexAllList.length}, filtered=${mergedFiltered.length}, fallback=${fallbackCount}`);
     if (mergedFiltered.length <= 3) {
       const preview = mergedFiltered.map((item) => `${item.name || '未知'}|sid=${item.sid}|c=${item.category || 0}|cnt=${item.count || 0}|m=${item.keywordMatched ? 1 : 0}|f=${item.keywordFallback ? 1 : 0}`).join(' ; ');
       log("info", `[Hanjutv] 搜索候选预览 ${preview}`);
