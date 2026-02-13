@@ -329,12 +329,12 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
   storeAnimeIdsToMap(curAnimes, queryTitle);
 
   // 如果启用了集标题过滤，则为每个动漫添加过滤后的 episodes
-  if (globals.enableEpisodeFilter) {
+  if (globals.enableAnimeEpisodeFilter) {
     const validAnimes = [];
     for (const anime of curAnimes) {
       // 首先检查剧名是否包含过滤关键词
       const animeTitle = anime.animeTitle || '';
-      if (globals.animeTitleFilter?.test(animeTitle)) {
+      if (globals.animeTitleFilter && globals.animeTitleFilter.test(animeTitle)) {
         log("info", `[searchAnime] Anime ${anime.animeId} filtered by name: ${animeTitle}`);
         continue; // 跳过该动漫
       }
@@ -1020,7 +1020,7 @@ export async function getBangumi(path) {
   }
 
   // 如果启用了集标题过滤，则应用过滤
-  if (globals.enableEpisodeFilter) {
+  if (globals.enableAnimeEpisodeFilter) {
     episodesList = episodesList.filter(episode => {
       return !globals.episodeTitleFilter.test(episode.episodeTitle);
     });
