@@ -127,7 +127,17 @@ export function handleLogs() {
         `[${log.timestamp}] ${log.level}: ${formatLogMessage(log.message)}`
     )
     .join("\n");
-  return new Response(logText, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  
+  // 非管理员访问时隐藏日志中的 IP 信息
+  let processedLogText = logText;
+  if (globals.currentToken !== globals.adminToken) {
+    processedLogText = logText.replace(/(client\s+ip:\s*)([^\n\r]*)/gi, (match, prefix, ipPart) => {
+      const maskedIp = ipPart.replace(/[^.\s\n\r]/g, '*');
+      return prefix + maskedIp;
+    });
+  }
+  
+  return new Response(processedLogText, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
 
 /**
@@ -150,6 +160,8 @@ export async function handleClearCache() {
     globals.episodeIds = [];
     globals.episodeNum = 10001; // 重置为初始值
     globals.lastSelectMap = new Map(); // 重新创建 Map 对象
+    globals.reqRecords = []; // 清空请求记录
+    globals.todayReqNum = 0; // 重置今日请求次数
     
     // 清理搜索和弹幕缓存
     globals.searchCache = new Map();
@@ -189,7 +201,9 @@ export async function handleClearCache() {
       lastSelectMap: 0,
       searchCache: 0,
       commentCache: 0,
-      requestHistory: 0
+      requestHistory: 0,
+      reqRecords: 0,
+      todayReqNum: 0
     }}, 200);
   } catch (error) {
     log("error", `[server] Cache clear failed: ${error.message}`);
@@ -203,8 +217,19 @@ export async function handleClearCache() {
  */
 export function handleReqRecords() {
   // 返回请求记录，按时间倒序排列（最新的在前）
-  const records = [...globals.reqRecords].reverse();
+  let records = [...globals.reqRecords].reverse();
   const todayReqNum = globals.todayReqNum || 0;
+  
+  // 非管理员访问时隐藏请求记录中的 IP
+  if (globals.currentToken !== globals.adminToken) {
+    records = records.map(record => {
+      if (record.clientIp) {
+        const maskedIp = record.clientIp.replace(/[^.]/g, '*');
+        return { ...record, clientIp: maskedIp };
+      }
+      return record;
+    });
+  }
+  
   return jsonResponse({ records, todayReqNum }, 200);
 }
-
