@@ -1561,15 +1561,17 @@ FFFFFF FF5733 00FF00"></textarea>
             // AI API Key 专用编辑界面
             container.innerHTML = \`
                 <div class="ai-apikey-editor">
-                    <label>API Key 值</label>
-                    <textarea class="form-group" id="text-value" placeholder="请输入 AI API Key" rows="3">\${value}</textarea>
-                    <div class="form-help">支持 OpenAI 兼容的 API，需配合 AI_BASE_URL 和 AI_MODEL 配置使用</div>
+                    <div class="form-group ai-apikey-input-group">
+                        <label class="form-label" for="text-value">API Key 值</label>
+                        <textarea class="form-textarea ai-apikey-textarea" id="text-value" placeholder="请输入 AI API Key" rows="3">\${escapeHtml(value)}</textarea>
+                        <div class="form-help ai-apikey-help">支持 OpenAI 兼容的 API，需配合 AI_BASE_URL 和 AI_MODEL 配置使用</div>
+                    </div>
 
                     <div class="ai-apikey-status" id="ai-apikey-status">
                         <span class="ai-status-icon">🔍</span>
                         <span class="ai-status-text">点击下方按钮测试连通性</span>
                     </div>
-                    <div class="ai-apikey-actions" style="margin-bottom: 15px;">
+                    <div class="ai-apikey-actions">
                         <button type="button" class="btn btn-primary btn-sm" id="ai-verify-btn" onclick="verifyAiConnection()">
                             🧪 测试连通性
                         </button>

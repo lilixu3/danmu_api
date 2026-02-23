@@ -1117,6 +1117,67 @@ export const settingsCssContent = /* css */ `/* ================================
 }
 
 /* ========================================
+   AI API Key 编辑器样式
+   ======================================== */
+.ai-apikey-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+.ai-apikey-input-group {
+    margin-bottom: 0;
+}
+
+.ai-apikey-textarea {
+    width: 100%;
+    min-height: 96px;
+    line-height: 1.55;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    word-break: break-word;
+}
+
+.ai-apikey-help {
+    flex-wrap: wrap;
+    white-space: normal;
+    line-height: 1.5;
+}
+
+.ai-apikey-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    min-height: 44px;
+}
+
+.ai-apikey-status .ai-status-icon {
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.ai-apikey-status .ai-status-text {
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.ai-apikey-actions {
+    display: flex;
+    align-items: center;
+}
+
+@media (max-width: 640px) {
+    .ai-apikey-actions .btn {
+        width: 100%;
+    }
+}
+
+/* ========================================
    Bilibili Cookie 编辑器样式
    ======================================== */
 .bili-cookie-editor {
