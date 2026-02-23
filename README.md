@@ -150,7 +150,7 @@ node ./danmu_api/server.js
 > 说明：如果你自定义了 `TOKEN` 且不为默认值，部分部署/配置下可能需要以 `/{TOKEN}` 作为前缀访问。
 
 - `GET /api/v2/search/anime?keyword=xxx`：按关键字搜索
-- `POST /api/v2/match`：自动匹配（支持 `@qiyi` 等语法指定平台优先级）
+- `POST /api/v2/match`：自动匹配（支持 `@qiyi` 等语法指定平台优先级，也支持 AI 自动匹配）
 - `GET /api/v2/search/episodes?anime=xxx`：搜索剧集信息
 - `GET /api/v2/bangumi/:animeId`：获取详情
 - `GET /api/v2/comment/:commentId?format=json|xml`：按 commentId 获取弹幕
@@ -199,6 +199,8 @@ node ./danmu_api/server.js
 | `SOURCE_ORDER` | 弹幕源优先级顺序（按需调整） |
 | `ANIME_TITLE_FILTER` | 剧名过滤正则（需启用 `ENABLE_EPISODE_FILTER`，为空则不过滤） |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时将繁体剧名自动转换为简体（默认 `false`） |
+| `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` | AI 自动匹配基础配置（可选） |
+| `AI_MATCH_PROMPT` | AI 自动匹配提示词模板（可选，不填使用默认模板） |
 | `OTHER_SERVER` | 兜底第三方弹幕服务器（可选） |
 | `PROXY_URL` | 代理/反代地址（部分源/接口可用） |
 | `LOCAL_PROXY_BIND` / `LOCAL_PROXY_TOKEN` | 本地正向代理辅助服务监听地址与鉴权（仅当 `PROXY_URL` 为正向代理时启用） |

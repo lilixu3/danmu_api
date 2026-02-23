@@ -5,9 +5,10 @@ import { getRedisCaches, judgeRedisValid } from "./utils/redis-util.js";
 import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid } from "./utils/cache-util.js";
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
+import AIClient from './utils/ai-util.js';
 import { getBangumi, getComment, getCommentByUrl, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
 import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords } from "./apis/system-api.js";
-import { handleSetEnv, handleAddEnv, handleDelEnv } from "./apis/env-api.js";
+import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
 import { Segment } from "./models/dandan-model.js";
 import {
     handleCookieStatus,
@@ -34,6 +35,19 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     await judgeLocalCacheValid(path, deployPlatform);
   }
   await judgeRedisValid(path);
+  if (!globals.aiValid && globals.aiBaseUrl && globals.aiModel && globals.aiApiKey && path !== "/favicon.ico" && path !== "/robots.txt") {
+    const ai = new AIClient({
+      baseURL: globals.aiBaseUrl,
+      model: globals.aiModel,
+      apiKey: globals.aiApiKey,
+      systemPrompt: '回答尽量简洁',
+    })
+
+    const status = await ai.verify()
+    if (status.ok) {
+      globals.aiValid = true;
+    }
+  }
 
   log("debug", `request url: ${JSON.stringify(url)}`);
   log("debug", `request path: ${path}`);
@@ -209,7 +223,8 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // 智能处理API路径前缀，确保最终有一个正确的 /api/v2
   if (path !== "/" && path !== "/api/logs" && !path.startsWith('/api/env') 
     && !path.startsWith('/api/deploy') && !path.startsWith('/api/cache')
-    && !path.startsWith('/api/cookie')) {
+    && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
+    && !path.startsWith('/api/ai')) {
       log("debug", `[Path Check] Starting path normalization for: "${path}"`);
       const pathBeforeCleanup = path; // 保存清理前的路径检查是否修改
       
@@ -237,7 +252,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 2. 补全：如果路径缺少前缀（例如请求原始路径为 /search/anime），则补全
       const pathBeforePrefixCheck = path;
       if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs') 
-        && !path.startsWith('/api/env') && !path.startsWith('/api/cache')) {
+        && !path.startsWith('/api/env') && !path.startsWith('/api/cache')
+        && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
+        && !path.startsWith('/api/ai')) {
           log("debug", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
           path = '/api/v2' + path;
       }
@@ -496,6 +513,11 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // POST /api/cookie/refresh-token - 使用refresh_token刷新Cookie（新增）
   if (path === "/api/cookie/refresh-token" && method === "POST") {
     return handleCookieRefreshToken(req);
+  }
+
+  // POST /api/ai/verify - 验证AI连通性
+  if (path === "/api/ai/verify" && method === "POST") {
+    return handleAiVerify(req);
   }
 
   return jsonResponse({ message: "Not found" }, 404);
