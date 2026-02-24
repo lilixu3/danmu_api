@@ -1,12 +1,12 @@
-import BaseSource from "./base.js";
-import { globals } from "../configs/globals.js";
+import BaseSource from './base.js';
+import { globals } from '../configs/globals.js';
 import { log } from "../utils/log-util.js";
 import { httpGet } from "../utils/http-util.js";
 import { convertToAsciiSum } from "../utils/codec-util.js";
 import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches } from "../utils/common-util.js";
-import { SegmentListResponse } from "../models/dandan-model.js";
+import { SegmentListResponse } from '../models/dandan-model.js';
 import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload } from "../utils/hanjutv-util.js";
 
 // =====================
@@ -110,7 +110,7 @@ export default class HanjutvSource extends BaseSource {
     const headers = await createHanjutvSearchHeaders(uid);
     const q = encodeURIComponent(keyword);
 
-    const resp = await httpGet(`${this.appHost}/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
+    const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
       headers,
       timeout: 10000,
       retries: 1,
@@ -141,13 +141,15 @@ export default class HanjutvSource extends BaseSource {
 
   async searchWithLegacyApi(keyword) {
     const q = encodeURIComponent(keyword);
-    const resp = await httpGet(`${this.webHost}/wapi/search/aggregate/search?keyword=${q}&scope=101&page=1`, {
-      headers: this.getWebHeaders(),
+    const resp = await httpGet(`https://hxqapi.hiyun.tv/wapi/search/aggregate/search?keyword=${q}&scope=101&page=1`, {
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
       timeout: 10000,
       retries: 1,
     });
-    const data = resp?.data;
-    return this.extractSearchItems(data);
+    return this.extractSearchItems(resp?.data);
   }
 
   async search(keyword) {
@@ -205,25 +207,23 @@ export default class HanjutvSource extends BaseSource {
       let detail = null;
 
       try {
-        const resp = await httpGet(`${this.appHost}/api/series/detail?sid=${sid}`, {
+        const appResp = await httpGet(`${this.appHost}/api/series/detail?sid=${sid}`, {
           headers: this.getAppHeaders(),
           timeout: 10000,
           retries: 1,
         });
-        const data = resp?.data;
-        detail = data?.series || null;
+        detail = appResp?.data?.series || null;
       } catch {
       }
 
       if (!detail) {
         try {
-          const resp = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, {
+          const webResp = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, {
             headers: this.getWebHeaders(),
             timeout: 10000,
             retries: 1,
           });
-          const data = resp?.data;
-          detail = data?.series || null;
+          detail = webResp?.data?.series || null;
         } catch {
         }
       }
@@ -295,13 +295,12 @@ export default class HanjutvSource extends BaseSource {
 
       if (episodes.length === 0) {
         try {
-          const resp = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, {
+          const webResp = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, {
             headers: this.getWebHeaders(),
             timeout: 10000,
             retries: 1,
           });
-          const data = resp?.data;
-          episodes = this.normalizeEpisodes(data?.episodes || []);
+          episodes = this.normalizeEpisodes(webResp?.data?.episodes || []);
         } catch {
         }
       }
@@ -323,136 +322,106 @@ export default class HanjutvSource extends BaseSource {
   }
 
   async handleAnimes(sourceAnimes, queryTitle, curAnimes) {
-    const cateMap = { 1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧" };
-    const getCategory = (key) => cateMap[key] || "其他";
+    const cateMap = {1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧"}
+
+    function getCategory(key) {
+      return cateMap[key] || "其他";
+    }
 
     const tmpAnimes = [];
+
+    // 添加错误处理，确保sourceAnimes是数组
     if (!sourceAnimes || !Array.isArray(sourceAnimes)) {
       log("error", "[Hanjutv] sourceAnimes is not a valid array");
       return [];
     }
 
+    // 使用 map 和 async 时需要返回 Promise 数组，并等待所有 Promise 完成
     const processHanjutvAnimes = await Promise.all(sourceAnimes
-      .filter((s) => titleMatches(s?.name || "", queryTitle))
+      .filter(s => titleMatches(s.name, queryTitle))
       .map(async (anime) => {
         try {
           const detail = await this.getDetail(anime.sid);
-          const detailObj = detail && !Array.isArray(detail) ? detail : {};
           const eps = await this.getEpisodes(anime.sid);
-          if (!Array.isArray(eps) || eps.length === 0) return;
-
-          const links = [];
+          let links = [];
           for (const ep of eps) {
             const epTitle = ep.title && ep.title.trim() !== "" ? `第${ep.serialNo}集：${ep.title}` : `第${ep.serialNo}集`;
             links.push({
-              name: epTitle,
-              url: ep.pid,
-              title: `【hanjutv】 ${epTitle}`,
+              "name": epTitle,
+              "url": ep.pid,
+              "title": `【hanjutv】 ${epTitle}`
             });
           }
-          if (links.length === 0) return;
 
-          const updateTime = anime.updateTime || detailObj.updateTime || Date.now();
-          const year = Number.isFinite(new Date(updateTime).getFullYear()) ? new Date(updateTime).getFullYear() : new Date().getFullYear();
-          const category = Number(detailObj.category || anime.category || 0);
-          const animeName = anime?.name || detailObj?.name || "未知剧集";
-          const imageUrl = anime?.image?.thumb || detailObj?.image?.thumb || detailObj?.image?.url || "";
+          if (links.length > 0) {
+            let transformedAnime = {
+              animeId: anime.animeId,
+              bangumiId: String(anime.animeId),
+              animeTitle: `${anime.name}(${new Date(anime.updateTime).getFullYear()})【${getCategory(detail.category)}】from hanjutv`,
+              type: getCategory(detail.category),
+              typeDescription: getCategory(detail.category),
+              imageUrl: anime.image.thumb,
+              startDate: generateValidStartDate(new Date(anime.updateTime).getFullYear()),
+              episodeCount: links.length,
+              rating: detail.rank,
+              isFavorited: true,
+              source: "hanjutv",
+            };
 
-          const transformedAnime = {
-            animeId: anime.animeId,
-            bangumiId: String(anime.animeId),
-            animeTitle: `${animeName}(${year})【${getCategory(category)}】from hanjutv`,
-            type: getCategory(category),
-            typeDescription: getCategory(category),
-            imageUrl,
-            startDate: generateValidStartDate(year),
-            episodeCount: links.length,
-            rating: Number(detailObj.rank || anime.rank || 0),
-            isFavorited: true,
-            source: "hanjutv",
-          };
+            tmpAnimes.push(transformedAnime);
 
-          tmpAnimes.push(transformedAnime);
-          addAnime({ ...transformedAnime, links });
+            addAnime({...transformedAnime, links: links});
 
-          if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
+            if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
+          }
         } catch (error) {
           log("error", `[Hanjutv] Error processing anime: ${error.message}`);
         }
-      }));
+      })
+    );
 
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
+
     return processHanjutvAnimes;
   }
 
   async getEpisodeDanmu(id) {
     let allDanmus = [];
+    let fromAxis = 0;
+    const maxAxis = 100000000;
 
     try {
-      let fromAxis = 0;
-      let prevId = 0;
-      const seenDid = new Set();
-
-      for (let page = 0; page < 400; page++) {
-        const url = `${this.appHost}/api/danmu/playItem/list?pid=${id}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=100000000&offset=0`;
-        const resp = await httpGet(url, {
-          headers: this.getAppHeaders(),
-          timeout: 10000,
-          retries: 1,
-        });
-        const data = resp?.data;
-        if (!data || Number(data.rescode) !== 0) break;
-
-        const currentDanmus = Array.isArray(data.danmus) ? data.danmus : [];
-        for (const danmu of currentDanmus) {
-          const did = String(danmu?.did ?? danmu?.id ?? "");
-          if (!did || seenDid.has(did)) continue;
-          seenDid.add(did);
-          allDanmus.push(danmu);
-        }
-
-        const more = Number(data.more || 0);
-        const nextAxis = Number(data.nextAxis || 0);
-        const lastId = Number(data.lastId || 0);
-        if (more !== 1 || currentDanmus.length === 0) break;
-        if ((nextAxis <= fromAxis) && (lastId <= prevId)) break;
-
-        fromAxis = nextAxis > fromAxis ? nextAxis : (fromAxis + 1);
-        prevId = lastId > prevId ? lastId : prevId;
-      }
-
-      if (allDanmus.length > 0) return allDanmus;
-    } catch {
-    }
-
-    try {
-      let fromAxis = 0;
-      const maxAxis = 100000000;
       while (fromAxis < maxAxis) {
-        const resp = await httpGet(`${this.oldDanmuHost}/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${id}&toAxis=${maxAxis}`, {
-          headers: this.getWebHeaders(),
-          timeout: 10000,
+        const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${id}&toAxis=${maxAxis}`, {
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          },
           retries: 1,
         });
-        const data = resp?.data;
-        if (Array.isArray(data?.danmus)) {
-          allDanmus = allDanmus.concat(data.danmus);
+
+        // 将当前请求的 episodes 拼接到总数组
+        if (resp.data && resp.data.danmus) {
+          allDanmus = allDanmus.concat(resp.data.danmus);
         }
 
-        const nextAxis = Number(data?.nextAxis || maxAxis);
-        if (nextAxis >= maxAxis) break;
-        if (nextAxis <= fromAxis) break;
+        // 获取 nextAxis，更新 fromAxis
+        const nextAxis = resp.data.nextAxis || maxAxis;
+        if (nextAxis >= maxAxis) {
+          break; // 如果 nextAxis 达到或超过最大值，退出循环
+        }
         fromAxis = nextAxis;
       }
 
       return allDanmus;
     } catch (error) {
+      // 捕获请求中的错误
       log("error", "fetchHanjutvEpisodeDanmu error:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
       });
-      return allDanmus;
+      return allDanmus; // 返回已收集的 episodes
     }
   }
 
@@ -460,13 +429,13 @@ export default class HanjutvSource extends BaseSource {
     log("info", "获取韩剧TV弹幕分段列表...", id);
 
     return new SegmentListResponse({
-      type: "hanjutv",
-      segmentList: [{
-        type: "hanjutv",
-        segment_start: 0,
-        segment_end: 30000,
-        url: id,
-      }],
+      "type": "hanjutv",
+      "segmentList": [{
+        "type": "hanjutv",
+        "segment_start": 0,
+        "segment_end": 30000,
+        "url": id
+      }]
     });
   }
 
@@ -475,11 +444,12 @@ export default class HanjutvSource extends BaseSource {
   }
 
   formatComments(comments) {
-    return comments.map((c) => ({
-      cid: Number(c.did || c.id || 0),
-      p: `${(Number(c.t || c.time || 0) / 1000).toFixed(2)},${Number(c.tp || c.mode || 1) === 2 ? 5 : Number(c.tp || c.mode || 1)},${Number(c.sc || c.color || 16777215)},[hanjutv]`,
-      m: c.lc ? `${c.con || c.content || ""} 👍${c.lc}` : (c.con || c.content || ""),
-      t: Math.round(Number(c.t || c.time || 0) / 1000),
+    return comments.map(c => ({
+      cid: Number(c.did),
+      p: `${(c.t / 1000).toFixed(2)},${c.tp === 2 ? 5 : c.tp},${Number(c.sc)},[hanjutv]`,
+      m: c.con,
+      t: Math.round(c.t / 1000),
+      like: c.lc
     }));
   }
 }
