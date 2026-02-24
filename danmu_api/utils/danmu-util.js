@@ -180,9 +180,10 @@ export function limitDanmusByCount(filteredDanmus, danmuLimit) {
   return result;
 }
 
-export function convertToDanmakuJson(contents, platform) {
+export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
   let danmus = [];
   let cidCounter = 1;
+  const timeOffset = Number(offsetSeconds) || 0;
 
   // 统一处理输入为数组
   let items = [];
@@ -216,17 +217,18 @@ export function convertToDanmakuJson(contents, platform) {
   for (const item of items) {
     let attributes, m;
     let time, mode, color;
+    let timeNum;
 
     // 新增：处理新格式的弹幕数据
     if ("progress" in item && "mode" in item && "content" in item) {
       // 处理新格式的弹幕对象
-      time = (item.progress / 1000).toFixed(2);
+      timeNum = item.progress / 1000;
       mode = item.mode || 1;
       color = item.color || 16777215;
       m = item.content;
     } else if ("timepoint" in item) {
       // 处理对象数组输入
-      time = parseFloat(item.timepoint).toFixed(2);
+      timeNum = parseFloat(item.timepoint);
       mode = item.ct || 0;
       color = item.color || 16777215;
       m = item.content;
@@ -236,7 +238,7 @@ export function convertToDanmakuJson(contents, platform) {
       }
       // 处理 XML 解析后的格式
       const pValues = item.p.split(",");
-      time = parseFloat(pValues[0]).toFixed(2);
+      timeNum = parseFloat(pValues[0]);
       mode = pValues[1] || 0;
 
       // 支持多种格式的 p 属性
@@ -255,6 +257,16 @@ export function convertToDanmakuJson(contents, platform) {
       }
       m = item.m;
     }
+
+    if (!Number.isFinite(timeNum)) {
+      continue;
+    }
+
+    if (timeOffset !== 0) {
+      timeNum = Math.max(0, timeNum + timeOffset);
+    }
+
+    time = timeNum.toFixed(2);
 
     attributes = [
       time,
