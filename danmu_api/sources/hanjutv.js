@@ -41,15 +41,6 @@ export default class HanjutvSource extends BaseSource {
     };
   }
 
-  async resolveHanjutvPayload(respData, uid = "") {
-    try {
-      return await decodeHanjutvEncryptedPayload(respData, uid);
-    } catch (error) {
-      log("warn", `[Hanjutv] 解密响应失败，回退原始数据: ${error.message}`);
-      return respData;
-    }
-  }
-
   normalizeSearchItems(items = []) {
     if (!Array.isArray(items)) return [];
 
@@ -124,7 +115,12 @@ export default class HanjutvSource extends BaseSource {
       timeout: 10000,
       retries: 1,
     });
-    const data = await this.resolveHanjutvPayload(resp?.data, uid);
+    let data = resp?.data;
+    try {
+      data = await decodeHanjutvEncryptedPayload(resp?.data, uid);
+    } catch (error) {
+      log("warn", `[Hanjutv] s5 响应解密失败，使用原始数据: ${error.message}`);
+    }
     return this.extractSearchItems(data);
   }
 
@@ -135,7 +131,7 @@ export default class HanjutvSource extends BaseSource {
       timeout: 10000,
       retries: 1,
     });
-    const data = await this.resolveHanjutvPayload(resp?.data);
+    const data = resp?.data;
     return this.extractSearchItems(data);
   }
 
@@ -146,7 +142,7 @@ export default class HanjutvSource extends BaseSource {
       timeout: 10000,
       retries: 1,
     });
-    const data = await this.resolveHanjutvPayload(resp?.data);
+    const data = resp?.data;
     return this.extractSearchItems(data);
   }
 
@@ -222,7 +218,7 @@ export default class HanjutvSource extends BaseSource {
           timeout: 10000,
           retries: 1,
         });
-        const data = await this.resolveHanjutvPayload(resp?.data);
+        const data = resp?.data;
         detail = data?.series || null;
       } catch {
       }
@@ -234,7 +230,7 @@ export default class HanjutvSource extends BaseSource {
             timeout: 10000,
             retries: 1,
           });
-          const data = await this.resolveHanjutvPayload(resp?.data);
+          const data = resp?.data;
           detail = data?.series || null;
         } catch {
         }
@@ -269,7 +265,7 @@ export default class HanjutvSource extends BaseSource {
           timeout: 10000,
           retries: 1,
         });
-        const detailData = await this.resolveHanjutvPayload(detailResp?.data);
+        const detailData = detailResp?.data;
         const playItems = Array.isArray(detailData?.playItems) ? detailData.playItems : [];
         episodes = this.normalizeEpisodes(playItems);
       } catch {
@@ -282,7 +278,7 @@ export default class HanjutvSource extends BaseSource {
             timeout: 10000,
             retries: 1,
           });
-          const epData = await this.resolveHanjutvPayload(epResp?.data);
+          const epData = epResp?.data;
           episodes = this.normalizeEpisodes(epData?.programs || epData?.episodes || epData?.qxkPrograms || []);
         } catch {
         }
@@ -295,7 +291,7 @@ export default class HanjutvSource extends BaseSource {
             timeout: 10000,
             retries: 1,
           });
-          const pData = await this.resolveHanjutvPayload(pResp?.data);
+          const pData = pResp?.data;
           const programs = [
             ...(Array.isArray(pData?.programs) ? pData.programs : []),
             ...(Array.isArray(pData?.qxkPrograms) ? pData.qxkPrograms : []),
@@ -312,7 +308,7 @@ export default class HanjutvSource extends BaseSource {
             timeout: 10000,
             retries: 1,
           });
-          const data = await this.resolveHanjutvPayload(resp?.data);
+          const data = resp?.data;
           episodes = this.normalizeEpisodes(data?.episodes || []);
         } catch {
         }
@@ -412,7 +408,7 @@ export default class HanjutvSource extends BaseSource {
           timeout: 10000,
           retries: 1,
         });
-        const data = await this.resolveHanjutvPayload(resp?.data);
+        const data = resp?.data;
         if (!data || Number(data.rescode) !== 0) break;
 
         const currentDanmus = Array.isArray(data.danmus) ? data.danmus : [];
@@ -446,7 +442,7 @@ export default class HanjutvSource extends BaseSource {
           timeout: 10000,
           retries: 1,
         });
-        const data = await this.resolveHanjutvPayload(resp?.data);
+        const data = resp?.data;
         if (Array.isArray(data?.danmus)) {
           allDanmus = allDanmus.concat(data.danmus);
         }
