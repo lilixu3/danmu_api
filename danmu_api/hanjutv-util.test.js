@@ -65,6 +65,12 @@ test("createHanjutvSearchHeaders 生成必要请求头", async () => {
   assert.ok(typeof headers.uk === "string" && headers.uk.length > 0);
   assert.ok(typeof headers.sign === "string" && headers.sign.length > 0);
   assert.equal(headers.vn, "6.5.3");
+  assert.equal(headers.uk, "Hlyp5D7xaL86V45e4NMq9lEFqaIlw70Ofr3SViAVPXw=");
+});
+
+test("createHanjutvSearchHeaders 的 uk 与官方算法一致", async () => {
+  const headers = await createHanjutvSearchHeaders("R4VRuaXvhTDZ8g9oOiSd", 1700000000000);
+  assert.equal(headers.uk, "cU3pQcUA5bnaKgiKxs+twGGCbldX/SfYF8rpSrIk328=");
 });
 
 test("decodeHanjutvEncryptedPayload 支持 key 解密", async () => {

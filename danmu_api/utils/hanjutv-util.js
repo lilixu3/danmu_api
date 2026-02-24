@@ -45,15 +45,6 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
-function pkcs7Pad(bytes, blockSize = 16) {
-  const remain = bytes.length % blockSize;
-  const padSize = remain === 0 ? blockSize : blockSize - remain;
-  const result = new Uint8Array(bytes.length + padSize);
-  result.set(bytes, 0);
-  result.fill(padSize, bytes.length);
-  return result;
-}
-
 function stripControlChars(text) {
   return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
 }
@@ -62,7 +53,7 @@ async function aesCbcEncryptToBase64(plainText, key, iv) {
   const subtle = await getSubtleCrypto();
   const keyBytes = utf8Encode(key);
   const ivBytes = utf8Encode(iv);
-  const plainBytes = pkcs7Pad(utf8Encode(plainText), 16);
+  const plainBytes = utf8Encode(plainText);
 
   const cryptoKey = await subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["encrypt"]);
   const cipherBuffer = await subtle.encrypt({ name: "AES-CBC", iv: ivBytes }, cryptoKey, plainBytes);

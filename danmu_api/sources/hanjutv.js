@@ -115,24 +115,28 @@ export default class HanjutvSource extends BaseSource {
       timeout: 10000,
       retries: 1,
     });
-    let data = resp?.data;
-    try {
-      data = await decodeHanjutvEncryptedPayload(resp?.data, uid);
-    } catch (error) {
-      log("warn", `[Hanjutv] s5 响应解密失败，使用原始数据: ${error.message}`);
-    }
-    return this.extractSearchItems(data);
-  }
 
-  async searchWithS2Api(keyword) {
-    const q = encodeURIComponent(keyword);
-    const resp = await httpGet(`${this.appHost}/api/search/s2?k=${q}&page=1`, {
-      headers: this.getAppHeaders(),
-      timeout: 10000,
-      retries: 1,
-    });
-    const data = resp?.data;
-    return this.extractSearchItems(data);
+    const payload = resp?.data;
+    if (!payload || typeof payload !== "object") {
+      throw new Error("s5 响应为空");
+    }
+
+    if (typeof payload.data === "string" && payload.data.length > 0) {
+      let decoded;
+      try {
+        decoded = await decodeHanjutvEncryptedPayload(payload, uid);
+      } catch (error) {
+        throw new Error(`s5 响应解密失败: ${error.message}`);
+      }
+
+      const items = this.extractSearchItems(decoded);
+      if (items.length === 0) throw new Error("s5 解密后无有效结果");
+      return items;
+    }
+
+    const plainItems = this.extractSearchItems(payload);
+    if (plainItems.length === 0) throw new Error("s5 无有效结果");
+    return plainItems;
   }
 
   async searchWithLegacyApi(keyword) {
@@ -152,27 +156,15 @@ export default class HanjutvSource extends BaseSource {
       if (!key) return [];
 
       let s5List = [];
-      let s2List = [];
       let webList = [];
 
-      const [s5Result, s2Result] = await Promise.allSettled([
-        this.searchWithS5Api(key),
-        this.searchWithS2Api(key),
-      ]);
-
-      if (s5Result.status === "fulfilled") {
-        s5List = Array.isArray(s5Result.value) ? s5Result.value : [];
-      } else {
-        log("warn", `[Hanjutv] s5 搜索失败: ${s5Result.reason?.message || "未知错误"}`);
+      try {
+        s5List = await this.searchWithS5Api(key);
+      } catch (error) {
+        log("warn", `[Hanjutv] s5 搜索失败，降级旧接口: ${error.message}`);
       }
 
-      if (s2Result.status === "fulfilled") {
-        s2List = Array.isArray(s2Result.value) ? s2Result.value : [];
-      } else {
-        log("warn", `[Hanjutv] s2 搜索失败: ${s2Result.reason?.message || "未知错误"}`);
-      }
-
-      let resultList = this.dedupeBySid([...s5List, ...s2List]);
+      let resultList = this.dedupeBySid(s5List);
 
       if (resultList.length === 0) {
         try {
@@ -184,11 +176,11 @@ export default class HanjutvSource extends BaseSource {
       }
 
       if (resultList.length === 0) {
-        log("info", "hanjutvSearchresp: seriesData 或 seriesList 不存在");
+        log("info", "hanjutvSearchresp: s5 与旧接口均无有效结果");
         return [];
       }
 
-      log("info", `[Hanjutv] 搜索候选统计 s5=${s5List.length}, s2=${s2List.length}, web=${webList.length}`);
+      log("info", `[Hanjutv] 搜索候选统计 s5=${s5List.length}, web=${webList.length}`);
       log("info", `[Hanjutv] 搜索找到 ${resultList.length} 个有效结果`);
 
       return resultList.map((anime) => {
