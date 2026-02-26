@@ -475,8 +475,15 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       if (source === "animeko") return animekoSource.search(queryTitle);
     });
 
-    // 执行所有请求并等待结果
-    const results = await Promise.all(requestPromises);
+    // 执行所有请求并等待结果（单源失败不影响其它源）
+    const settledResults = await Promise.allSettled(requestPromises);
+    const results = settledResults.map((result, index) => {
+      if (result.status === "fulfilled") return result.value;
+      const source = globals.sourceOrderArr[index];
+      const reason = result.reason?.message || String(result.reason || "unknown error");
+      log("warn", `[searchAnime] 源 ${source} 搜索失败: ${reason}`);
+      return [];
+    });
 
     // 创建一个对象来存储返回的结果
     const resultData = {};
@@ -495,74 +502,79 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       animeko: animesAnimeko
     } = resultData;
 
-    // 按顺序处理每个来源的结果
+    // 按顺序处理每个来源的结果（单源处理失败不影响其它源）
     for (const key of globals.sourceOrderArr) {
-      if (key === '360') {
-        // 等待处理360来源
-        await kan360Source.handleAnimes(animes360, queryTitle, curAnimes);
-      } else if (key === 'vod') {
-        // 等待处理Vod来源（遍历所有VOD服务器的结果）
-        if (animesVodResults && Array.isArray(animesVodResults)) {
-          for (const vodResult of animesVodResults) {
-            if (vodResult && vodResult.list && vodResult.list.length > 0) {
-              await vodSource.handleAnimes(vodResult.list, queryTitle, curAnimes, vodResult.serverName);
+      try {
+        if (key === '360') {
+          // 等待处理360来源
+          await kan360Source.handleAnimes(animes360, queryTitle, curAnimes);
+        } else if (key === 'vod') {
+          // 等待处理Vod来源（遍历所有VOD服务器的结果）
+          if (animesVodResults && Array.isArray(animesVodResults)) {
+            for (const vodResult of animesVodResults) {
+              if (vodResult && vodResult.list && vodResult.list.length > 0) {
+                await vodSource.handleAnimes(vodResult.list, queryTitle, curAnimes, vodResult.serverName);
+              }
             }
           }
+        } else if (key === 'tmdb') {
+          // 等待处理TMDB来源
+          await tmdbSource.handleAnimes(animesTmdb, queryTitle, curAnimes);
+        } else if (key === 'douban') {
+          // 等待处理Douban来源
+          await doubanSource.handleAnimes(animesDouban, queryTitle, curAnimes);
+        } else if (key === 'renren') {
+          // 等待处理Renren来源
+          await renrenSource.handleAnimes(animesRenren, queryTitle, curAnimes);
+        } else if (key === 'hanjutv') {
+          // 等待处理Hanjutv来源
+          await hanjutvSource.handleAnimes(animesHanjutv, queryTitle, curAnimes);
+        } else if (key === 'bahamut') {
+          // 等待处理Bahamut来源
+          await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes);
+        } else if (key === 'dandan') {
+          // 等待处理弹弹play来源
+          await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes);
+        } else if (key === 'custom') {
+          // 等待处理自定义弹幕源来源
+          await customSource.handleAnimes(animesCustom, queryTitle, curAnimes);
+        } else if (key === 'tencent') {
+          // 等待处理Tencent来源
+          await tencentSource.handleAnimes(animesTencent, queryTitle, curAnimes);
+        } else if (key === 'youku') {
+          // 等待处理Youku来源
+          await youkuSource.handleAnimes(animesYouku, queryTitle, curAnimes);
+        } else if (key === 'iqiyi') {
+          // 等待处理iQiyi来源
+          await iqiyiSource.handleAnimes(animesIqiyi, queryTitle, curAnimes);
+        } else if (key === 'imgo') {
+          // 等待处理Mango来源
+          await mangoSource.handleAnimes(animesImgo, queryTitle, curAnimes);
+        } else if (key === 'bilibili') {
+          // 等待处理Bilibili来源
+          await bilibiliSource.handleAnimes(animesBilibili, queryTitle, curAnimes);
+        } else if (key === 'migu') {
+          // 等待处理Migu来源
+          await miguSource.handleAnimes(animesMigu, queryTitle, curAnimes);
+        } else if (key === 'sohu') {
+          // 等待处理Sohu来源
+          await sohuSource.handleAnimes(animesSohu, queryTitle, curAnimes);
+        } else if (key === 'leshi') {
+          // 等待处理Leshi来源
+          await leshiSource.handleAnimes(animesLeshi, queryTitle, curAnimes);
+        } else if (key === 'xigua') {
+          // 等待处理Xigua来源
+          await xiguaSource.handleAnimes(animesXigua, queryTitle, curAnimes);
+        } else if (key === 'maiduidui') {
+          // 等待处理Maiduidui来源
+          await maiduiduiSource.handleAnimes(animesMaiduidui, queryTitle, curAnimes);
+        } else if (key === 'animeko') {
+          // 等待处理Animeko来源
+          await animekoSource.handleAnimes(animesAnimeko, queryTitle, curAnimes);
         }
-      } else if (key === 'tmdb') {
-        // 等待处理TMDB来源
-        await tmdbSource.handleAnimes(animesTmdb, queryTitle, curAnimes);
-      } else if (key === 'douban') {
-        // 等待处理Douban来源
-        await doubanSource.handleAnimes(animesDouban, queryTitle, curAnimes);
-      } else if (key === 'renren') {
-        // 等待处理Renren来源
-        await renrenSource.handleAnimes(animesRenren, queryTitle, curAnimes);
-      } else if (key === 'hanjutv') {
-        // 等待处理Hanjutv来源
-        await hanjutvSource.handleAnimes(animesHanjutv, queryTitle, curAnimes);
-      } else if (key === 'bahamut') {
-        // 等待处理Bahamut来源
-        await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes);
-      } else if (key === 'dandan') {
-        // 等待处理弹弹play来源
-        await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes);
-      } else if (key === 'custom') {
-        // 等待处理自定义弹幕源来源
-        await customSource.handleAnimes(animesCustom, queryTitle, curAnimes);
-      } else if (key === 'tencent') {
-        // 等待处理Tencent来源
-        await tencentSource.handleAnimes(animesTencent, queryTitle, curAnimes);
-      } else if (key === 'youku') {
-        // 等待处理Youku来源
-        await youkuSource.handleAnimes(animesYouku, queryTitle, curAnimes);
-      } else if (key === 'iqiyi') {
-        // 等待处理iQiyi来源
-        await iqiyiSource.handleAnimes(animesIqiyi, queryTitle, curAnimes);
-      } else if (key === 'imgo') {
-        // 等待处理Mango来源
-        await mangoSource.handleAnimes(animesImgo, queryTitle, curAnimes);
-      } else if (key === 'bilibili') {
-        // 等待处理Bilibili来源
-        await bilibiliSource.handleAnimes(animesBilibili, queryTitle, curAnimes);
-      } else if (key === 'migu') {
-        // 等待处理Migu来源
-        await miguSource.handleAnimes(animesMigu, queryTitle, curAnimes);
-      } else if (key === 'sohu') {
-        // 等待处理Sohu来源
-        await sohuSource.handleAnimes(animesSohu, queryTitle, curAnimes);
-      } else if (key === 'leshi') {
-        // 等待处理Leshi来源
-        await leshiSource.handleAnimes(animesLeshi, queryTitle, curAnimes);
-      } else if (key === 'xigua') {
-        // 等待处理Xigua来源
-        await xiguaSource.handleAnimes(animesXigua, queryTitle, curAnimes);
-      } else if (key === 'maiduidui') {
-        // 等待处理Maiduidui来源
-        await maiduiduiSource.handleAnimes(animesMaiduidui, queryTitle, curAnimes);
-      } else if (key === 'animeko') {
-        // 等待处理Animeko来源
-        await animekoSource.handleAnimes(animesAnimeko, queryTitle, curAnimes);
+      } catch (sourceError) {
+        const reason = sourceError?.message || String(sourceError || "unknown error");
+        log("warn", `[searchAnime] 源 ${key} 结果处理失败: ${reason}`);
       }
     }
   } catch (error) {
