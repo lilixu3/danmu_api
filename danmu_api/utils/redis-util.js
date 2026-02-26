@@ -2,6 +2,10 @@ import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { simpleHash, serializeValue } from "./codec-util.js";
 
+const REDIS_VERIFY_COOLDOWN_MS = 60 * 1000;
+let pendingRedisVerify = null;
+let lastRedisVerifyFailedAt = 0;
+
 // =====================
 // upstash redis 读写请求 （先简单实现，不加锁）
 // =====================
@@ -254,10 +258,37 @@ export async function updateRedisCaches() {
 
 // 判断redis是否可用
 export async function judgeRedisValid(path) {
-  if (!globals.redisValid && globals.redisUrl && globals.redisToken && path !== "/favicon.ico" && path !== "/robots.txt") {
-    const res = await pingRedis();
-    if (res && res.result && res.result === "PONG") {
-      globals.redisValid = true;
-    }
+  if (globals.redisValid || !globals.redisUrl || !globals.redisToken || path === "/favicon.ico" || path === "/robots.txt") {
+    return;
   }
+
+  if (pendingRedisVerify) {
+    await pendingRedisVerify;
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastRedisVerifyFailedAt < REDIS_VERIFY_COOLDOWN_MS) {
+    return;
+  }
+
+  pendingRedisVerify = (async () => {
+    try {
+      const res = await pingRedis();
+      const isPong = res?.result === "PONG" || (Array.isArray(res) && res[0] === "PONG");
+      if (isPong) {
+        globals.redisValid = true;
+        return;
+      }
+      lastRedisVerifyFailedAt = Date.now();
+      log("warn", `[redis] PING failed, retry after cooldown ${REDIS_VERIFY_COOLDOWN_MS}ms`);
+    } catch (error) {
+      lastRedisVerifyFailedAt = Date.now();
+      log("warn", `[redis] verification failed: ${error.message}`);
+    } finally {
+      pendingRedisVerify = null;
+    }
+  })();
+
+  await pendingRedisVerify;
 }

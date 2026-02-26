@@ -686,16 +686,24 @@ async function getCommentsById(params) {
     const response = await getComment(`${PREFIX_URL}/api/v2/comment/${commentId}`, "json", true);
     const resJson = await response.json();
 
-    log("info", "segmentList:", resJson.comments.segmentList);
+    // 兼容两种返回结构：
+    // 1) { comments: { segmentList: [...] } }（旧结构）
+    // 2) { segmentList: [...] }（分片列表直出）
+    const responseBody = (resJson && typeof resJson === 'object') ? (resJson.comments || resJson) : {};
+    const normalizedSegmentList = Array.isArray(responseBody?.segmentList)
+      ? responseBody.segmentList
+      : [];
 
-    Widget.storage.set(storeKey, resJson.comments.segmentList);
+    log("info", "segmentList:", normalizedSegmentList);
+
+    Widget.storage.set(storeKey, normalizedSegmentList);
     Widget.storage.set(commentIdKey, commentId);
 
-    console.log("segmentList", resJson.comments.segmentList);
+    console.log("segmentList", normalizedSegmentList);
 
     await updateCaches();
 
-    return resJson.comments.segmentList;
+    return normalizedSegmentList;
   }
   return null;
 }
@@ -710,7 +718,17 @@ async function getDanmuWithSegmentTime(params) {
                     danmuLimit, danmuSimplifiedTraditional, convertTopBottomToScroll, convertColor, proxyUrl, tmdbApiKey);
 
   const storeKey = season && episode ? `${tmdbId}.${season}.${episode}` : `${tmdbId}`;
-  const segmentList = Widget.storage.get(storeKey);
+  const rawSegmentList = Widget.storage.get(storeKey);
+  const segmentList = typeof rawSegmentList === 'string'
+    ? (() => {
+        try {
+          return JSON.parse(rawSegmentList);
+        } catch {
+          return null;
+        }
+      })()
+    : rawSegmentList;
+
   if (segmentList) {
     const segment = segmentList.find((item) => {
         const start = Number(item.segment_start);
@@ -718,6 +736,11 @@ async function getDanmuWithSegmentTime(params) {
         const time = Number(segmentTime);
         return time >= start && time < end;
     });
+
+    if (!segment) {
+      return { count: 0, comments: [] };
+    }
+
     log("info", "segment:", segment);
     const response = await getSegmentComment(segment);
     const resJson = await response.json();

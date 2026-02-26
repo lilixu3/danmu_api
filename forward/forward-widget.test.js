@@ -1,4 +1,5 @@
 import zlib from 'zlib';
+import test from 'node:test';
 
 // 模拟 iOS JavaScriptBridge 的 Widget 对象 - 模拟 iOS 环境
 global.Widget = {
@@ -188,20 +189,16 @@ const verbose = false; // 设置为 true 时打印详细结果
 
 // 加载 forward-widget.js 模块
 async function runTest() {
-  try {
-    const module = await import('./forward-widget.js');
-    // const module = await import('../dist/logvar-danmu.js');
-    // 将模块导出的函数添加到全局作用域，以便测试函数可以访问它们
-    global.searchDanmu = module.searchDanmu;
-    global.getDetailById = module.getDetailById;
-    global.getCommentsById = module.getCommentsById;
-    global.getDanmuWithSegmentTime = module.getDanmuWithSegmentTime;
+  const module = await import('./forward-widget.js');
+  // const module = await import('../dist/logvar-danmu.js');
+  // 将模块导出的函数添加到全局作用域，以便测试函数可以访问它们
+  global.searchDanmu = module.searchDanmu;
+  global.getDetailById = module.getDetailById;
+  global.getCommentsById = module.getCommentsById;
+  global.getDanmuWithSegmentTime = module.getDanmuWithSegmentTime;
 
-    // 运行测试
-    await testNewFlow();
-  } catch (error) {
-    console.error('Failed to load module:', error);
-  }
+  // 运行测试
+  await testNewFlow();
 }
 
 async function testNewFlow() {
@@ -303,8 +300,10 @@ async function testNewFlow() {
 
   } catch (error) {
     console.error('❌ 测试失败:', error);
+    throw error;
   }
 }
 
-// 启动测试
-runTest();
+test('forward widget 集成链路', async () => {
+  await runTest();
+});

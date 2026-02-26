@@ -181,25 +181,83 @@ function normalizeHeaders(nodeHeaders) {
   return headers;
 }
 
-async function readBody(req) {
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+
+class RequestBodyTooLargeError extends Error {
+  constructor(maxBytes) {
+    super(`Request body too large. Max allowed bytes: ${maxBytes}`);
+    this.name = 'RequestBodyTooLargeError';
+    this.statusCode = 413;
+  }
+}
+
+function getMaxRequestBodyBytes() {
+  const parsed = Number.parseInt(process.env.MAX_REQUEST_BODY_BYTES ?? '', 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return DEFAULT_MAX_REQUEST_BODY_BYTES;
+}
+
+function isTrustProxyEnabled() {
+  return String(process.env.TRUST_PROXY || '').toLowerCase() === 'true';
+}
+
+async function readBody(req, maxBytes = getMaxRequestBodyBytes()) {
   return await new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    let totalBytes = 0;
+    let finished = false;
+
+    const cleanup = () => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+    };
+
+    const doneResolve = (value) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const doneReject = (error) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(error);
+    };
+
+    const onData = (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > maxBytes) {
+        doneReject(new RequestBodyTooLargeError(maxBytes));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    };
+
+    const onEnd = () => doneResolve(Buffer.concat(chunks));
+    const onError = (error) => doneReject(error);
+
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
   });
 }
 
 function getClientIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    const ip = forwardedFor.split(',')[0].trim();
-    return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-  }
-  const realIp = req.headers['x-real-ip'];
-  if (realIp) {
-    const ip = String(realIp);
-    return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (isTrustProxyEnabled()) {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      const ip = forwardedFor.split(',')[0].trim();
+      return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    }
+    const realIp = req.headers['x-real-ip'];
+    if (realIp) {
+      const ip = String(realIp);
+      return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    }
   }
   const ip = req.socket?.remoteAddress || 'unknown';
   return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
@@ -268,7 +326,9 @@ function createServer() {
       const clientIp = getClientIp(req);
 
       const method = req.method || 'GET';
-      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH') ? await readBody(req) : undefined;
+      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH')
+        ? await readBody(req)
+        : undefined;
 
       const webRequest = new Request(fullUrl, {
         method,
@@ -349,6 +409,11 @@ function createServer() {
 
       res.end(buffer);
     } catch (error) {
+      if (error?.statusCode === 413) {
+        res.statusCode = 413;
+        res.end('Payload Too Large');
+        return;
+      }
       console.error('[server] Server error:', error);
       res.statusCode = 500;
       res.end('Internal Server Error');
@@ -409,7 +474,9 @@ function createProxyServer() {
 
       const protocol = targetUrl.protocol === 'https:' ? https : http;
       const method = req.method || 'GET';
-      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH') ? await readBody(req) : undefined;
+      const body = (method === 'POST' || method === 'PUT' || method === 'PATCH')
+        ? await readBody(req)
+        : undefined;
 
       const headers = normalizeHeaders(req.headers);
       delete headers.host; // 让上游自动填充
@@ -451,6 +518,11 @@ function createProxyServer() {
       if (body && body.length) proxyReq.write(body);
       proxyReq.end();
     } catch (err) {
+      if (err?.statusCode === 413) {
+        if (!res.headersSent) res.statusCode = 413;
+        res.end('Payload Too Large');
+        return;
+      }
       console.error('[Proxy Server] Error:', err);
       if (!res.headersSent) res.statusCode = 500;
       res.end('Proxy Error');

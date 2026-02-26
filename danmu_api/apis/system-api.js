@@ -4,8 +4,25 @@ import { HTML_TEMPLATE } from "../ui/template.js";
 import { formatLogMessage, log } from "../utils/log-util.js";
 import { HandlerFactory } from "../configs/handlers/handler-factory.js";
 
-export function handleUI() {
-  return new Response(HTML_TEMPLATE.replace("globals.currentToken", globals.currentToken), {
+function escapeForSingleQuotedJsString(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/</g, "\\x3C")
+    .replace(/>/g, "\\x3E");
+}
+
+function normalizeAuth(auth = {}) {
+  const currentToken = typeof auth.currentToken === 'string' ? auth.currentToken : '';
+  const isAdmin = Boolean(auth.isAdmin);
+  return { currentToken, isAdmin };
+}
+
+export function handleUI(currentToken = "") {
+  const safeToken = escapeForSingleQuotedJsString(currentToken);
+  return new Response(HTML_TEMPLATE.replace("globals.currentToken", safeToken), {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Access-Control-Allow-Origin': '*'
@@ -13,7 +30,8 @@ export function handleUI() {
   });
 }
 
-export function handleConfig(hasPermission = false) {
+export function handleConfig(hasPermission = false, auth = {}) {
+  const { currentToken, isAdmin } = normalizeAuth(auth);
   // 获取环境变量配置
   const envVarConfig = globals.envVarConfig;
   
@@ -56,12 +74,12 @@ export function handleConfig(hasPermission = false) {
   
   // 准备原始环境变量，无权限时也需要脱敏
   let originalEnvVars = { ...globals.originalEnvVars };
-  if (!hasPermission || globals.currentToken !== globals.adminToken) {
+  if (!hasPermission || !isAdmin) {
     Object.keys(originalEnvVars).forEach(key => {
-      if (globals.currentToken !== globals.token || key !== "TOKEN") {
-        if (key in previewEnvVars && /^\*+$/.test(previewEnvVars[key])) {
-          originalEnvVars[key] = previewEnvVars[key];
-        }
+      const canShowRaw = hasPermission && (isAdmin || (currentToken === globals.token && key === "TOKEN"));
+      if (canShowRaw) return;
+      if (key in previewEnvVars && /^\*+$/.test(String(previewEnvVars[key]))) {
+        originalEnvVars[key] = previewEnvVars[key];
       }
     });
   }
@@ -121,7 +139,8 @@ export async function handleDeploy() {
  * 处理获取日志的请求
  * @returns {Response} 包含日志文本的响应
  */
-export function handleLogs() {
+export function handleLogs(auth = {}) {
+  const { isAdmin } = normalizeAuth(auth);
   const logText = globals.logBuffer
     .map(
       (log) =>
@@ -131,7 +150,7 @@ export function handleLogs() {
   
   // 非管理员访问时隐藏日志中的 IP 信息
   let processedLogText = logText;
-  if (globals.currentToken !== globals.adminToken) {
+  if (!isAdmin) {
     processedLogText = logText.replace(/(client\s+ip:\s*)([^\n\r]*)/gi, (match, prefix, ipPart) => {
       const maskedIp = ipPart.replace(/[^.\s\n\r]/g, '*');
       return prefix + maskedIp;
@@ -216,13 +235,14 @@ export async function handleClearCache() {
  * 处理获取请求记录的请求
  * @returns {Response} 包含请求记录的响应
  */
-export function handleReqRecords() {
+export function handleReqRecords(auth = {}) {
+  const { isAdmin } = normalizeAuth(auth);
   // 返回请求记录，按时间倒序排列（最新的在前）
   let records = [...globals.reqRecords].reverse();
   const todayReqNum = globals.todayReqNum || 0;
   
   // 非管理员访问时隐藏请求记录中的 IP
-  if (globals.currentToken !== globals.adminToken) {
+  if (!isAdmin) {
     records = records.map(record => {
       if (record.clientIp) {
         const maskedIp = record.clientIp.replace(/[^.]/g, '*');

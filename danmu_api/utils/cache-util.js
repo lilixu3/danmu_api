@@ -67,12 +67,28 @@ export function getSearchCache(keyword) {
     return null;
 }
 
+function enforceCacheMaxItems(cacheMap, maxItems, cacheName) {
+    if (!Number.isFinite(maxItems) || maxItems <= 0) return;
+    while (cacheMap.size > maxItems) {
+        const oldestKey = cacheMap.keys().next().value;
+        if (typeof oldestKey === 'undefined') break;
+        cacheMap.delete(oldestKey);
+        log("info", `${cacheName} cache exceeded max items (${maxItems}), evicted oldest key: ${oldestKey}`);
+    }
+}
+
 // 设置搜索缓存
 export function setSearchCache(keyword, results) {
+    // 先删除再写入，确保命中的 key 会刷新到最新顺序
+    if (globals.searchCache.has(keyword)) {
+        globals.searchCache.delete(keyword);
+    }
+
     globals.searchCache.set(keyword, {
         results: results,
         timestamp: Date.now()
     });
+    enforceCacheMaxItems(globals.searchCache, Number(globals.searchCacheMaxItems), 'search');
 
     log("info", `Cached search results for "${keyword}" (${results.length} animes)`);
 }
@@ -108,10 +124,16 @@ export function getCommentCache(videoUrl) {
 
 // 设置弹幕缓存
 export function setCommentCache(videoUrl, comments) {
+    // 先删除再写入，确保命中的 key 会刷新到最新顺序
+    if (globals.commentCache.has(videoUrl)) {
+        globals.commentCache.delete(videoUrl);
+    }
+
     globals.commentCache.set(videoUrl, {
         comments: comments,
         timestamp: Date.now()
     });
+    enforceCacheMaxItems(globals.commentCache, Number(globals.commentCacheMaxItems), 'comment');
 
     log("info", `Cached comments for "${videoUrl}" (${comments.length} comments)`);
 }

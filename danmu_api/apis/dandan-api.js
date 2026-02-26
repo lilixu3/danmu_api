@@ -67,6 +67,157 @@ const tmdbSource = new TmdbSource(doubanSource);
 const PENDING_DANMAKU_REQUESTS = new Map();
 // 用于弹幕请求(按集ID/URL)的去重Map
 const PENDING_COMMENT_REQUESTS = new Map();
+let nodeDnsLookup = null;
+
+function buildUrlValidationError(errorMessage) {
+  return jsonResponse(
+    { errorCode: 400, success: false, errorMessage, count: 0, comments: [] },
+    400
+  );
+}
+
+function normalizeHost(hostname = '') {
+  let host = String(hostname || '').trim().toLowerCase();
+  if (host.startsWith('[') && host.endsWith(']')) {
+    host = host.slice(1, -1);
+  }
+  return host;
+}
+
+function parseIPv4(host) {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return null;
+  const parts = host.split('.').map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
+    return null;
+  }
+  return parts;
+}
+
+function isPrivateOrReservedIPv4(host) {
+  const parts = parseIPv4(host);
+  if (!parts) return false;
+  const [a, b] = parts;
+  return (
+    a === 0 || // 0.0.0.0/8
+    a === 10 || // 10.0.0.0/8
+    a === 127 || // 127.0.0.0/8
+    (a === 169 && b === 254) || // 169.254.0.0/16
+    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+    (a === 192 && b === 168) || // 192.168.0.0/16
+    (a === 100 && b >= 64 && b <= 127) || // 100.64.0.0/10 (CGNAT)
+    (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15
+    a >= 224 // 多播/保留地址
+  );
+}
+
+function isPrivateOrReservedIPv6(host) {
+  const normalized = normalizeHost(host).split('%')[0];
+  if (!normalized) return false;
+  if (normalized === '::' || normalized === '::1') return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // ULA fc00::/7
+  if (/^fe[89ab]/i.test(normalized)) return true; // fe80::/10
+  if (/^fe[cdef]/i.test(normalized)) return true; // fec0::/10 (deprecated site-local)
+  if (normalized.startsWith('ff')) return true; // ff00::/8
+
+  // 处理 IPv4-mapped IPv6，如 ::ffff:127.0.0.1
+  const mappedIndex = normalized.lastIndexOf(':');
+  if (mappedIndex !== -1) {
+    const tail = normalized.slice(mappedIndex + 1);
+    if (parseIPv4(tail)) {
+      return isPrivateOrReservedIPv4(tail);
+    }
+  }
+  return false;
+}
+
+function isPrivateOrReservedIp(ip) {
+  const host = normalizeHost(ip);
+  if (!host) return false;
+  return isPrivateOrReservedIPv4(host) || (host.includes(':') && isPrivateOrReservedIPv6(host));
+}
+
+async function lookupHostAddresses(hostname) {
+  const isNodeRuntime = typeof process !== 'undefined' && Boolean(process.versions?.node);
+  if (!isNodeRuntime) return null;
+
+  try {
+    if (!nodeDnsLookup) {
+      nodeDnsLookup = import('node:dns/promises')
+        .then((m) => m.lookup)
+        .catch((error) => {
+          log("warn", `[Security] DNS module unavailable: ${error.message}`);
+          return null;
+        });
+    }
+    const lookup = await nodeDnsLookup;
+    if (!lookup) return null;
+    const records = await lookup(hostname, { all: true, verbatim: true });
+    return Array.isArray(records) ? records.map((item) => item?.address).filter(Boolean) : [];
+  } catch (error) {
+    log("warn", `[Security] DNS lookup failed for ${hostname}: ${error.message}`);
+    return [];
+  }
+}
+
+async function validateExternalUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    log("error", "Missing or invalid url parameter");
+    return { ok: false, response: buildUrlValidationError("Missing or invalid url parameter") };
+  }
+
+  const cleanedUrl = rawUrl.trim();
+
+  let parsed;
+  try {
+    parsed = new URL(cleanedUrl);
+  } catch {
+    log("error", "Invalid url format");
+    return { ok: false, response: buildUrlValidationError("Invalid url format") };
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    log("error", "Invalid url protocol, must be http or https");
+    return { ok: false, response: buildUrlValidationError("Invalid url protocol, must be http or https") };
+  }
+
+  if (parsed.username || parsed.password) {
+    log("error", "Invalid url format: credentials are not allowed");
+    return { ok: false, response: buildUrlValidationError("Invalid url format: credentials are not allowed") };
+  }
+
+  const host = normalizeHost(parsed.hostname);
+  if (!host) {
+    log("error", "Invalid url hostname");
+    return { ok: false, response: buildUrlValidationError("Invalid url hostname") };
+  }
+
+  if (!globals.allowPrivateUrls) {
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
+      log("error", `[Security] Blocked local hostname: ${host}`);
+      return { ok: false, response: buildUrlValidationError("Private/localhost url is not allowed") };
+    }
+
+    if (isPrivateOrReservedIp(host)) {
+      log("error", `[Security] Blocked private IP url: ${host}`);
+      return { ok: false, response: buildUrlValidationError("Private IP url is not allowed") };
+    }
+
+    // Node 环境下额外做 DNS 解析，避免通过公网域名解析到内网地址绕过校验
+    const addresses = await lookupHostAddresses(host);
+    if (Array.isArray(addresses)) {
+      if (addresses.length === 0) {
+        return { ok: false, response: buildUrlValidationError("Hostname cannot be resolved") };
+      }
+      const blockedAddress = addresses.find((address) => isPrivateOrReservedIp(address));
+      if (blockedAddress) {
+        log("error", `[Security] Blocked DNS resolved private IP: ${blockedAddress}`);
+        return { ok: false, response: buildUrlValidationError("Resolved hostname points to private IP") };
+      }
+    }
+  }
+
+  return { ok: true, parsed, normalizedUrl: cleanedUrl };
+}
 
 async function withPendingCommentRequest(pendingKey, taskFactory) {
   if (PENDING_COMMENT_REQUESTS.has(pendingKey)) {
@@ -1586,103 +1737,11 @@ export async function getComment(path, queryFormat, segmentFlag) {
 // Extracted function for GET /api/v2/comment?url=xxx
 export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
   try {
-    // 验证URL参数
-    if (!videoUrl || typeof videoUrl !== 'string') {
-      log("error", "Missing or invalid url parameter");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Missing or invalid url parameter", count: 0, comments: [] },
-        400
-      );
+    const validation = await validateExternalUrl(videoUrl);
+    if (!validation.ok) {
+      return validation.response;
     }
-
-    const originalUrl = videoUrl.trim();
-
-    // 严格校验 URL：必须是 http/https，且不允许携带账号密码
-    let parsed;
-    try {
-      parsed = new URL(originalUrl);
-    } catch (e) {
-      log("error", "Invalid url format");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Invalid url format", count: 0, comments: [] },
-        400
-      );
-    }
-
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      log("error", "Invalid url protocol, must be http or https");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Invalid url protocol, must be http or https", count: 0, comments: [] },
-        400
-      );
-    }
-
-    if (parsed.username || parsed.password) {
-      log("error", "Invalid url format: credentials are not allowed");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Invalid url format: credentials are not allowed", count: 0, comments: [] },
-        400
-      );
-    }
-
-
-    // 安全：默认禁止访问本地/内网地址，避免被当作 SSRF 入口
-    if (!globals.allowPrivateUrls) {
-      const host = parsed.hostname;
-
-      const deny = (msg) => jsonResponse(
-        { errorCode: 400, success: false, errorMessage: msg, count: 0, comments: [] },
-        400
-      );
-
-      const isIPv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
-      const isIPv6 = host.includes(':');
-
-      // localhost / loopback
-      if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1') {
-        log("error", "[Security] Blocked private/localhost url");
-        return deny("Private/localhost url is not allowed");
-      }
-
-      if (isIPv4) {
-        const parts = host.split('.').map(n => Number(n));
-        const invalid = parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255);
-        if (invalid) {
-          return deny("Invalid IP address");
-        }
-
-        const [a, b] = parts;
-
-        // RFC1918 / link-local / loopback / CGNAT / multicast 等常见内网与保留段
-        if (
-          a === 10 ||
-          a === 127 ||
-          (a === 192 && b === 168) ||
-          (a === 172 && b >= 16 && b <= 31) ||
-          (a === 169 && b === 254) ||
-          (a === 100 && b >= 64 && b <= 127) ||
-          a === 0 ||
-          a >= 224
-        ) {
-          log("error", "[Security] Blocked private IPv4 url");
-          return deny("Private IP url is not allowed");
-        }
-      }
-
-      if (isIPv6) {
-        const h = host.toLowerCase();
-        // ULA fc00::/7, link-local fe80::/10, loopback
-        if (
-          h === '::1' ||
-          h.startsWith('fe80:') ||
-          h.startsWith('fc') ||
-          h.startsWith('fd')
-        ) {
-          log("error", "[Security] Blocked private IPv6 url");
-          return deny("Private IP url is not allowed");
-        }
-      }
-    }
+    const originalUrl = validation.normalizedUrl;
 
     log("info", `Processing comment request for URL: ${originalUrl}`);
 
@@ -1744,6 +1803,11 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
       if (url.includes('b23.tv')) {
         resolvedUrl = await bilibiliSource.resolveB23Link(url);
+        const resolvedValidation = await validateExternalUrl(resolvedUrl);
+        if (!resolvedValidation.ok) {
+          return resolvedValidation.response;
+        }
+        resolvedUrl = resolvedValidation.normalizedUrl;
       }
       const offsetSeconds = resolveOffsetSecondsForPlatform('bilibili1', [resolvedUrl, url]);
       danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag, null, offsetSeconds);
@@ -1816,16 +1880,12 @@ export async function getSegmentComment(segment, queryFormat) {
     let url = segment.url;
     let platform = segment.type;
 
-    // 验证URL参数
-    if (!url || typeof url !== 'string') {
-      log("error", "Missing or invalid url parameter");
-      return jsonResponse(
-        { errorCode: 400, success: false, errorMessage: "Missing or invalid url parameter", count: 0, comments: [] },
-        400
-      );
+    const validation = await validateExternalUrl(url);
+    if (!validation.ok) {
+      return validation.response;
     }
-
-    url = url.trim();
+    url = validation.normalizedUrl;
+    segment.url = url;
 
     log("info", `Processing segment comment request for URL: ${url}`);
 

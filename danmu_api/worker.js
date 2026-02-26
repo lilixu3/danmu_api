@@ -21,6 +21,57 @@ import {
     handleCookieRefreshToken
 } from "./utils/cookie-util.js";
 let globals;
+const ADMIN_MUTATION_ROUTES = new Set([
+  'POST /api/logs/clear',
+  'POST /api/env/set',
+  'POST /api/env/add',
+  'POST /api/env/del',
+  'POST /api/deploy',
+  'POST /api/cache/clear',
+]);
+const AI_VERIFY_COOLDOWN_MS = 5 * 60 * 1000;
+let pendingAiVerify = null;
+let lastAiVerifyAttemptAt = 0;
+
+function buildAuthContext(currentToken) {
+  const adminToken = globals?.adminToken || '';
+  return {
+    currentToken,
+    isAdmin: Boolean(adminToken) && currentToken === adminToken,
+  };
+}
+
+function getAdminGuardResponse(path, method, authContext) {
+  const routeKey = `${method} ${path}`;
+  if (!ADMIN_MUTATION_ROUTES.has(routeKey)) {
+    return null;
+  }
+
+  const adminToken = (globals?.adminToken || '').trim();
+  if (!adminToken) {
+    return jsonResponse(
+      {
+        errorCode: 403,
+        success: false,
+        errorMessage: "Admin token is not configured",
+      },
+      403
+    );
+  }
+
+  if (!authContext?.isAdmin) {
+    return jsonResponse(
+      {
+        errorCode: 403,
+        success: false,
+        errorMessage: "Admin token required",
+      },
+      403
+    );
+  }
+
+  return null;
+}
 
 async function handleRequest(req, env, deployPlatform, clientIp) {
   // 加载全局变量和环境变量配置
@@ -35,17 +86,29 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     await judgeLocalCacheValid(path, deployPlatform);
   }
   await judgeRedisValid(path);
-  if (!globals.aiValid && globals.aiBaseUrl && globals.aiModel && globals.aiApiKey && path !== "/favicon.ico" && path !== "/robots.txt") {
-    const ai = new AIClient({
-      baseURL: globals.aiBaseUrl,
-      model: globals.aiModel,
-      apiKey: globals.aiApiKey,
-      systemPrompt: '回答尽量简洁',
-    })
-
-    const status = await ai.verify()
-    if (status.ok) {
-      globals.aiValid = true;
+  const shouldTryAiVerify = !globals.aiValid && globals.aiBaseUrl && globals.aiModel && globals.aiApiKey && path !== "/favicon.ico" && path !== "/robots.txt";
+  if (shouldTryAiVerify) {
+    const now = Date.now();
+    if (!pendingAiVerify && (now - lastAiVerifyAttemptAt >= AI_VERIFY_COOLDOWN_MS)) {
+      lastAiVerifyAttemptAt = now;
+      pendingAiVerify = (async () => {
+        try {
+          const ai = new AIClient({
+            baseURL: globals.aiBaseUrl,
+            model: globals.aiModel,
+            apiKey: globals.aiApiKey,
+            systemPrompt: '回答尽量简洁',
+          });
+          const status = await ai.verify();
+          if (status.ok) {
+            globals.aiValid = true;
+          }
+        } catch (error) {
+          log("warn", `[AI Verify] verification failed: ${error.message}`);
+        } finally {
+          pendingAiVerify = null;
+        }
+      })();
     }
   }
 
@@ -62,11 +125,12 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   const isDefaultToken = globals.token === "87654321";
   const isValidToken = firstPart === globals.token || firstPart === globals.adminToken;
 
-  globals.currentToken = 
+  const currentToken = 
     isValidToken ? firstPart :
     isDefaultToken && (firstPart === "87654321" || knownApiPaths.includes(firstPart)) ? 
       (firstPart === "87654321" ? firstPart : "87654321") :
     "";
+  const authContext = buildAuthContext(currentToken);
 
   if (deployPlatform === "node" && globals.localCacheValid && path !== "/favicon.ico" && path !== "/robots.txt") {
     await getLocalCaches();
@@ -155,7 +219,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
   // GET /
   if (path === "/" && method === "GET") {
-    return handleUI();
+    return handleUI(currentToken);
   }
 
   if (path === "/favicon.ico" || path === "/robots.txt" || method === "OPTIONS") {
@@ -179,7 +243,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       } else if (!knownApiPaths.includes(parts[0])) {
         // 对于 /api/config 路径，我们允许无 token 访问，但返回有限信息
         if (path === "/api/config" && method === "GET") {
-          return handleConfig(false); // 无权限
+          return handleConfig(false, authContext); // 无权限
         }
         // 第一段不是已知的 API 路径，可能是错误的 token
         // 返回 401
@@ -196,7 +260,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     if (parts.length < 1 || (parts[0] !== globals.token && parts[0] !== globals.adminToken)) {
       // 对于 /api/config 路径，如果使用默认 token，我们允许无 token 访问，但返回有限信息
       if (path === "/api/config" && method === "GET") {
-        return handleConfig(false); // 无权限
+        return handleConfig(false, authContext); // 无权限
       }
       log("error", `Invalid or missing token in path: ${path}`);
       return jsonResponse(
@@ -210,12 +274,12 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
   // GET /api/config - 获取配置信息 (需要 token)
   if (path === "/api/config" && method === "GET") {
-    return handleConfig(true); // 有权限
+    return handleConfig(true, authContext); // 有权限
   }
 
   // GET /api/reqrecords - 获取请求记录 (需要 token)
   if (path === "/api/reqrecords" && method === "GET") {
-    return handleReqRecords();
+    return handleReqRecords(authContext);
   }
 
   log("debug", path);
@@ -269,7 +333,13 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   
   // GET /
   if (path === "/" && method === "GET") {
-    return handleUI();
+    return handleUI(currentToken);
+  }
+
+  // 关键写操作统一要求 ADMIN_TOKEN
+  const adminGuardResponse = getAdminGuardResponse(path, method, authContext);
+  if (adminGuardResponse) {
+    return adminGuardResponse;
   }
 
   // GET /api/v2/search/anime
@@ -440,37 +510,37 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
   // GET /api/logs
   if (path === "/api/logs" && method === "GET") {
-    return handleLogs();
+    return handleLogs(authContext);
   }
 
   // POST /api/logs/clear
   if (path === "/api/logs/clear" && method === "POST") {
-    return handleClearLogs();
+    return handleClearLogs(authContext);
   }
 
   // POST /api/env/set - 设置环境变量
   if (path === "/api/env/set" && method === "POST") {
-    return handleSetEnv(req);
+    return handleSetEnv(req, authContext);
   }
 
   // POST /api/env/add - 添加环境变量
   if (path === "/api/env/add" && method === "POST") {
-    return handleAddEnv(req);
+    return handleAddEnv(req, authContext);
   }
 
   // POST /api/env/del - 删除环境变量
   if (path === "/api/env/del" && method === "POST") {
-    return handleDelEnv(req);
+    return handleDelEnv(req, authContext);
   }
 
   // POST /api/deploy - 重新部署
   if (path === "/api/deploy" && method === "POST") {
-    return handleDeploy();
+    return handleDeploy(authContext);
   }
 
   // POST /api/cache/clear - 清理缓存
   if (path === "/api/cache/clear" && method === "POST") {
-    return handleClearCache();
+    return handleClearCache(authContext);
   }
 
   // ========== Cookie 管理 API ==========
