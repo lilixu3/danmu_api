@@ -30,11 +30,11 @@ export async function httpGet(url, options = {}) {
   // 执行请求，包含重试逻辑
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      log("info", `[请求模拟] 第 ${attempt} 次重试: ${url}`);
+      log("debug", `[请求模拟] 第 ${attempt} 次重试: ${url}`);
       // 可选：添加重试延迟（指数退避）
       await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
     } else {
-      log("info", `[请求模拟] HTTP GET: ${url}`);
+      log("debug", `[请求模拟] HTTP GET: ${url}`);
     }
 
     // 设置超时时间（默认5秒）
@@ -72,7 +72,7 @@ export async function httpGet(url, options = {}) {
       let data;
 
       if (options.base64Data) {
-        log("info", "base64模式");
+        log("debug", "base64模式");
 
         // 先拿二进制
         const arrayBuffer = await response.arrayBuffer();
@@ -94,7 +94,7 @@ export async function httpGet(url, options = {}) {
         }
 
       } else if (options.zlibMode) {
-        log("info", "zlib模式")
+        log("debug", "zlib模式")
 
         // 获取 ArrayBuffer
         const arrayBuffer = await response.arrayBuffer();
@@ -164,7 +164,7 @@ export async function httpGet(url, options = {}) {
 
       // 请求成功，返回结果
       if (attempt > 0) {
-        log("info", `[请求模拟] 重试成功`);
+        log("debug", `[请求模拟] 重试成功`);
       }
 
       // 模拟 iOS 环境：返回 { data: ... } 结构
@@ -206,7 +206,7 @@ export async function httpGet(url, options = {}) {
 
       // 如果还有重试机会，继续循环；否则在循环结束后抛出错误
       if (attempt < maxRetries) {
-        log("info", `[请求模拟] 准备重试...`);
+        log("debug", `[请求模拟] 准备重试...`);
         continue;
       }
     }
@@ -225,11 +225,11 @@ export async function httpPost(url, body, options = {}) {
   // 执行请求，包含重试逻辑
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      log("info", `[请求模拟] 第 ${attempt} 次重试: ${url}`);
+      log("debug", `[请求模拟] 第 ${attempt} 次重试: ${url}`);
       // 可选：添加重试延迟（指数退避）
       await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
     } else {
-      log("info", `[请求模拟] HTTP POST: ${url}`);
+      log("debug", `[请求模拟] HTTP POST: ${url}`);
     }
 
     // 设置超时时间（默认5秒）
@@ -277,7 +277,7 @@ export async function httpPost(url, body, options = {}) {
 
       // 请求成功，返回结果
       if (attempt > 0) {
-        log("info", `[请求模拟] 重试成功`);
+        log("debug", `[请求模拟] 重试成功`);
       }
 
       // 模拟 iOS 环境：返回 { data: ... } 结构
@@ -318,7 +318,7 @@ export async function httpPost(url, body, options = {}) {
 
       // 如果还有重试机会，继续循环；否则在循环结束后抛出错误
       if (attempt < maxRetries) {
-        log("info", `[请求模拟] 准备重试...`);
+        log("debug", `[请求模拟] 准备重试...`);
         continue;
       }
     }
@@ -341,7 +341,7 @@ export async function httpPost(url, body, options = {}) {
  * @returns {Promise<{data: any, status: number, headers: Record<string, string>}>}
  */
 async function httpRequestMethod(method, url, body, options = {}) {
-  log("info", `[请求模拟] HTTP ${method}: ${url}`);
+  log("debug", `[请求模拟] HTTP ${method}: ${url}`);
 
   const { headers = {}, params, allow_redirects = true } = options;
 
@@ -605,7 +605,7 @@ export async function httpGetWithStreamCheck(url, options = {}, checkCallback) {
   linkSignal(options.signal, controller);
 
   try {
-    log("info", `[流式请求] HTTP GET: ${url}`);
+    log("debug", `[流式请求] HTTP GET: ${url}`);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -625,7 +625,7 @@ export async function httpGetWithStreamCheck(url, options = {}, checkCallback) {
       const text = await response.text();
       clearTimeout(timeoutId);
       if (checkCallback && !checkCallback(text.slice(0, SNIFF_LIMIT))) {
-          log("info", "[流式请求] 检测到无效数据(回退模式),丢弃结果");
+          log("debug", "[流式请求] 检测到无效数据(回退模式),丢弃结果");
           return null;
       }
       try { return JSON.parse(text); } catch { return text; }
@@ -656,7 +656,7 @@ export async function httpGetWithStreamCheck(url, options = {}, checkCallback) {
 
         // 执行回调检查
         if (!checkCallback(checkBuffer)) {
-          log("info", `[流式请求] 嗅探到无效特征(已读${receivedLength}字节),立即熔断`);
+          log("debug", `[流式请求] 嗅探到无效特征(已读${receivedLength}字节),立即熔断`);
           controller.abort();
           isAborted = true;
           break;

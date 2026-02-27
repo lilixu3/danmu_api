@@ -378,7 +378,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 先检查缓存（分片列表请求不走弹幕缓存）
       const cachedComments = !segmentFlag ? getCommentCache(videoUrl) : null;
       if (cachedComments !== null) {
-        log("info", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
+        log("debug", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
         return formatDanmuResponse(responseData, queryFormat);
       }
@@ -411,7 +411,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
         // 记录本次请求时间戳
         recentRequests.push(currentTime);
         globals.requestHistory.set(clientIp, recentRequests);
-        log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+        log("debug", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
       }
 
       // 通过URL获取弹幕
@@ -434,7 +434,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 检查弹幕缓存（分片列表请求不走弹幕缓存）- 缓存命中时直接返回，不计入限流
       const cachedComments = !segmentFlag ? getCommentCache(urlForComment) : null;
       if (cachedComments !== null) {
-        log("info", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
+        log("debug", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
         return formatDanmuResponse(responseData, queryFormat);
       }
@@ -472,7 +472,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 记录本次请求时间戳
       recentRequests.push(currentTime);
       globals.requestHistory.set(clientIp, recentRequests);
-      log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+      log("debug", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
     }
 
     return getComment(path, queryFormat, segmentFlag);

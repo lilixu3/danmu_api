@@ -27,7 +27,7 @@ export default class OtherSource extends BaseSource {
         }
       );
 
-      log("info", `danmu response from ${globals.otherServer}: ↓↓↓`);
+      log("debug", `danmu response from ${globals.otherServer}: ↓↓↓`);
       printFirst200Chars(response.data);
 
       return response.data;
@@ -38,7 +38,7 @@ export default class OtherSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取第三方服务器弹幕分段列表...", id);
+    log("debug", "获取第三方服务器弹幕分段列表...", id);
 
     return new SegmentListResponse({
       "type": "other_server",

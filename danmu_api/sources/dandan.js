@@ -21,18 +21,18 @@ export default class DandanSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!resp || !resp.data) {
-        log("info", "dandanSearchresp: 请求失败或无数据返回");
+        log("debug", "dandanSearchresp: 请求失败或无数据返回");
         return [];
       }
 
       // 判断 seriesData 是否存在
       if (!resp.data.animes) {
-        log("info", "dandanSearchresp: seriesData 或 seriesList 不存在");
+        log("debug", "dandanSearchresp: seriesData 或 seriesList 不存在");
         return [];
       }
 
       // 正常情况下输出 JSON 字符串
-      log("info", `[Dandan] 搜索找到 ${resp.data.animes.length} 个有效结果`);
+      log("debug", `[Dandan] 搜索找到 ${resp.data.animes.length} 个有效结果`);
 
       return resp.data.animes;
     } catch (error) {
@@ -58,13 +58,13 @@ export default class DandanSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!resp || !resp.data) {
-        log("info", "getDandanEposides: 请求失败或无数据返回");
+        log("debug", "getDandanEposides: 请求失败或无数据返回");
         return { episodes: [], titles: [] };
       }
 
       // 判断 bangumi 数据是否存在
       if (!resp.data.bangumi) {
-        log("info", "getDandanEposides: bangumi 数据不存在");
+        log("debug", "getDandanEposides: bangumi 数据不存在");
         return { episodes: [], titles: [] };
       }
 
@@ -78,7 +78,7 @@ export default class DandanSource extends BaseSource {
       const titles = Array.isArray(bangumiData.titles) ? bangumiData.titles.map(t => t.title) : [];
 
       // 正常情况下输出 JSON 字符串
-      log("info", `getDandanEposides: ${JSON.stringify(resp.data.bangumi.episodes)}`);
+      log("debug", `getDandanEposides: ${JSON.stringify(resp.data.bangumi.episodes)}`);
 
       // 返回包含剧集和别名的完整对象
       return { episodes, titles };
@@ -191,7 +191,7 @@ export default class DandanSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取弹弹play弹幕分段列表...", id);
+    log("debug", "获取弹弹play弹幕分段列表...", id);
 
     return new SegmentListResponse({
       "type": "dandan",

@@ -61,7 +61,7 @@ export default class LeshiSource extends BaseSource {
 
   async search(keyword) {
     try {
-      log("info", `[Leshi] 开始搜索: ${keyword}`);
+      log("debug", `[Leshi] 开始搜索: ${keyword}`);
 
       // 构造搜索URL
       const params = {
@@ -93,7 +93,7 @@ export default class LeshiSource extends BaseSource {
       const response = await httpGet(searchUrl, { headers, timeout: 15000 });
 
       if (!response || !response.data) {
-        log("info", "[Leshi] 搜索响应为空");
+        log("debug", "[Leshi] 搜索响应为空");
         return [];
       }
 
@@ -193,7 +193,7 @@ export default class LeshiSource extends BaseSource {
           }
           
           if (!title) {
-            log("info", `[Leshi] 未找到标题，尝试从其他来源获取`);
+            log("debug", `[Leshi] 未找到标题，尝试从其他来源获取`);
           }
 
           // 提取海报
@@ -247,13 +247,13 @@ export default class LeshiSource extends BaseSource {
       }
 
       if (results.length > 0) {
-        log("info", `[Leshi] 网络搜索 '${keyword}' 完成，找到 ${results.length} 个有效结果。`);
-        log("info", `[Leshi] 搜索结果列表:`);
+        log("debug", `[Leshi] 网络搜索 '${keyword}' 完成，找到 ${results.length} 个有效结果。`);
+        log("debug", `[Leshi] 搜索结果列表:`);
         for (const r of results) {
-          log("info", `  - ${r.title} (ID: ${r.mediaId}, 类型: ${r.type}, 年份: ${r.year})`);
+          log("debug", `  - ${r.title} (ID: ${r.mediaId}, 类型: ${r.type}, 年份: ${r.year})`);
         }
       } else {
-        log("info", `[Leshi] 网络搜索 '${keyword}' 完成，找到 0 个结果。`);
+        log("debug", `[Leshi] 网络搜索 '${keyword}' 完成，找到 0 个结果。`);
       }
 
       return results;
@@ -266,7 +266,7 @@ export default class LeshiSource extends BaseSource {
 
   async getEpisodes(id) {
     try {
-      log("info", `[Leshi] 获取分集列表: media_id=${id}`);
+      log("debug", `[Leshi] 获取分集列表: media_id=${id}`);
 
       // 构造作品页面URL（需要根据类型判断）
       const urlsToTry = [
@@ -348,7 +348,7 @@ export default class LeshiSource extends BaseSource {
       }
       
       if (episodes.length > 0) {
-        log("info", `[Leshi] 从HTML内容中匹配到 ${episodes.length} 个剧集链接`);
+        log("debug", `[Leshi] 从HTML内容中匹配到 ${episodes.length} 个剧集链接`);
         return episodes;
       }
       
@@ -490,7 +490,7 @@ export default class LeshiSource extends BaseSource {
       }
     }
     
-    log("info", `[Leshi] 成功解析剧集列表: media_id=${mediaId}, 共 ${episodes.length} 集`);
+    log("debug", `[Leshi] 成功解析剧集列表: media_id=${mediaId}, 共 ${episodes.length} 集`);
     return episodes;
   }
 
@@ -556,7 +556,7 @@ export default class LeshiSource extends BaseSource {
   }
 
   async getEpisodeDanmu(id) {
-    log("info", "开始从本地请求乐视网弹幕...", id);
+    log("debug", "开始从本地请求乐视网弹幕...", id);
 
     // 获取弹幕分段数据
     const segmentResult = await this.getEpisodeDanmuSegments(id);
@@ -565,7 +565,7 @@ export default class LeshiSource extends BaseSource {
     }
 
     const segmentList = segmentResult.segmentList;
-    log("info", `弹幕分段数量: ${segmentList.length}`);
+    log("debug", `弹幕分段数量: ${segmentList.length}`);
 
     // 并发请求所有弹幕段，限制并发数量为5
     const MAX_CONCURRENT = 10;
@@ -608,7 +608,7 @@ export default class LeshiSource extends BaseSource {
     }
 
     if (allComments.length === 0) {
-      log("info", `乐视网: 该视频暂无弹幕数据 (vid=${id})`);
+      log("debug", `乐视网: 该视频暂无弹幕数据 (vid=${id})`);
       return [];
     }
 
@@ -650,7 +650,7 @@ export default class LeshiSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取乐视网弹幕分段列表...", id);
+    log("debug", "获取乐视网弹幕分段列表...", id);
 
     // 从ID中提取video_id
     let videoId = id;
@@ -675,7 +675,7 @@ export default class LeshiSource extends BaseSource {
       });
     }
 
-    log("info", `乐视网: 视频时长 ${duration}秒，分为 ${segments.length} 个时间段`);
+    log("debug", `乐视网: 视频时长 ${duration}秒，分为 ${segments.length} 个时间段`);
 
     return new SegmentListResponse({
       "type": "leshi",

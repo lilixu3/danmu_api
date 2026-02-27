@@ -77,12 +77,12 @@ class XiguaSource extends BaseSource {
           }
         });
       } else {
-        log("info", "xiguaSearchresp: 相关视频的section 不存在");
+        log("debug", "xiguaSearchresp: 相关视频的section 不存在");
         return [];
       }
 
       // 正常情况下输出 JSON 字符串
-      log("info", `[Xigua] 搜索找到 ${animes.length} 个有效结果`);
+      log("debug", `[Xigua] 搜索找到 ${animes.length} 个有效结果`);
       return animes;
     } catch (error) {
       // 捕获请求中的错误
@@ -110,7 +110,7 @@ class XiguaSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!resp || !resp.data) {
-        log("info", "getXiguaDetail: 请求失败或无数据返回");
+        log("debug", "getXiguaDetail: 请求失败或无数据返回");
         return 0;
       }
 
@@ -139,7 +139,7 @@ class XiguaSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!detailResp || !detailResp.data) {
-        log("info", "getXiguaEposides: 请求失败或无数据返回");
+        log("debug", "getXiguaEposides: 请求失败或无数据返回");
         return [];
       }
 
@@ -167,7 +167,7 @@ class XiguaSource extends BaseSource {
           log("error", '解析episodes_list失败:', e);
         }
       } else {
-        log("info", "getXiguaEposides: episodes_list 不存在");
+        log("debug", "getXiguaEposides: episodes_list 不存在");
         return [];
       }
     } catch (error) {
@@ -240,7 +240,7 @@ class XiguaSource extends BaseSource {
   }
 
   async getEpisodeDanmu(id) {
-    log("info", "开始从本地请求西瓜视频弹幕...", id);
+    log("debug", "开始从本地请求西瓜视频弹幕...", id);
 
     // 获取弹幕分段数据
     const segmentResult = await this.getEpisodeDanmuSegments(id);
@@ -249,7 +249,7 @@ class XiguaSource extends BaseSource {
     }
 
     const segmentList = segmentResult.segmentList;
-    log("info", `弹幕分段数量: ${segmentList.length}`);
+    log("debug", `弹幕分段数量: ${segmentList.length}`);
 
     // 并发请求所有弹幕段，限制并发数量为50
     const MAX_CONCURRENT = 100;
@@ -288,7 +288,7 @@ class XiguaSource extends BaseSource {
     }
 
     if (allComments.length === 0) {
-      log("info", `西瓜视频: 该视频暂无弹幕数据 (vid=${id})`);
+      log("debug", `西瓜视频: 该视频暂无弹幕数据 (vid=${id})`);
       return [];
     }
 
@@ -298,12 +298,12 @@ class XiguaSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取西瓜视频弹幕分段列表...", id);
+    log("debug", "获取西瓜视频弹幕分段列表...", id);
 
     const itemId = id.split('/').pop();
     const duration = await this.getDetail(id) * 1000;
-    log("info", "itemId:", itemId);
-    log("info", "duration:", duration);
+    log("debug", "itemId:", itemId);
+    log("debug", "duration:", duration);
 
     const segmentDuration = 300000; // 每个分片5分钟
     const segmentList = [];

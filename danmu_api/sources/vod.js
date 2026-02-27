@@ -24,13 +24,13 @@ export default class VodSource extends BaseSource {
       );
       // 检查 response.data.list 是否存在且长度大于 0
       if (response && response.data && response.data.list && response.data.list.length > 0) {
-        log("info", `请求 ${serverName}(${server}) 成功`);
+        log("debug", `请求 ${serverName}(${server}) 成功`);
         const data = response.data;
-        log("info", `${serverName} response: ↓↓↓`);
+        log("debug", `${serverName} response: ↓↓↓`);
         printFirst200Chars(data);
         return { serverName, list: data.list };
       } else {
-        log("info", `请求 ${serverName}(${server}) 成功，但 response.data.list 为空`);
+        log("debug", `请求 ${serverName}(${server}) 成功，但 response.data.list 为空`);
         return { serverName, list: [] };
       }
     } catch (error) {
@@ -85,12 +85,12 @@ export default class VodSource extends BaseSource {
 
     // 1. 最快返回的这个，字符串里包含 preferAnimeId → 直接用（不管有没有 list 数据）
     if (stringContainsPreferId(fastest) && fastest && fastest.list && fastest.list.length > 0) {
-      log("info", `[VOD fastest mode] 最快服务器 ${fastest.serverName}${preferSource === "vod" ?
+      log("debug", `[VOD fastest mode] 最快服务器 ${fastest.serverName}${preferSource === "vod" ?
           " 字符串包含 preferAnimeId → 优先使用" : ""}`);
       return [fastest];
     }
 
-    log("info", `[VOD fastest mode] 最快服务器 ${fastest.serverName} 不含 preferAnimeId，等待其他服务器…`);
+    log("debug", `[VOD fastest mode] 最快服务器 ${fastest.serverName} 不含 preferAnimeId，等待其他服务器…`);
 
     // 2. 等待所有请求完成
     const allSettled = await Promise.allSettled(promises);
@@ -100,11 +100,11 @@ export default class VodSource extends BaseSource {
       for (const settled of allSettled) {
         if (settled.status === "fulfilled" && stringContainsPreferId(settled.value) &&
             settled.value && settled.value.list && settled.value.list.length > 0) {
-          log("info", `[VOD fastest mode] 找到包含 preferAnimeId 的服务器: ${settled.value.serverName}`);
+          log("debug", `[VOD fastest mode] 找到包含 preferAnimeId 的服务器: ${settled.value.serverName}`);
           return [settled.value];
         }
       }
-      log("info", `[VOD fastest mode] 所有服务器都不包含 preferAnimeId，回退到“真正有数据”的最快服务器`);
+      log("debug", `[VOD fastest mode] 所有服务器都不包含 preferAnimeId，回退到“真正有数据”的最快服务器`);
     }
 
     // 3. 兜底：没有任何服务器包含 preferAnimeId，或根本没传 preferAnimeId
@@ -116,7 +116,7 @@ export default class VodSource extends BaseSource {
 
     if (validResults.length > 0) {
       const chosen = validResults[0];  // 完成顺序最快的一个有数据的
-      log("info", `[VOD fastest mode] 使用最快有数据的服务器: ${chosen.serverName}`);
+      log("debug", `[VOD fastest mode] 使用最快有数据的服务器: ${chosen.serverName}`);
       return [chosen];
     }
 

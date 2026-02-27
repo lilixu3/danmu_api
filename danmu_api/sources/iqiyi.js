@@ -24,7 +24,7 @@ export default class IqiyiSource extends BaseSource {
    */
   async search(keyword) {
     try {
-      log("info", `[iQiyi] 开始搜索: ${keyword}`);
+      log("debug", `[iQiyi] 开始搜索: ${keyword}`);
 
       // 使用桌面版 API 搜索
       const params = {
@@ -66,14 +66,14 @@ export default class IqiyiSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[iQiyi] 搜索响应为空");
+        log("debug", "[iQiyi] 搜索响应为空");
         return [];
       }
 
       const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
 
       if (!data.data || !data.data.templates) {
-        log("info", "[iQiyi] 搜索无结果");
+        log("debug", "[iQiyi] 搜索无结果");
         return [];
       }
 
@@ -103,7 +103,7 @@ export default class IqiyiSource extends BaseSource {
         }
       }
 
-      log("info", `[iQiyi] 搜索找到 ${results.length} 个有效结果`);
+      log("debug", `[iQiyi] 搜索找到 ${results.length} 个有效结果`);
       return results;
 
     } catch (error) {
@@ -241,12 +241,12 @@ export default class IqiyiSource extends BaseSource {
    */
   async getEpisodes(id) {
     try {
-      log("info", `[iQiyi] 获取分集列表: media_id=${id}`);
+      log("debug", `[iQiyi] 获取分集列表: media_id=${id}`);
 
       // 检查是否是电影类型（以 movie_ 开头）
       if (id.startsWith('movie_')) {
         const qipuId = id.substring(6); // 移除 "movie_" 前缀
-        log("info", `[iQiyi] 电影类型，调用 base_info API 获取视频ID: qipuId=${qipuId}`);
+        log("debug", `[iQiyi] 电影类型，调用 base_info API 获取视频ID: qipuId=${qipuId}`);
 
         // 调用 base_info API 获取电影详情
         const videoId = await this._getMovieVideoId(qipuId);
@@ -255,7 +255,7 @@ export default class IqiyiSource extends BaseSource {
           return [];
         }
 
-        log("info", `[iQiyi] 电影视频ID: ${videoId}`);
+        log("debug", `[iQiyi] 电影视频ID: ${videoId}`);
         return [{
           id: videoId,
           title: "正片",
@@ -322,7 +322,7 @@ export default class IqiyiSource extends BaseSource {
       const tabs = data.data.template.tabs || [];
 
       if (tabs.length === 0) {
-        log("info", "[iQiyi] 未找到分集标签页");
+        log("debug", "[iQiyi] 未找到分集标签页");
         return [];
       }
 
@@ -397,7 +397,7 @@ export default class IqiyiSource extends BaseSource {
 
             // 如果 videos 是 URL，需要额外请求
             if (typeof videosData === 'string') {
-              log("info", `[iQiyi] 发现分季URL，正在获取: ${videosData}`);
+              log("debug", `[iQiyi] 发现分季URL，正在获取: ${videosData}`);
               try {
                 const seasonResponse = await httpGet(videosData);
                 videosData = typeof seasonResponse.data === "string" ? JSON.parse(seasonResponse.data) : seasonResponse.data;
@@ -444,7 +444,7 @@ export default class IqiyiSource extends BaseSource {
       }
 
       if (!foundEpisodes) {
-        log("info", "[iQiyi] 未找到分集数据块");
+        log("debug", "[iQiyi] 未找到分集数据块");
         return [];
       }
 
@@ -454,7 +454,7 @@ export default class IqiyiSource extends BaseSource {
       );
       uniqueEpisodes.sort((a, b) => a.order - b.order);
 
-      log("info", `[iQiyi] 成功获取 ${uniqueEpisodes.length} 个分集`);
+      log("debug", `[iQiyi] 成功获取 ${uniqueEpisodes.length} 个分集`);
       return uniqueEpisodes;
 
     } catch (error) {
@@ -525,7 +525,7 @@ export default class IqiyiSource extends BaseSource {
           const match = baseData.share_url.match(/v_(\w+)\.html/);
           if (match) {
             const videoId = match[1];
-            log("info", `[iQiyi] 从 share_url 提取视频ID: ${videoId}`);
+            log("debug", `[iQiyi] 从 share_url 提取视频ID: ${videoId}`);
             return videoId;
           }
         }
@@ -535,7 +535,7 @@ export default class IqiyiSource extends BaseSource {
           const match = baseData.page_url.match(/v_(\w+)\.html/);
           if (match) {
             const videoId = match[1];
-            log("info", `[iQiyi] 从 page_url 提取视频ID: ${videoId}`);
+            log("debug", `[iQiyi] 从 page_url 提取视频ID: ${videoId}`);
             return videoId;
           }
         }
@@ -689,7 +689,7 @@ export default class IqiyiSource extends BaseSource {
   }
 
   async getEpisodeDanmu(id) {
-    log("info", "开始从本地请求爱奇艺弹幕...", id);
+    log("debug", "开始从本地请求爱奇艺弹幕...", id);
 
     // 获取页面标题
     let res;
@@ -708,7 +708,7 @@ export default class IqiyiSource extends BaseSource {
     // 使用正则表达式提取 <title> 标签内容
     const titleMatch = res.data.match(/<title[^>]*>(.*?)<\/title>/i);
     const title = titleMatch ? titleMatch[1].split("_")[0] : "未知标题";
-    log("info", `标题: ${title}`);
+    log("debug", `标题: ${title}`);
 
     // 获取弹幕分段数据
     const segmentResult = await this.getEpisodeDanmuSegments(id);
@@ -717,7 +717,7 @@ export default class IqiyiSource extends BaseSource {
     }
 
     const segmentList = segmentResult.segmentList;
-    log("info", `弹幕分段数量: ${segmentList.length}`);
+    log("debug", `弹幕分段数量: ${segmentList.length}`);
 
     // 创建请求Promise数组
     const promises = [];
@@ -748,7 +748,7 @@ export default class IqiyiSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取爱奇艺视频弹幕分段列表...", id);
+    log("debug", "获取爱奇艺视频弹幕分段列表...", id);
 
     // 弹幕 API 基础地址
     const api_decode_base = "https://pcw-api.iq.com/api/decode/";
@@ -766,7 +766,7 @@ export default class IqiyiSource extends BaseSource {
         });
       }
       tvid = idMatch[1];
-      log("info", `tvid: ${tvid}`);
+      log("debug", `tvid: ${tvid}`);
 
       // 获取 tvid 的解码信息
       const decodeUrl = `${api_decode_base}${tvid}?platformId=3&modeCode=intl&langCode=sg`;
@@ -778,7 +778,7 @@ export default class IqiyiSource extends BaseSource {
       });
       const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
       tvid = data.data.toString();
-      log("info", `解码后 tvid: ${tvid}`);
+      log("debug", `解码后 tvid: ${tvid}`);
     } catch (error) {
       log("error", "请求解码信息失败:", error);
       return new SegmentListResponse({
@@ -802,7 +802,7 @@ export default class IqiyiSource extends BaseSource {
       duration = videoInfo.durationSec;
       albumid = videoInfo.albumId;
       categoryid = videoInfo.channelId || videoInfo.categoryId;
-      log("info", `时长: ${duration}`);
+      log("debug", `时长: ${duration}`);
     } catch (error) {
       log("error", "请求视频基础信息失败:", error);
       return new SegmentListResponse({
@@ -813,7 +813,7 @@ export default class IqiyiSource extends BaseSource {
 
     // 计算弹幕分段数量（每5分钟一个分段）
     const page = Math.ceil(duration / (60 * 5));
-    log("info", `弹幕分段数量: ${page}`);
+    log("debug", `弹幕分段数量: ${page}`);
 
     // 构建分段列表
     const segmentList = [];

@@ -81,11 +81,11 @@ export default class RenrenSource extends BaseSource {
     ROTATION_THRESHOLD = Math.floor(Math.random() * (60 - 30 + 1)) + 30;
     
     if (oldId) {
-        log("info", `[Renren] AliID 轮换完成: ${oldId} -> ${CACHED_ALI_ID}`);
+        log("debug", `[Renren] AliID 轮换完成: ${oldId} -> ${CACHED_ALI_ID}`);
     } else {
-        log("info", `[Renren] AliID 初始化完成: ${CACHED_ALI_ID}`);
+        log("debug", `[Renren] AliID 初始化完成: ${CACHED_ALI_ID}`);
     }
-    log("info", `[Renren] AliID 下次轮换将在 ${ROTATION_THRESHOLD} 次操作后触发`);
+    log("debug", `[Renren] AliID 下次轮换将在 ${ROTATION_THRESHOLD} 次操作后触发`);
   }
 
   /**
@@ -101,14 +101,14 @@ export default class RenrenSource extends BaseSource {
 
     // 2. 检查阈值，决定是否轮换
     if (REQUEST_COUNT >= ROTATION_THRESHOLD) {
-      log("info", `[Renren] AliID 触发阈值 (${REQUEST_COUNT}/${ROTATION_THRESHOLD})，正在轮换 ID...`);
+      log("debug", `[Renren] AliID 触发阈值 (${REQUEST_COUNT}/${ROTATION_THRESHOLD})，正在轮换 ID...`);
       this.rotateAliId();
     }
 
     // 3. 增加计数
     REQUEST_COUNT++;
     // 输出明确的计数日志，方便排查
-    log("info", `[Renren] AliID 计数增加: ${REQUEST_COUNT}/${ROTATION_THRESHOLD} (当前ID: ...${CACHED_ALI_ID.slice(-6)})`);
+    log("debug", `[Renren] AliID 计数增加: ${REQUEST_COUNT}/${ROTATION_THRESHOLD} (当前ID: ...${CACHED_ALI_ID.slice(-6)})`);
   }
 
   /**
@@ -187,7 +187,7 @@ export default class RenrenSource extends BaseSource {
       const headers = this.generateTvHeaders(timestamp, sign);
 
       const url = `https://${this.API_CONFIG.TV_HOST}${path}?${queryString}`;
-      // log("info", `[Renren] TV搜索请求: ${url}`);
+      // log("debug", `[Renren] TV搜索请求: ${url}`);
 
       const resp = await httpGet(url, {
         headers: headers,
@@ -195,12 +195,12 @@ export default class RenrenSource extends BaseSource {
       });
 
       if (!resp.data || resp.data.code !== "0000") {
-        log("info", `[Renren] TV搜索接口异常: code=${resp?.data?.code}, msg=${resp?.data?.msg}`);
+        log("debug", `[Renren] TV搜索接口异常: code=${resp?.data?.code}, msg=${resp?.data?.msg}`);
         return [];
       }
 
       const list = resp.data.data || [];
-      log("info", `[Renren] TV搜索返回结果数量: ${list.length}`);
+      log("debug", `[Renren] TV搜索返回结果数量: ${list.length}`);
 
       return list.map((item) => ({
         provider: "renren",
@@ -214,7 +214,7 @@ export default class RenrenSource extends BaseSource {
         currentEpisodeIndex: null,
       }));
     } catch (error) {
-      log("info", "[Renren] searchAppContent error:", error.message);
+      log("debug", "[Renren] searchAppContent error:", error.message);
       return [];
     }
   }
@@ -252,7 +252,7 @@ export default class RenrenSource extends BaseSource {
 
       // 1. 基础网络或数据校验
       if (!resp || !resp.data) {
-        log("info", `[Renren] TV详情接口网络无响应或数据为空: ID=${dramaId}`);
+        log("debug", `[Renren] TV详情接口网络无响应或数据为空: ID=${dramaId}`);
         return null;
       }
       
@@ -262,26 +262,26 @@ export default class RenrenSource extends BaseSource {
       // 2. 检测特定维护信息 "该剧暂不可播"
       // 这通常意味着 App 接口正在维护或该资源被下架，必须降级到 Web 版
       if (msg.includes("该剧暂不可播")) {
-          log("info", `[Renren] TV接口提示'该剧暂不可播' (ID=${dramaId})，视为维护中，触发Web降级`);
+          log("debug", `[Renren] TV接口提示'该剧暂不可播' (ID=${dramaId})，视为维护中，触发Web降级`);
           return null; // 触发降级
       }
 
       // 3. 检测错误码
       if (resData.code !== "0000") {
-        log("info", `[Renren] TV详情接口返回错误码: ${resData.code}, msg=${msg} (ID=${dramaId})`);
+        log("debug", `[Renren] TV详情接口返回错误码: ${resData.code}, msg=${msg} (ID=${dramaId})`);
         return null;
       }
 
       // 4. 检测分集数据完整性 (关键修改：如果详情成功但没分集，也视为失败)
       if (!resData.data || !resData.data.episodeList || resData.data.episodeList.length === 0) {
-        log("info", `[Renren] TV详情接口返回数据缺失分集列表 (ID=${dramaId})，尝试Web降级`);
+        log("debug", `[Renren] TV详情接口返回数据缺失分集列表 (ID=${dramaId})，尝试Web降级`);
         return null; // 触发降级
       }
 
-      log("info", `[Renren] TV详情获取成功: ID=${dramaId}, 包含集数=${resData.data.episodeList.length}`);
+      log("debug", `[Renren] TV详情获取成功: ID=${dramaId}, 包含集数=${resData.data.episodeList.length}`);
       return resData;
     } catch (error) {
-      log("info", "[Renren] getAppDramaDetail error:", error.message);
+      log("debug", "[Renren] getAppDramaDetail error:", error.message);
       return null;
     }
   }
@@ -326,7 +326,7 @@ export default class RenrenSource extends BaseSource {
 
       return [];
     } catch (error) {
-      log("info", "[Renren] getAppDanmu error:", error.message);
+      log("debug", "[Renren] getAppDanmu error:", error.message);
       return null;
     }
   }
@@ -336,7 +336,7 @@ export default class RenrenSource extends BaseSource {
    */
   async performNetworkSearch(keyword, { lockRef = null, lastRequestTimeRef = { value: 0 }, minInterval = 500 } = {}) {
     try {
-      log("info", `[Renren] 尝试执行网页版搜索: ${keyword}`);
+      log("debug", `[Renren] 尝试执行网页版搜索: ${keyword}`);
       const url = `https://${this.API_CONFIG.WEB_HOST}/m-station/search/drama`;
       const params = { 
         keywords: keyword, 
@@ -361,13 +361,13 @@ export default class RenrenSource extends BaseSource {
       if (lockRef) lockRef.value = false;
 
       if (!resp.data) {
-        log("info", "[Renren] 网页版搜索无响应数据");
+        log("debug", "[Renren] 网页版搜索无响应数据");
         return [];
       }
 
       const decoded = autoDecode(resp.data);
       const list = decoded?.data?.searchDramaList || [];
-      log("info", `[Renren] 网页版搜索结果数量: ${list.length}`);
+      log("debug", `[Renren] 网页版搜索结果数量: ${list.length}`);
       
       return list.map((item) => ({
         provider: "renren",
@@ -381,7 +381,7 @@ export default class RenrenSource extends BaseSource {
         currentEpisodeIndex: null,
       }));
     } catch (error) {
-      log("info", "[Renren] performNetworkSearch error:", error.message);
+      log("debug", "[Renren] performNetworkSearch error:", error.message);
       return [];
     }
   }
@@ -391,7 +391,7 @@ export default class RenrenSource extends BaseSource {
   // =====================
 
   async search(keyword) {
-    log("info", `[Renren] 开始搜索: ${keyword}`);
+    log("debug", `[Renren] 开始搜索: ${keyword}`);
     const parsedKeyword = { title: keyword, season: null };
     const searchTitle = parsedKeyword.title;
     const searchSeason = parsedKeyword.season;
@@ -403,7 +403,7 @@ export default class RenrenSource extends BaseSource {
     
     // 2. 降级策略: 若 TV 接口无结果，尝试网页接口
     if (allResults.length === 0) {
-      log("info", "[Renren] TV 搜索无结果，降级到网页接口");
+      log("debug", "[Renren] TV 搜索无结果，降级到网页接口");
       const lock = { value: false };
       const lastRequestTime = { value: 0 };
       allResults = await this.performNetworkSearch(searchTitle, { 
@@ -426,7 +426,7 @@ export default class RenrenSource extends BaseSource {
     }
     
     // 2. 降级策略: 尝试网页接口
-    log("info", `[Renren] TV详情不可用，尝试请求网页版接口 (ID=${id})`); 
+    log("debug", `[Renren] TV详情不可用，尝试请求网页版接口 (ID=${id})`); 
     const url = `https://${this.API_CONFIG.WEB_HOST}/m-station/drama/page`;
     const params = { hsdrOpen: 0, isAgeLimit: 0, dramaId: String(id), hevcOpen: 1 };
     
@@ -436,27 +436,27 @@ export default class RenrenSource extends BaseSource {
       
       const decoded = autoDecode(fallbackResp.data);
       if (decoded && decoded.data) {
-         log("info", `[Renren] 网页版详情获取成功: 包含集数=${decoded.data.episodeList ? decoded.data.episodeList.length : 0}`);
+         log("debug", `[Renren] 网页版详情获取成功: 包含集数=${decoded.data.episodeList ? decoded.data.episodeList.length : 0}`);
          return decoded.data;
       }
       return null;
     } catch (e) {
-      log("info", `[Renren] 网页版详情请求失败: ${e.message}`);
+      log("debug", `[Renren] 网页版详情请求失败: ${e.message}`);
       return null;
     }
   }
 
   async getEpisodes(id) {
-    log("info", `[Renren] 正在获取分集信息: ID=${id}`);
+    log("debug", `[Renren] 正在获取分集信息: ID=${id}`);
     const detail = await this.getDetail(id);
     
     if (!detail) {
-      log("info", `[Renren] 获取分集失败: 详情对象为空 ID=${id}`);
+      log("debug", `[Renren] 获取分集失败: 详情对象为空 ID=${id}`);
       return [];
     }
     
     if (!detail.episodeList || !Array.isArray(detail.episodeList)) {
-       log("info", `[Renren] 获取分集失败: episodeList 字段缺失或非数组 ID=${id}`);
+       log("debug", `[Renren] 获取分集失败: episodeList 字段缺失或非数组 ID=${id}`);
        return [];
     }
 
@@ -476,7 +476,7 @@ export default class RenrenSource extends BaseSource {
       episodes.push({ sid: compositeId, order: ep.episodeNo || idx + 1, title: showTitle });
     });
 
-    log("info", `[Renren] 成功解析分集数量: ${episodes.length} (ID=${id})`);
+    log("debug", `[Renren] 成功解析分集数量: ${episodes.length} (ID=${id})`);
 
     return episodes.map(e => ({
       provider: "renren",
@@ -491,7 +491,7 @@ export default class RenrenSource extends BaseSource {
     const tmpAnimes = [];
 
     if (!sourceAnimes || !Array.isArray(sourceAnimes)) {
-      log("info", "[Renren] sourceAnimes is not a valid array");
+      log("debug", "[Renren] sourceAnimes is not a valid array");
       return [];
     }
 
@@ -540,7 +540,7 @@ export default class RenrenSource extends BaseSource {
               }
             }
           } catch (error) {
-            log("info", `[Renren] Error processing anime: ${error.message}`);
+            log("debug", `[Renren] Error processing anime: ${error.message}`);
           }
         })
       );
@@ -563,13 +563,13 @@ export default class RenrenSource extends BaseSource {
     
     // 2. 降级策略: TV 接口无数据时，尝试网页版接口
     if (!danmuList || danmuList.length === 0) {
-       log("info", "[Renren] TV 弹幕接口失败或无数据，尝试降级网页接口");
+       log("debug", "[Renren] TV 弹幕接口失败或无数据，尝试降级网页接口");
        danmuList = await this.getWebDanmuFallback(id);
     }
     
     // 3. 返回原始数据列表，BaseSource 会自动调用本类的 formatComments 进行格式化
     if (danmuList && Array.isArray(danmuList) && danmuList.length > 0) {
-      log("info", `[Renren] 成功获取 ${danmuList.length} 条弹幕`);
+      log("debug", `[Renren] 成功获取 ${danmuList.length} 条弹幕`);
       return danmuList;
     }
 
@@ -587,7 +587,7 @@ export default class RenrenSource extends BaseSource {
     }
     
     // 日志保留
-    log("info", `[Renren] 降级网页版弹幕，使用 ID: ${realEpisodeId}`);
+    log("debug", `[Renren] 降级网页版弹幕，使用 ID: ${realEpisodeId}`);
 
     const ClientProfile = {
       user_agent: "Mozilla/5.0",
@@ -614,7 +614,7 @@ export default class RenrenSource extends BaseSource {
       
       return list;
     } catch (e) {
-      log("info", `[Renren] 网页版弹幕降级失败: ${e.message}`);
+      log("debug", `[Renren] 网页版弹幕降级失败: ${e.message}`);
       return [];
     }
   }

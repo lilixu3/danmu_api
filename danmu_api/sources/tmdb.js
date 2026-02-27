@@ -45,11 +45,11 @@ export default class TmdbSource extends BaseSource {
         await this._getDoubanInfo(imdbId, mediaType, doubanIds);
       } else {
         const seasons = await getImdbSeasons(imdbId);
-        log("info", "imdb seasons:", seasons.data.seasons);
+        log("debug", "imdb seasons:", seasons.data.seasons);
 
         const seasonPromises = (seasons?.data?.seasons ?? []).map(async (season) => {
           let finalImdbId = imdbId;
-          log("info", "imdb season:", season.season);
+          log("debug", "imdb season:", season.season);
 
           try {
             if (Number(season.season) !== 1) {
@@ -90,7 +90,7 @@ export default class TmdbSource extends BaseSource {
         tmdbItems = data.results.filter(item => (item.name || item.title) === keyword);
       }
 
-      log("info", `tmdb items.length: ${tmdbItems.length}`);
+      log("debug", `tmdb items.length: ${tmdbItems.length}`);
 
       const doubanPromises = tmdbItems.map(async (tmdbItem) => {
         try {

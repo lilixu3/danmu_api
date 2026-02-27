@@ -38,7 +38,7 @@ export default class AnimekoSource extends BaseSource {
       // 标准化函数
       const searchKeyword = keyword.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
       
-      log("info", `[Animeko] 开始搜索 (V0): ${searchKeyword}`);
+      log("debug", `[Animeko] 开始搜索 (V0): ${searchKeyword}`);
 
       const searchUrl = `https://api.bgm.tv/v0/search/subjects?limit=5`;
       
@@ -54,14 +54,14 @@ export default class AnimekoSource extends BaseSource {
       });
 
       if (!resp || !resp.data) {
-        log("info", "[Animeko] 搜索请求失败或无数据返回");
+        log("debug", "[Animeko] 搜索请求失败或无数据返回");
         return [];
       }
 
       let resultsList = resp.data.data || [];
 
       if (resultsList.length === 0) {
-        log("info", "[Animeko] 未找到相关条目");
+        log("debug", "[Animeko] 未找到相关条目");
         return [];
       }
 
@@ -69,7 +69,7 @@ export default class AnimekoSource extends BaseSource {
       resultsList = this.filterSearchResults(resultsList, keyword);
 
       if (resultsList.length === 0) {
-        log("info", "[Animeko] 过滤后无匹配结果");
+        log("debug", "[Animeko] 过滤后无匹配结果");
         return [];
       }
 
@@ -78,7 +78,7 @@ export default class AnimekoSource extends BaseSource {
         resultsList = await this.checkRelationsAndModifyTitles(resultsList);
       }
       
-      log("info", `[Animeko] 搜索完成，找到 ${resultsList.length} 个有效结果`);
+      log("debug", `[Animeko] 搜索完成，找到 ${resultsList.length} 个有效结果`);
       return this.transformResults(resultsList);
     } catch (error) {
       log("error", "[Animeko] Search error:", {
@@ -185,7 +185,7 @@ export default class AnimekoSource extends BaseSource {
 
     // 规则1: 如果关键词包含明确的季度信息（且大于1，排除S1干扰），则执行严格匹配
     if (targetSeason !== null && targetSeason > 1) {
-      log("info", `[Animeko] 检测到指定季度搜索: 第 ${targetSeason} 季`);
+      log("debug", `[Animeko] 检测到指定季度搜索: 第 ${targetSeason} 季`);
 
       const strictMatches = candidates.filter(item => {
         // 尝试从结果标题中提取季度，如果提取不到，默认为第 1 季
@@ -205,7 +205,7 @@ export default class AnimekoSource extends BaseSource {
       }
 
       // 规则2: 如果包含季度信息但找不到对应结果，返回最优选（第1个）
-      log("info", `[Animeko] 未找到第 ${targetSeason} 季对应条目，回退至最优结果`);
+      log("debug", `[Animeko] 未找到第 ${targetSeason} 季对应条目，回退至最优结果`);
       return [candidates[0]];
     }
 
@@ -303,7 +303,7 @@ export default class AnimekoSource extends BaseSource {
           const relationInfo = relations.find(r => r.id === subjectB.id);
           
           if (relationInfo) {
-            log("info", `[Animeko] 检测到关系: [${nameA}] -> ${relationInfo.relation} -> [${nameB}]`);
+            log("debug", `[Animeko] 检测到关系: [${nameA}] -> ${relationInfo.relation} -> [${nameB}]`);
             
             const targetRelations = ["续集", "番外篇", "主线故事", "前传", "不同演绎", "衍生"];
             
@@ -415,7 +415,7 @@ export default class AnimekoSource extends BaseSource {
         // 对应您的 JSON: resp.data 存在，resp.data.data 是 [] (数组)，校验通过
         if (!resp || !resp.data || !Array.isArray(resp.data.data)) {
           if (offset === 0) {
-             log("info", `[Animeko] Subject ${subjectId} 无剧集数据或响应异常`);
+             log("debug", `[Animeko] Subject ${subjectId} 无剧集数据或响应异常`);
           }
           break;
         }
@@ -433,7 +433,7 @@ export default class AnimekoSource extends BaseSource {
         
         // 打印进度日志
         if (currentBatch.length === limit) {
-           log("info", `[Animeko] ID:${subjectId} 正加载更多剧集 (当前已获: ${allEpisodes.length})`);
+           log("debug", `[Animeko] ID:${subjectId} 正加载更多剧集 (当前已获: ${allEpisodes.length})`);
         }
 
         // 4. 判断是否还有下一页
@@ -592,13 +592,13 @@ export default class AnimekoSource extends BaseSource {
 
     // 3. 如果失败，降级尝试 CN 节点
     if (!danmuList) {
-      log("info", `[Animeko] Global 节点获取失败/无数据，降级尝试 CN 节点... ID:${realId}`);
+      log("debug", `[Animeko] Global 节点获取失败/无数据，降级尝试 CN 节点... ID:${realId}`);
       danmuList = await fetchDanmu(HOST_CN);
     }
 
     // 4. 返回结果或空数组
     if (danmuList) {
-      log("info", `[Animeko] 成功获取弹幕，共 ${danmuList.length} 条`);
+      log("debug", `[Animeko] 成功获取弹幕，共 ${danmuList.length} 条`);
       return danmuList;
     }
 

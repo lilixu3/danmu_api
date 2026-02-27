@@ -233,7 +233,7 @@ export default class HanjutvSource extends BaseSource {
           .catch((error) => {
             legacyFinished = true;
             if (error?.name === "AbortError") {
-              log("info", "[Hanjutv] legacy 补偿检索已取消（s5 已命中）");
+              log("debug", "[Hanjutv] legacy 补偿检索已取消（s5 已命中）");
               return [];
             }
             webError = error;
@@ -257,7 +257,7 @@ export default class HanjutvSource extends BaseSource {
       let hedgeTimer = null;
       const hedgePromise = new Promise((resolve) => {
         hedgeTimer = setTimeout(() => {
-          log("info", `[Hanjutv] s5 超过 ${this.searchHedgeDelayMs}ms 未完成，启动 legacy 并行补偿`);
+          log("debug", `[Hanjutv] s5 超过 ${this.searchHedgeDelayMs}ms 未完成，启动 legacy 并行补偿`);
           startLegacySearch();
           resolve();
         }, this.searchHedgeDelayMs);
@@ -285,14 +285,14 @@ export default class HanjutvSource extends BaseSource {
 
       if (resultList.length === 0) {
         if (webError) {
-          log("info", `hanjutvSearchresp: s5 无有效结果，旧接口失败: ${webError.message}`);
+          log("debug", `hanjutvSearchresp: s5 无有效结果，旧接口失败: ${webError.message}`);
         }
-        log("info", "hanjutvSearchresp: s5 与旧接口均无有效结果");
+        log("debug", "hanjutvSearchresp: s5 与旧接口均无有效结果");
         return [];
       }
 
-      log("info", `[Hanjutv] 搜索候选统计 s5=${stats.s5Total}(命中${stats.s5Matched}), web=${stats.webTotal}(命中${stats.webMatched})`);
-      log("info", `[Hanjutv] 搜索找到 ${resultList.length} 个有效结果`);
+      log("debug", `[Hanjutv] 搜索候选统计 s5=${stats.s5Total}(命中${stats.s5Matched}), web=${stats.webTotal}(命中${stats.webMatched})`);
+      log("debug", `[Hanjutv] 搜索找到 ${resultList.length} 个有效结果`);
 
       return resultList.map((anime) => {
         const animeId = convertToAsciiSum(anime.sid);
@@ -338,7 +338,7 @@ export default class HanjutvSource extends BaseSource {
       }
 
       if (!detail) {
-        log("info", "getHanjutvDetail: series 不存在");
+        log("debug", "getHanjutvDetail: series 不存在");
         return [];
       }
 
@@ -415,7 +415,7 @@ export default class HanjutvSource extends BaseSource {
       }
 
       if (episodes.length === 0) {
-        log("info", "getHanjutvEposides: episodes 不存在");
+        log("debug", "getHanjutvEposides: episodes 不存在");
         return [];
       }
 
@@ -535,7 +535,7 @@ export default class HanjutvSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取韩剧TV弹幕分段列表...", id);
+    log("debug", "获取韩剧TV弹幕分段列表...", id);
 
     return new SegmentListResponse({
       "type": "hanjutv",

@@ -80,7 +80,7 @@ export default class MangoSource extends BaseSource {
 
   async search(keyword) {
     try {
-      log("info", `[Mango] 开始搜索: ${keyword}`);
+      log("debug", `[Mango] 开始搜索: ${keyword}`);
 
       const encodedKeyword = encodeURIComponent(keyword);
       const searchUrl = `https://mobileso.bz.mgtv.com/msite/search/v2?q=${encodedKeyword}&pc=30&pn=1&sort=-99&ty=0&du=0&pt=0&corr=1&abroad=0&_support=10000000000000000`;
@@ -94,14 +94,14 @@ export default class MangoSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[Mango] 搜索响应为空");
+        log("debug", "[Mango] 搜索响应为空");
         return [];
       }
 
       const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
 
       if (!data.data || !data.data.contents) {
-        log("info", "[Mango] 搜索无结果");
+        log("debug", "[Mango] 搜索无结果");
         return [];
       }
 
@@ -149,7 +149,7 @@ export default class MangoSource extends BaseSource {
         }
       }
 
-      log("info", `[Mango] 搜索找到 ${results.length} 个有效结果`);
+      log("debug", `[Mango] 搜索找到 ${results.length} 个有效结果`);
       return results;
 
     } catch (error) {
@@ -160,7 +160,7 @@ export default class MangoSource extends BaseSource {
 
   async getEpisodes(id) {
     try {
-      log("info", `[Mango] 获取分集列表: collection_id=${id}`);
+      log("debug", `[Mango] 获取分集列表: collection_id=${id}`);
 
       let allEpisodes = [];
       let month = "";
@@ -179,14 +179,14 @@ export default class MangoSource extends BaseSource {
         });
 
         if (!response || !response.data) {
-          log("info", "[Mango] 未找到分集信息");
+          log("debug", "[Mango] 未找到分集信息");
           break;
         }
 
         const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
 
         if (!data.data || !data.data.list) {
-          log("info", "[Mango] 分集列表为空");
+          log("debug", "[Mango] 分集列表为空");
           break;
         }
 
@@ -198,7 +198,7 @@ export default class MangoSource extends BaseSource {
         // 第一次请求时获取总页数
         if (pageIndex === 0) {
           totalPages = data.data.tab_m && data.data.tab_m.length > 0 ? data.data.tab_m.length : 1;
-          log("info", `[Mango] 检测到 ${totalPages} 个月份分页`);
+          log("debug", `[Mango] 检测到 ${totalPages} 个月份分页`);
         }
 
         // 准备下一页
@@ -234,7 +234,7 @@ export default class MangoSource extends BaseSource {
       // 综艺节目智能处理
       const processedEpisodes = this._processVarietyEpisodes(episodes);
 
-      log("info", `[Mango] 共获取 ${processedEpisodes.length} 集`);
+      log("debug", `[Mango] 共获取 ${processedEpisodes.length} 集`);
       return processedEpisodes;
 
     } catch (error) {
@@ -250,7 +250,7 @@ export default class MangoSource extends BaseSource {
    */
   async _getMovieEpisode(mediaId) {
     try {
-      log("info", `[Mango] 获取电影正片: collection_id=${mediaId}`);
+      log("debug", `[Mango] 获取电影正片: collection_id=${mediaId}`);
 
       const url = `https://pcweb.api.mgtv.com/variety/showlist?allowedRC=1&collection_id=${mediaId}&month=&page=1&_support=10000000`;
 
@@ -262,14 +262,14 @@ export default class MangoSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[Mango] 未找到电影信息");
+        log("debug", "[Mango] 未找到电影信息");
         return null;
       }
 
       const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
 
       if (!data.data || !data.data.list || data.data.list.length === 0) {
-        log("info", "[Mango] 电影列表为空");
+        log("debug", "[Mango] 电影列表为空");
         return null;
       }
 
@@ -287,7 +287,7 @@ export default class MangoSource extends BaseSource {
         mainFeature = data.data.list[0];
       }
 
-      log("info", `[Mango] 找到电影正片: ${mainFeature.t3 || mainFeature.t1 || '正片'}`);
+      log("debug", `[Mango] 找到电影正片: ${mainFeature.t3 || mainFeature.t1 || '正片'}`);
       return mainFeature;
 
     } catch (error) {
@@ -506,7 +506,7 @@ export default class MangoSource extends BaseSource {
   }
 
   async getEpisodeDanmu(id) {
-    log("info", "开始从本地请求芒果TV弹幕...", id);
+    log("debug", "开始从本地请求芒果TV弹幕...", id);
 
     // 获取弹幕分段列表
     const segmentResult = await this.getEpisodeDanmuSegments(id);
@@ -515,7 +515,7 @@ export default class MangoSource extends BaseSource {
     }
 
     const segmentList = segmentResult.segmentList;
-    log("info", `弹幕分段数量: ${segmentList.length}`);
+    log("debug", `弹幕分段数量: ${segmentList.length}`);
 
     // 创建请求Promise数组
     const promises = [];
@@ -563,7 +563,7 @@ export default class MangoSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取芒果TV弹幕分段列表...", id);
+    log("debug", "获取芒果TV弹幕分段列表...", id);
 
     // 弹幕和视频信息 API 基础地址
     const api_video_info = "https://pcweb.api.mgtv.com/video/info";
@@ -587,7 +587,7 @@ export default class MangoSource extends BaseSource {
     const cid = path[path.length - 2];
     const vid = path[path.length - 1].split(".")[0];
 
-    log("info", `获取弹幕分段列表 - cid: ${cid}, vid: ${vid}`);
+    log("debug", `获取弹幕分段列表 - cid: ${cid}, vid: ${vid}`);
 
     // 获取视频信息
     let res;

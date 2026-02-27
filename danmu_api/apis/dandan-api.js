@@ -221,7 +221,7 @@ async function validateExternalUrl(rawUrl) {
 
 async function withPendingCommentRequest(pendingKey, taskFactory) {
   if (PENDING_COMMENT_REQUESTS.has(pendingKey)) {
-    log("info", `[Comment] 复用正在进行的请求: ${pendingKey}`);
+    log("debug", `[Comment] 复用正在进行的请求: ${pendingKey}`);
     return await PENDING_COMMENT_REQUESTS.get(pendingKey);
   }
 
@@ -365,7 +365,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
   // 如果启用了搜索关键字繁转简，则进行转换
   if (globals.animeTitleSimplified) {
     const simplifiedTitle = simplized(queryTitle);
-    log("info", `searchAnime converted traditional to simplified: ${queryTitle} -> ${simplifiedTitle}`);
+    log("debug", `searchAnime converted traditional to simplified: ${queryTitle} -> ${simplifiedTitle}`);
     queryTitle = simplifiedTitle;
   }
 
@@ -451,7 +451,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
 
   try {
     // 根据 sourceOrderArr 动态构建请求数组
-    log("info", `Search sourceOrderArr: ${globals.sourceOrderArr}`);
+    log("debug", "Search sourceOrderArr:", globals.sourceOrderArr);
     const requestPromises = globals.sourceOrderArr.map(source => {
       if (source === "360") return kan360Source.search(queryTitle);
       if (source === "vod") return vodSource.search(queryTitle, preferAnimeId, preferSource);
@@ -595,7 +595,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       // 首先检查剧名是否包含过滤关键词
       const animeTitle = anime.animeTitle || '';
       if (globals.animeTitleFilter && globals.animeTitleFilter.test(animeTitle)) {
-        log("info", `[searchAnime] Anime ${anime.animeId} filtered by name: ${animeTitle}`);
+        log("debug", `[searchAnime] Anime ${anime.animeId} filtered by name: ${animeTitle}`);
         continue; // 跳过该动漫
       }
 
@@ -612,7 +612,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
           return !globals.episodeTitleFilter.test(episode.episodeTitle);
         });
 
-        log("info", `[searchAnime] Anime ${anime.animeId} filtered episodes: ${episodesList.length}/${animeData.links.length}`);
+        log("debug", `[searchAnime] Anime ${anime.animeId} filtered episodes: ${episodesList.length}/${animeData.links.length}`);
 
         // 只有当过滤后还有有效剧集时才保留该动漫
         if (episodesList.length > 0) {
@@ -749,20 +749,20 @@ function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
   for (const ep of platformEpisodes) {
     const extractedNumber = extractEpisodeNumberFromTitle(ep.episodeTitle);
     if (extractedNumber === targetEpisode) {
-      log("info", `Found episode by title number: ${ep.episodeTitle} (extracted: ${extractedNumber})`);
+      log("debug", `Found episode by title number: ${ep.episodeTitle} (extracted: ${extractedNumber})`);
       return ep;
     }
   }
   // 策略2：使用数组索引
   if (platformEpisodes.length >= targetEpisode) {
     const fallbackEp = platformEpisodes[targetEpisode - 1];
-    log("info", `Using fallback array index for episode ${targetEpisode}: ${fallbackEp.episodeTitle}`);
+    log("debug", `Using fallback array index for episode ${targetEpisode}: ${fallbackEp.episodeTitle}`);
     return fallbackEp;
   }
   // 策略3：使用episodeNumber字段匹配
   for (const ep of platformEpisodes) {
     if (ep.episodeNumber && parseInt(ep.episodeNumber, 10) === targetEpisode) {
-      log("info", `Found episode by episodeNumber: ${ep.episodeTitle} (episodeNumber: ${ep.episodeNumber})`);
+      log("debug", `Found episode by episodeNumber: ${ep.episodeTitle} (episodeNumber: ${ep.episodeNumber})`);
       return ep;
     }
   }
@@ -849,7 +849,7 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
 
     const aiResponse = await aiClient.ask(userPrompt);
     // const aiResponse = '{ "animeIndex": 0 }';
-    log("info", `AI 匹配原始响应: ${aiResponse}`);
+    log("debug", `AI 匹配原始响应: ${aiResponse}`);
 
     let parsedResponse;
     try {
@@ -893,7 +893,7 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
           : bangumiEpisodes;
         const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
 
-        log("info", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
+        log("debug", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
 
         // 匹配集数（优先沿用请求中的平台偏好）
         filteredEpisode = findEpisodeByNumber(filteredEpisodes, episode, aiPreferredPlatform);
@@ -951,7 +951,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
         if (normalizeSpaces(anime.animeTitle).includes(normalizedTitle)) {
             // 年份匹配优先于季匹配
             if (!matchYear(anime, year)) {
-                log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+                log("debug", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
                 continue;
             }
 
@@ -972,7 +972,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
         if (animeTitle === title) {
             // 年份匹配检查
             if (!matchYear(anime, year)) {
-                log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+                log("debug", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
                 continue;
             }
             isMatch = true;
@@ -993,7 +993,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
     const bangumiEpisodes = bangumiData.bangumi.episodes;
     
     // 输出匹配分数及摘要日志，避免 info 级别打印超大对象
-    log("info", "判断剧集", `Anime: ${anime.animeTitle}`);
+    log("debug", "判断剧集", `Anime: ${anime.animeTitle}`);
     log("debug", "[matchAniAndEp] bangumi摘要", {
       animeId: anime.animeId,
       bangumiId: anime.bangumiId,
@@ -1009,7 +1009,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
           : bangumiEpisodes;
         const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
         
-        log("info", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
+        log("debug", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
 
         // 匹配集数 (注意：findEpisodeByNumber 已增强支持模糊平台匹配)
         matchedEpisode = findEpisodeByNumber(filteredEpisodes, episode, platform);
@@ -1073,7 +1073,7 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
   for (const anime of searchData.animes) {
     // 年份匹配优先（如果提供了年份）
     if (year && !matchYear(anime, year)) {
-      log("info", `Fallback: Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+      log("debug", `Fallback: Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
       continue;
     }
     
@@ -1190,7 +1190,7 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
     title = await getTMDBChineseTitle(title.replace('.', ' '), season, episode);
   }
 
-  log("info", "Parsed title, season, episode, year", {title, season, episode, year});
+  log("debug", "Parsed title, season, episode, year", {title, season, episode, year});
   return {title, season, episode, year};
 }
 
@@ -1231,8 +1231,8 @@ export async function matchAnime(url, req) {
 
     // 解析fileName，提取平台偏好
     const { cleanFileName, preferredPlatform } = parseFileName(fileName);
-    log("info", `Processing anime match for query: ${fileName}`);
-    log("info", `Parsed cleanFileName: ${cleanFileName}, preferredPlatform: ${preferredPlatform}`);
+    log("debug", `Processing anime match for query: ${fileName}`);
+    log("debug", `Parsed cleanFileName: ${cleanFileName}, preferredPlatform: ${preferredPlatform}`);
 
     let {title, season, episode, year} = await extractTitleSeasonEpisode(cleanFileName);
 
@@ -1241,26 +1241,26 @@ export async function matchAnime(url, req) {
       const mappedTitle = globals.titleMappingTable.get(title);
       if (mappedTitle) {
         title = mappedTitle;
-        log("info", `Title mapped from original: ${url.searchParams.get("keyword")} to: ${title}`);
+        log("debug", `Title mapped from original: ${url.searchParams.get("keyword")} to: ${title}`);
       }
     }
 
     // 如果启用了搜索关键字繁转简，则进行转换
     if (globals.animeTitleSimplified) {
       const simplifiedTitle = simplized(title);
-      log("info", `matchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
+      log("debug", `matchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
       title = simplifiedTitle;
     }
 
     // 获取prefer animeIdgetPreferAnimeId
     const [preferAnimeId, preferSource] = getPreferAnimeId(title);
-    log("info", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
+    log("debug", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
 
     // 根据指定平台创建动态平台顺序
     const dynamicPlatformOrder = createDynamicPlatformOrder(preferredPlatform);
-    log("info", `Original platformOrderArr: ${globals.platformOrderArr}`);
-    log("info", `Dynamic platformOrder: ${dynamicPlatformOrder}`);
-    log("info", `Preferred platform: ${preferredPlatform || 'none'}`);
+    log("debug", "Original platformOrderArr:", globals.platformOrderArr);
+    log("debug", "Dynamic platformOrder:", dynamicPlatformOrder);
+    log("debug", `Preferred platform: ${preferredPlatform || 'none'}`);
 
     let resAnime;
     let resEpisode;
@@ -1327,7 +1327,7 @@ export async function matchAnime(url, req) {
               resAnime = __ret.resAnime;
 
               if (resAnime) {
-                log("info", `Found match with platform: ${platform || 'default'}`);
+                log("debug", `Found match with platform: ${platform || 'default'}`);
                 break;
               }
             }
@@ -1369,7 +1369,7 @@ export async function matchAnime(url, req) {
       ]
     }
 
-    log("info", `resMatchData: ${resData}`);
+    log("info", "resMatchData:", resData);
 
     // 示例返回
     return jsonResponse(resData);
@@ -1391,11 +1391,11 @@ export async function searchEpisodes(url) {
   // 如果启用了搜索关键字繁转简，则进行转换
   if (globals.animeTitleSimplified) {
     const simplifiedTitle = simplized(anime);
-    log("info", `searchEpisodes converted traditional to simplified: ${anime} -> ${simplifiedTitle}`);
+    log("debug", `searchEpisodes converted traditional to simplified: ${anime} -> ${simplifiedTitle}`);
     anime = simplifiedTitle;
   }
 
-  log("info", `Search episodes with anime: ${anime}, episode: ${episode}`);
+  log("debug", `Search episodes with anime: ${anime}, episode: ${episode}`);
 
   if (!anime) {
     log("error", "Missing anime parameter");
@@ -1523,7 +1523,7 @@ export async function getBangumi(path) {
     episodesList = episodesList.filter(episode => {
       return !globals.episodeTitleFilter.test(episode.episodeTitle);
     });
-    log("info", `[getBangumi] Episode filter enabled. Filtered episodes: ${episodesList.length}/${anime.links.length}`);
+    log("debug", `[getBangumi] Episode filter enabled. Filtered episodes: ${episodesList.length}/${anime.links.length}`);
 
     // 如果过滤后没有有效剧集，返回错误
     if (episodesList.length === 0) {
@@ -1701,14 +1701,14 @@ export async function getComment(path, queryFormat, segmentFlag) {
     platform: plat,
     source
   });
-  log("info", "comment url...", url);
-  log("info", "comment title...", title);
-  log("info", "comment platform...", plat);
+  log("debug", "comment url...", url);
+  log("debug", "comment title...", title);
+  log("debug", "comment platform...", plat);
   if (!url) {
     log("error", `Comment with ID ${commentId} not found`);
     return jsonResponse({ count: 0, comments: [] }, 404);
   }
-  log("info", `Fetched comment ID: ${commentId}`);
+  log("debug", `Fetched comment ID: ${commentId}`);
 
   // 检查弹幕缓存（分片列表请求不走弹幕缓存）
   const cachedComments = !segmentFlag ? getCommentCache(url) : null;
@@ -1717,7 +1717,7 @@ export async function getComment(path, queryFormat, segmentFlag) {
     return formatDanmuResponse(responseData, queryFormat);
   }
 
-  log("info", "开始从本地请求弹幕...", url);
+  log("debug", "开始从本地请求弹幕...", url);
   const pendingKey = `comment:${url}|seg:${segmentFlag ? 1 : 0}`;
   let danmus = await withPendingCommentRequest(pendingKey, async () => {
     let fetchedDanmus = [];
@@ -1815,7 +1815,7 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     }
     const originalUrl = validation.normalizedUrl;
 
-    log("info", `Processing comment request for URL: ${originalUrl}`);
+    log("debug", `Processing comment request for URL: ${originalUrl}`);
 
     let url = originalUrl;
 
@@ -1834,7 +1834,7 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
       }
     }
 
-    log("info", "开始从本地请求弹幕...", url);
+    log("debug", "开始从本地请求弹幕...", url);
 
     // 根据URL域名判断平台并获取弹幕
     let danmus = [];
@@ -1919,7 +1919,7 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     if (danmus && danmus.comments) danmus = danmus.comments;
     if (!Array.isArray(danmus)) danmus = [];
 
-    log("info", `Successfully fetched ${danmus.length} comments from URL`);
+    log("debug", `Successfully fetched ${danmus.length} comments from URL`);
 
     // 缓存弹幕结果（b23 短链同时缓存原始URL与解析后的URL，避免重复解析）
     if (danmus.length > 0) {
@@ -1959,7 +1959,7 @@ export async function getSegmentComment(segment, queryFormat) {
     url = validation.normalizedUrl;
     segment.url = url;
 
-    log("info", `Processing segment comment request for URL: ${url}`);
+    log("debug", `Processing segment comment request for URL: ${url}`);
 
     // 检查弹幕缓存
     const cachedComments = getCommentCache(url);
@@ -1974,7 +1974,7 @@ export async function getSegmentComment(segment, queryFormat) {
       return formatDanmuResponse(responseData, queryFormat);
     }
 
-    log("info", `开始从本地请求分段弹幕... URL: ${url}`);
+    log("debug", `开始从本地请求分段弹幕... URL: ${url}`);
     let danmus = [];
 
     // 根据平台调用相应的分段弹幕获取方法
@@ -2014,7 +2014,7 @@ export async function getSegmentComment(segment, queryFormat) {
       danmus = await otherSource.getSegmentComments(segment);
     }
 
-    log("info", `Successfully fetched ${danmus.length} segment comments from URL`);
+    log("debug", `Successfully fetched ${danmus.length} segment comments from URL`);
 
     // 缓存弹幕结果
     if (danmus.length > 0) {

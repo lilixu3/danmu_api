@@ -26,7 +26,7 @@ export default class Kan360Source extends BaseSource {
         );
 
         const data = await response.data;
-        log("info", `360kan zongyi response: ${JSON.stringify(data)}`);
+        log("debug", `360kan zongyi response: ${JSON.stringify(data)}`);
 
         const episodeList = data.data.list;
         if (!episodeList) {
@@ -49,7 +49,7 @@ export default class Kan360Source extends BaseSource {
           });
         }
 
-        log("info", `links.length: ${links.length}`);
+        log("debug", `links.length: ${links.length}`);
       }
       // Sort links by pubdate numerically
       links.sort((a, b) => {
@@ -83,14 +83,14 @@ export default class Kan360Source extends BaseSource {
       );
 
       const data = response.data;
-      log("info", `360kan response: ${JSON.stringify(data)}`);
+      log("debug", `360kan response: ${JSON.stringify(data)}`);
 
       let tmpAnimes = [];
       if ('rows' in data.data.longData) {
         tmpAnimes = data.data.longData.rows;
       }
 
-      log("info", `360kan animes.length: ${tmpAnimes.length}`);
+      log("debug", `360kan animes.length: ${tmpAnimes.length}`);
 
       return tmpAnimes;
     } catch (error) {

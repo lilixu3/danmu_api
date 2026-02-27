@@ -76,7 +76,7 @@ class MaiduiduiSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[Maiduidui] 搜索响应为空");
+        log("debug", "[Maiduidui] 搜索响应为空");
         return [];
       }
 
@@ -99,7 +99,7 @@ class MaiduiduiSource extends BaseSource {
       }
 
       // 正常情况下输出 JSON 字符串
-      log("info", `[Maiduidui] 搜索找到 ${animes.length} 个有效结果`);
+      log("debug", `[Maiduidui] 搜索找到 ${animes.length} 个有效结果`);
       return animes;
     } catch (error) {
       // 捕获请求中的错误
@@ -130,7 +130,7 @@ class MaiduiduiSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[Maiduidui] 获取详情信息响应为空");
+        log("debug", "[Maiduidui] 获取详情信息响应为空");
         return [];
       }
 
@@ -167,7 +167,7 @@ class MaiduiduiSource extends BaseSource {
       });
 
       if (!response || !response.data) {
-        log("info", "[Maiduidui] 获取集信息响应为空");
+        log("debug", "[Maiduidui] 获取集信息响应为空");
         return [];
       }
 
@@ -252,7 +252,7 @@ class MaiduiduiSource extends BaseSource {
   }
 
   async getEpisodeDanmu(id) {
-    log("info", "开始从本地请求埋堆堆弹幕...", id);
+    log("debug", "开始从本地请求埋堆堆弹幕...", id);
     
     // 获取弹幕分段数据
     const segmentResult = await this.getEpisodeDanmuSegments(id);
@@ -261,7 +261,7 @@ class MaiduiduiSource extends BaseSource {
     }
 
     const segmentList = segmentResult.segmentList;
-    log("info", `弹幕分段数量: ${segmentList.length}`);
+    log("debug", `弹幕分段数量: ${segmentList.length}`);
 
     // 并发请求所有弹幕段，限制并发数量为20
     const MAX_CONCURRENT = 20;
@@ -300,7 +300,7 @@ class MaiduiduiSource extends BaseSource {
     }
 
     if (allComments.length === 0) {
-      log("info", `埋堆堆: 该视频暂无弹幕数据 (vid=${id})`);
+      log("debug", `埋堆堆: 该视频暂无弹幕数据 (vid=${id})`);
       return [];
     }
 
@@ -310,13 +310,13 @@ class MaiduiduiSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("info", "获取埋堆堆弹幕分段列表...", id);
+    log("debug", "获取埋堆堆弹幕分段列表...", id);
 
     const idInfo = this.extractByRegex(id);
     const uuid = idInfo.uuid;
     const duration = await this.getDetail(id);
-    log("info", "uuid:", uuid);
-    log("info", "duration:", duration);
+    log("debug", "uuid:", uuid);
+    log("debug", "duration:", duration);
 
     const segmentDuration = 60; // 每个分片1分钟
     const segmentList = [];

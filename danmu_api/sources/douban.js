@@ -36,7 +36,7 @@ export default class DoubanSource extends BaseSource {
         tmpAnimes = [...tmpAnimes, ...data.smart_box];
       }
 
-      log("info", `douban animes.length: ${tmpAnimes.length}`);
+      log("debug", `douban animes.length: ${tmpAnimes.length}`);
 
       return tmpAnimes;
     } catch (error) {
@@ -66,7 +66,7 @@ export default class DoubanSource extends BaseSource {
         const doubanId = anime.target_id;
         let animeType = anime?.type_name;
         if (animeType !== "电影" && animeType !== "电视剧") return;
-        log("info", "doubanId: ", doubanId, anime?.target?.title, animeType);
+        log("debug", "doubanId: ", doubanId, anime?.target?.title, animeType);
 
         // 获取平台详情页面url
         const response = await getDoubanDetail(doubanId);
@@ -77,7 +77,7 @@ export default class DoubanSource extends BaseSource {
           if (!vendor) {
             continue;
           }
-          log("info", "vendor uri: ", vendor.uri);
+          log("debug", "vendor uri: ", vendor.uri);
 
           if (response.data?.genres.includes('真人秀')) {
             animeType = "综艺";
