@@ -32,8 +32,11 @@ function resolveHttpErrorLevel(error) {
   if (!error) return 'error';
   if (error.name === 'AbortError') return 'warn';
   const status = getHttpStatusFromError(error);
-  if (Number.isFinite(status) && status >= 400 && status < 500) {
+  if (status === 429) {
     return 'warn';
+  }
+  if (Number.isFinite(status) && status >= 400 && status < 500) {
+    return 'info';
   }
   return 'error';
 }

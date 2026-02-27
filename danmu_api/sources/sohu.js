@@ -190,7 +190,7 @@ export default class SohuSource extends BaseSource {
       videosData = data.videos || [];
 
       if (!videosData || videosData.length === 0) {
-        log("warning", `搜狐视频: 未找到分集列表 (media_id=${id})`);
+        log("info", `搜狐视频: 未找到分集列表 (media_id=${id})`);
         return [];
       }
 

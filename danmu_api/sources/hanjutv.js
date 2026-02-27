@@ -237,7 +237,7 @@ export default class HanjutvSource extends BaseSource {
               return [];
             }
             webError = error;
-            log("warn", `[Hanjutv] 旧搜索接口失败: ${error.message}`);
+            log("info", `[Hanjutv] 旧搜索接口失败: ${error.message}`);
             return [];
           });
         return legacyPromise;
@@ -250,7 +250,7 @@ export default class HanjutvSource extends BaseSource {
         })
         .catch((error) => {
           s5Error = error;
-          log("warn", `[Hanjutv] s5 搜索失败，降级旧接口: ${error.message}`);
+          log("info", `[Hanjutv] s5 搜索失败，降级旧接口: ${error.message}`);
           return [];
         });
 
@@ -273,7 +273,7 @@ export default class HanjutvSource extends BaseSource {
       const needLegacySearch = s5List.length === 0 || s5MatchedCount === 0;
       if (needLegacySearch) {
         if (!s5Error && s5List.length > 0 && s5MatchedCount === 0) {
-          log("warn", `[Hanjutv] s5 返回 ${s5List.length} 条但标题零命中，触发 legacy 补偿检索`);
+          log("info", `[Hanjutv] s5 返回 ${s5List.length} 条但标题零命中，触发 legacy 补偿检索`);
         }
         await startLegacySearch();
       } else if (legacyStarted && !legacyFinished) {

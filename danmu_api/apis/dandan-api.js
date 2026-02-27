@@ -365,7 +365,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
   // 如果启用了搜索关键字繁转简，则进行转换
   if (globals.animeTitleSimplified) {
     const simplifiedTitle = simplized(queryTitle);
-    log("debug", `searchAnime converted traditional to simplified: ${queryTitle} -> ${simplifiedTitle}`);
+    log("info", `searchAnime converted traditional to simplified: ${queryTitle} -> ${simplifiedTitle}`);
     queryTitle = simplifiedTitle;
   }
 
@@ -451,7 +451,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
 
   try {
     // 根据 sourceOrderArr 动态构建请求数组
-    log("debug", "Search sourceOrderArr:", globals.sourceOrderArr);
+    log("info", "Search sourceOrderArr:", globals.sourceOrderArr);
     const requestPromises = globals.sourceOrderArr.map(source => {
       if (source === "360") return kan360Source.search(queryTitle);
       if (source === "vod") return vodSource.search(queryTitle, preferAnimeId, preferSource);
@@ -1190,7 +1190,7 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
     title = await getTMDBChineseTitle(title.replace('.', ' '), season, episode);
   }
 
-  log("debug", "Parsed title, season, episode, year", {title, season, episode, year});
+  log("info", "Parsed title, season, episode, year", {title, season, episode, year});
   return {title, season, episode, year};
 }
 
@@ -1231,8 +1231,8 @@ export async function matchAnime(url, req) {
 
     // 解析fileName，提取平台偏好
     const { cleanFileName, preferredPlatform } = parseFileName(fileName);
-    log("debug", `Processing anime match for query: ${fileName}`);
-    log("debug", `Parsed cleanFileName: ${cleanFileName}, preferredPlatform: ${preferredPlatform}`);
+    log("info", `Processing anime match for query: ${fileName}`);
+    log("info", `Parsed cleanFileName: ${cleanFileName}, preferredPlatform: ${preferredPlatform}`);
 
     let {title, season, episode, year} = await extractTitleSeasonEpisode(cleanFileName);
 
@@ -1241,26 +1241,26 @@ export async function matchAnime(url, req) {
       const mappedTitle = globals.titleMappingTable.get(title);
       if (mappedTitle) {
         title = mappedTitle;
-        log("debug", `Title mapped from original: ${url.searchParams.get("keyword")} to: ${title}`);
+        log("info", `Title mapped from original: ${url.searchParams.get("keyword")} to: ${title}`);
       }
     }
 
     // 如果启用了搜索关键字繁转简，则进行转换
     if (globals.animeTitleSimplified) {
       const simplifiedTitle = simplized(title);
-      log("debug", `matchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
+      log("info", `matchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
       title = simplifiedTitle;
     }
 
     // 获取prefer animeIdgetPreferAnimeId
     const [preferAnimeId, preferSource] = getPreferAnimeId(title);
-    log("debug", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
+    log("info", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
 
     // 根据指定平台创建动态平台顺序
     const dynamicPlatformOrder = createDynamicPlatformOrder(preferredPlatform);
-    log("debug", "Original platformOrderArr:", globals.platformOrderArr);
-    log("debug", "Dynamic platformOrder:", dynamicPlatformOrder);
-    log("debug", `Preferred platform: ${preferredPlatform || 'none'}`);
+    log("info", "Original platformOrderArr:", globals.platformOrderArr);
+    log("info", "Dynamic platformOrder:", dynamicPlatformOrder);
+    log("info", `Preferred platform: ${preferredPlatform || 'none'}`);
 
     let resAnime;
     let resEpisode;
@@ -1327,7 +1327,7 @@ export async function matchAnime(url, req) {
               resAnime = __ret.resAnime;
 
               if (resAnime) {
-                log("debug", `Found match with platform: ${platform || 'default'}`);
+                log("info", `Found match with platform: ${platform || 'default'}`);
                 break;
               }
             }
