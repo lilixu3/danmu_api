@@ -1908,7 +1908,11 @@ async function processMergeTask(params) {
                   log("info", `${logPrefix} 关联成功: [${currentPrimarySource}] ${logTitleA} <-> [${secSource}] ${logTitleB} (本次合并 ${mergedCount} 集)`);
                   if (mappingEntries.length > 0) {
                       mappingEntries.sort((a, b) => a.idx - b.idx);
-                      log("info", `${logPrefix} [${secSource}] 映射详情:\n${mappingEntries.map(e => e.text).join('\n')}`);
+                      const matchedCount = mappingEntries.filter(e => e.text.includes('[匹配]')).length;
+                      const orphanCount = mappingEntries.filter(e => e.text.includes('[落单]')).length;
+                      const skippedCount = mappingEntries.filter(e => e.text.includes('[略过]')).length;
+                      log("info", `${logPrefix} [${secSource}] 映射摘要: 匹配=${matchedCount}, 落单=${orphanCount}, 略过=${skippedCount}, 总计=${mappingEntries.length}`);
+                      log("debug", `${logPrefix} [${secSource}] 映射详情:\n${mappingEntries.map(e => e.text).join("\n")}`);
                   }
                   
                   // [进度自举] 成功合并后，更新历史进度

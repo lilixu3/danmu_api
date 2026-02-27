@@ -1282,6 +1282,7 @@ export async function matchAnime(url, req) {
       log("info", `[AI匹配] 已跳过，原因：${getAiReasonText("fast_match_cache_hit")}`);
     } else {
       let originSearchUrl = new URL(req.url.replace("/match", `/search/anime?keyword=${title}`));
+      log("info", `[matchAnime] 开始搜索候选: title=${title}`);
       const searchRes = await searchAnime(originSearchUrl, preferAnimeId, preferSource);
       const searchData = await searchRes.json();
       const rawAnimes = Array.isArray(searchData?.animes) ? searchData.animes : [];
@@ -1299,10 +1300,12 @@ export async function matchAnime(url, req) {
         log("info", `[matchAnime] 已过滤失效候选: ${rawAnimes.length} -> ${validAnimes.length}`);
       }
       searchData.animes = validAnimes;
+      log("info", `[matchAnime] 有效候选数量: ${searchData.animes.length}`);
 
       if (searchData.animes.length > 0) {
         // 尝试使用AI进行匹配
         const aiPreferredPlatform = preferredPlatform || dynamicPlatformOrder.find(Boolean) || null;
+        log("info", `[AI匹配] 开始请求：候选数=${searchData.animes.length}；偏好平台=${aiPreferredPlatform || "无"}`);
         const aiStartTime = Date.now();
         const aiMatchResult = await matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, aiPreferredPlatform);
         const aiLatencyMs = Date.now() - aiStartTime;
@@ -1320,7 +1323,9 @@ export async function matchAnime(url, req) {
           if (shouldSkipFallbackByAiResult(aiMatchResult)) {
             log("info", `[AI匹配] 已启用AI结果信任，跳过常规兜底；原因：${aiReasonText}`);
           } else {
+            log("info", `[AI匹配] 未命中，进入常规匹配流程`);
             // AI匹配失败或未配置，使用传统匹配方式
+            log("info", `[常规匹配] 平台尝试顺序: ${JSON.stringify(dynamicPlatformOrder)}`);
             for (const platform of dynamicPlatformOrder) {
               const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId);
               resEpisode = __ret.resEpisode;
@@ -1334,14 +1339,20 @@ export async function matchAnime(url, req) {
 
             // 如果都没有找到则返回第一个满足剧集数的剧集
             if (!resAnime) {
+              log("info", `[常规匹配] 未命中，进入最终兜底匹配`);
               const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime);
               resEpisode = __ret.resEpisode;
               resAnime = __ret.resAnime;
+              if (resAnime) {
+                log("info", `[兜底匹配] 命中: ${resAnime.animeTitle}`);
+              } else {
+                log("info", `[兜底匹配] 未命中`);
+              }
             }
           }
         }
       } else {
-        log("warn", "[matchAnime] 无可用候选，跳过 AI 与回退匹配");
+        log("info", "[matchAnime] 无可用候选，跳过 AI 与回退匹配");
       }
     }
 
