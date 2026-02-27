@@ -143,7 +143,7 @@ export function addEpisode(url, title) {
     // 检查是否已存在相同的 url 和 title
     const existingEpisode = globals.episodeIds.find(episode => episode.url === url && episode.title === title);
     if (existingEpisode) {
-        log("info", `Episode with URL ${url} and title ${title} already exists in episodeIds, returning existing episode.`);
+        log("debug", `Episode with URL ${url} and title ${title} already exists in episodeIds, returning existing episode.`);
         return existingEpisode; // 返回已存在的 episode
     }
 
@@ -154,7 +154,7 @@ export function addEpisode(url, title) {
     // 添加新对象
     globals.episodeIds.push(newEpisode);
 
-    log("info", `Added to episodeIds: ${JSON.stringify(newEpisode)}`);
+    log("debug", `Added to episodeIds: ${JSON.stringify(newEpisode)}`);
     return newEpisode; // 返回新添加的对象
 }
 
@@ -164,7 +164,7 @@ export function removeEpisodeByUrl(url) {
     globals.episodeIds = globals.episodeIds.filter(episode => episode.url !== url);
     const removedCount = initialLength - globals.episodeIds.length;
     if (removedCount > 0) {
-        log("info", `Removed ${removedCount} episode(s) from episodeIds with URL: ${url}`);
+        log("debug", `Removed ${removedCount} episode(s) from episodeIds with URL: ${url}`);
         return true;
     }
     log("error", `No episode found in episodeIds with URL: ${url}`);
@@ -240,10 +240,8 @@ export function addAnime(anime) {
             }
         }
 
-        log("info", `animes: ${JSON.stringify(
-          globals.animes,
-          (key, value) => key === 'links' ? value.length : value
-        )}`);
+        // 避免 info 级别输出超大数组，降低 I/O 开销
+        log("debug", `[cache] animes size=${globals.animes.length}, latest=${animeCopy.animeId}`);
 
         return true;
     } catch (error) {
