@@ -1564,7 +1564,7 @@ FFFFFF FF5733 00FF00"></textarea>
                     <div class="form-group ai-apikey-input-group">
                         <label class="form-label" for="text-value">API Key 值</label>
                         <textarea class="form-textarea ai-apikey-textarea" id="text-value" placeholder="请输入 AI API Key" rows="3">\${escapeHtml(value)}</textarea>
-                        <div class="form-help ai-apikey-help">支持 OpenAI 兼容的 API，需配合 AI_BASE_URL 和 AI_MODEL 配置使用</div>
+                        <div class="form-help ai-apikey-help">支持 OpenAI 兼容 API，需配合 AI_BASE_URL 和 AI_MODEL 使用（AI_BASE_URL 支持根地址、/v1 或完整接口URL）</div>
                     </div>
 
                     <div class="ai-apikey-status" id="ai-apikey-status">
