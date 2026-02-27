@@ -1,4 +1,4 @@
-import { md5, stringToUtf8Bytes, utf8BytesToString } from "./codec-util.js";
+import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes } from "./codec-util.js";
 
 const HANJUTV_VERSION = "6.5.3";
 const HANJUTV_VC = "a_7980";
@@ -43,23 +43,6 @@ function utf8Encode(text) {
 function utf8Decode(bytes) {
   if (typeof TextDecoder !== "undefined") return new TextDecoder().decode(bytes);
   return utf8BytesToString(bytes);
-}
-
-function bytesToBase64(bytes) {
-  if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64");
-
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-function base64ToBytes(base64) {
-  if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(base64, "base64"));
-
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 function xorBytes(a, b) {

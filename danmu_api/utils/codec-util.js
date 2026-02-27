@@ -437,7 +437,7 @@ function pkcs7Unpad(data){
 }
 
 // ====================== Base64 解码 ======================
-function base64ToBytes(b64) {
+export function base64ToBytes(b64) {
   // 先把 Base64 字符串转换成普通字符
   const binaryString = (typeof atob === 'function')
     ? atob(b64) // 浏览器环境
@@ -581,7 +581,7 @@ function str2bytes(str) {
 }
 
 // ===================== Base64 编码 =====================
-function bytesToBase64(bytes) {
+export function bytesToBase64(bytes) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
     let result = '';
     let i;
