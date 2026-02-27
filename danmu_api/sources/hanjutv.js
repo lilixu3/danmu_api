@@ -21,6 +21,7 @@ export default class HanjutvSource extends BaseSource {
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
     this.appUserAgent = "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)";
+    this.searchHedgeDelayMs = 700;
   }
 
   getWebHeaders() {
@@ -191,7 +192,7 @@ export default class HanjutvSource extends BaseSource {
     return plainItems;
   }
 
-  async searchWithLegacyApi(keyword) {
+  async searchWithLegacyApi(keyword, options = {}) {
     const q = encodeURIComponent(keyword);
     const resp = await httpGet(`https://hxqapi.hiyun.tv/wapi/search/aggregate/search?keyword=${q}&scope=101&page=1`, {
       headers: {
@@ -200,6 +201,7 @@ export default class HanjutvSource extends BaseSource {
       },
       timeout: 10000,
       retries: 1,
+      signal: options.signal,
     });
     return this.extractSearchItems(resp?.data);
   }
@@ -212,12 +214,59 @@ export default class HanjutvSource extends BaseSource {
       let s5List = [];
       let webList = [];
       let s5Error = null;
+      let webError = null;
+      let legacyStarted = false;
+      let legacyFinished = false;
+      let legacyController = null;
+      let legacyPromise = Promise.resolve([]);
 
-      try {
-        s5List = await this.searchWithS5Api(key);
-      } catch (error) {
-        s5Error = error;
-        log("warn", `[Hanjutv] s5 搜索失败，降级旧接口: ${error.message}`);
+      const startLegacySearch = () => {
+        if (legacyStarted) return legacyPromise;
+        legacyStarted = true;
+        legacyController = new AbortController();
+        legacyPromise = this.searchWithLegacyApi(key, { signal: legacyController.signal })
+          .then((list) => {
+            legacyFinished = true;
+            webList = Array.isArray(list) ? list : [];
+            return webList;
+          })
+          .catch((error) => {
+            legacyFinished = true;
+            if (error?.name === "AbortError") {
+              log("info", "[Hanjutv] legacy 补偿检索已取消（s5 已命中）");
+              return [];
+            }
+            webError = error;
+            log("warn", `[Hanjutv] 旧搜索接口失败: ${error.message}`);
+            return [];
+          });
+        return legacyPromise;
+      };
+
+      const s5Promise = this.searchWithS5Api(key)
+        .then((list) => {
+          s5List = Array.isArray(list) ? list : [];
+          return s5List;
+        })
+        .catch((error) => {
+          s5Error = error;
+          log("warn", `[Hanjutv] s5 搜索失败，降级旧接口: ${error.message}`);
+          return [];
+        });
+
+      let hedgeTimer = null;
+      const hedgePromise = new Promise((resolve) => {
+        hedgeTimer = setTimeout(() => {
+          log("info", `[Hanjutv] s5 超过 ${this.searchHedgeDelayMs}ms 未完成，启动 legacy 并行补偿`);
+          startLegacySearch();
+          resolve();
+        }, this.searchHedgeDelayMs);
+      });
+
+      await Promise.race([s5Promise, hedgePromise]);
+      await s5Promise;
+      if (hedgeTimer) {
+        clearTimeout(hedgeTimer);
       }
 
       const s5MatchedCount = this.countMatchedItems(s5List, key);
@@ -226,16 +275,18 @@ export default class HanjutvSource extends BaseSource {
         if (!s5Error && s5List.length > 0 && s5MatchedCount === 0) {
           log("warn", `[Hanjutv] s5 返回 ${s5List.length} 条但标题零命中，触发 legacy 补偿检索`);
         }
-        try {
-          webList = await this.searchWithLegacyApi(key);
-        } catch (error) {
-          log("warn", `[Hanjutv] 旧搜索接口失败: ${error.message}`);
-        }
+        await startLegacySearch();
+      } else if (legacyStarted && !legacyFinished) {
+        // s5 已命中时，主动取消补偿请求，减少额外流量
+        legacyController?.abort();
       }
 
       const { resultList, stats } = this.mergeSearchCandidates(key, s5List, webList);
 
       if (resultList.length === 0) {
+        if (webError) {
+          log("info", `hanjutvSearchresp: s5 无有效结果，旧接口失败: ${webError.message}`);
+        }
         log("info", "hanjutvSearchresp: s5 与旧接口均无有效结果");
         return [];
       }
