@@ -1657,7 +1657,7 @@ async function processMergeTask(params) {
 
     const cachedPAnime = globals.animes.find(a => String(a.animeId) === String(pAnime.animeId));
     if (!cachedPAnime?.links) {
-         log("warn", `${logPrefix} 主源数据不完整，跳过: ${pAnime.animeTitle}`);
+         log("debug", `${logPrefix} 主源数据不完整，跳过: ${pAnime.animeTitle}`);
          return null;
     }
 

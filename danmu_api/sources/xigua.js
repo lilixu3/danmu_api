@@ -11,6 +11,21 @@ import { SegmentListResponse } from '../models/dandan-model.js';
 // =====================
 // 获取西瓜视频弹幕
 // =====================
+
+function getHttpStatusFromError(error) {
+  if (!error || typeof error.message !== 'string') return null;
+  const match = error.message.match(/HTTP error!\s*status:\s*(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function getXiguaErrorLevel(error) {
+  const status = getHttpStatusFromError(error);
+  if (Number.isFinite(status) && status >= 400 && status < 500) {
+    return 'debug';
+  }
+  return 'warn';
+}
+
 class XiguaSource extends BaseSource {
   async search(keyword) {
     try {
@@ -85,12 +100,8 @@ class XiguaSource extends BaseSource {
       log("debug", `[Xigua] 搜索找到 ${animes.length} 个有效结果`);
       return animes;
     } catch (error) {
-      // 捕获请求中的错误
-      log("error", "getXiguaAnimes error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
+      // 搜索阶段偶发 4xx 属于可预期失败，降级避免刷屏
+      log(getXiguaErrorLevel(error), `[Xigua] 搜索失败: ${error.message}`);
       return [];
     }
   }
@@ -117,12 +128,8 @@ class XiguaSource extends BaseSource {
       const match = resp.data.match(/"duration"\s*:\s*([\d.]+)/);
       return match ? parseFloat(match[1]) : 0;
     } catch (error) {
-      // 捕获请求中的错误
-      log("error", "getXiguaDetail error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
+      // 详情页抓取失败可回退为无时长，避免堆栈刷屏
+      log(getXiguaErrorLevel(error), `[Xigua] 获取详情失败: ${error.message}`);
       return 0;
     }
   }
@@ -171,12 +178,8 @@ class XiguaSource extends BaseSource {
         return [];
       }
     } catch (error) {
-      // 捕获请求中的错误
-      log("error", "getXiguaEposides error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
+      // 剧集页 404 在旧链接中较常见，按可预期失败处理
+      log(getXiguaErrorLevel(error), `getXiguaEposides error: ${error.message}`);
       return [];
     }
   }
@@ -186,7 +189,7 @@ class XiguaSource extends BaseSource {
 
     // 添加错误处理，确保sourceAnimes是数组
     if (!sourceAnimes || !Array.isArray(sourceAnimes)) {
-      log("error", "[Xigua] sourceAnimes is not a valid array");
+      log("warn", "[Xigua] sourceAnimes is not a valid array");
       return [];
     }
 
@@ -229,7 +232,7 @@ class XiguaSource extends BaseSource {
             if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
           }
         } catch (error) {
-          log("error", `[Xigua] Error processing anime: ${error.message}`);
+          log("debug", `[Xigua] Error processing anime: ${error.message}`);
         }
       })
     );

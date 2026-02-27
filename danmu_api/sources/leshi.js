@@ -292,7 +292,7 @@ export default class LeshiSource extends BaseSource {
       }
 
       if (!htmlContent) {
-        log("error", `无法获取作品页面: media_id=${id}`);
+        log("warn", `无法获取作品页面: media_id=${id}`);
         return [];
       }
 
@@ -325,7 +325,7 @@ export default class LeshiSource extends BaseSource {
         return this.parseEpisodesFromHtml(containerHtml, id);
       }
       
-      log("error", `无法找到剧集列表容器: media_id=${id}`);
+      log("debug", `无法找到剧集列表容器: media_id=${id}`);
       
       // 从htmlContent直接匹配查找 https://www.le.com/ptv/vplay/77917395.html 形式的链接
       const regex = /https:\/\/www\.le\.com\/ptv\/vplay\/(\d+)\.html/g;
@@ -355,7 +355,7 @@ export default class LeshiSource extends BaseSource {
       return [];
 
     } catch (error) {
-      log("error", "[Leshi] 获取分集出错:", error.message);
+      log("warn", `[Leshi] 获取分集出错: ${error.message}`);
       return [];
     }
   }

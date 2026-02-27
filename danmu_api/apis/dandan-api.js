@@ -1296,7 +1296,7 @@ export async function matchAnime(url, req) {
         return globalAnimeIds.has(animeId) || globalBangumiIds.has(bangumiId);
       });
       if (validAnimes.length !== rawAnimes.length) {
-        log("warn", `[matchAnime] 已过滤失效候选: ${rawAnimes.length} -> ${validAnimes.length}`);
+        log("info", `[matchAnime] 已过滤失效候选: ${rawAnimes.length} -> ${validAnimes.length}`);
       }
       searchData.animes = validAnimes;
 

@@ -22,6 +22,48 @@ function linkSignal(externalSignal, internalController) {
   }
 }
 
+function getHttpStatusFromError(error) {
+  if (!error || typeof error.message !== 'string') return null;
+  const match = error.message.match(/HTTP error!\s*status:\s*(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function resolveHttpErrorLevel(error) {
+  if (!error) return 'error';
+  if (error.name === 'AbortError') return 'warn';
+  const status = getHttpStatusFromError(error);
+  if (Number.isFinite(status) && status >= 400 && status < 500) {
+    return 'warn';
+  }
+  return 'error';
+}
+
+function logHttpError(error, url, timeout = null, attempt = null, maxRetries = null) {
+  const level = resolveHttpErrorLevel(error);
+  const detailLevel = level === 'error' ? 'error' : 'debug';
+
+  if (error?.name === 'AbortError') {
+    log(level, `[请求模拟] 请求超时: ${error.message}`);
+  } else {
+    log(level, `[请求模拟] 请求失败: ${error?.message || 'unknown error'}`);
+  }
+
+  log(detailLevel, '详细诊断:');
+  log(detailLevel, '- URL:', url);
+  if (timeout !== null) {
+    log(detailLevel, '- 超时时间:', `${timeout}ms`);
+  }
+  log(detailLevel, '- 错误类型:', error?.name || 'Error');
+  log(detailLevel, '- 消息:', error?.message || 'unknown error');
+  if (attempt !== null && maxRetries !== null) {
+    log(detailLevel, `- 当前尝试: ${attempt + 1}/${maxRetries + 1}`);
+  }
+  if (error?.cause) {
+    if (error.cause.code) log(detailLevel, '- 码:', error.cause.code);
+    if (error.cause.message) log(detailLevel, '- 原因:', error.cause.message);
+  }
+}
+
 export async function httpGet(url, options = {}) {
   // 从 options 中获取重试次数，默认为 0
   const maxRetries = parseInt(options.retries || '0', 10) || 0;
@@ -184,25 +226,7 @@ export async function httpGet(url, options = {}) {
         throw error;
       }
 
-      // 检查是否是超时错误
-      if (error.name === 'AbortError') {
-        log("error", `[请求模拟] 请求超时:`, error.message);
-        log("error", '详细诊断:');
-        log("error", '- URL:', url);
-        log("error", '- 超时时间:', `${timeout}ms`);
-        log("error", `- 当前尝试: ${attempt + 1}/${maxRetries + 1}`);
-      } else {
-        log("error", `[请求模拟] 请求失败:`, error.message);
-        log("error", '详细诊断:');
-        log("error", '- URL:', url);
-        log("error", '- 错误类型:', error.name);
-        log("error", '- 消息:', error.message);
-        log("error", `- 当前尝试: ${attempt + 1}/${maxRetries + 1}`);
-        if (error.cause) {
-          log("error", '- 码:', error.cause.code);
-          log("error", '- 原因:', error.cause.message);
-        }
-      }
+      logHttpError(error, url, timeout, attempt, maxRetries);
 
       // 如果还有重试机会，继续循环；否则在循环结束后抛出错误
       if (attempt < maxRetries) {
@@ -213,7 +237,7 @@ export async function httpGet(url, options = {}) {
   }
 
   // 所有重试都失败，抛出最后一个错误
-  log("error", `[请求模拟] 所有重试均失败 (${maxRetries + 1} 次尝试)`);
+  log(resolveHttpErrorLevel(lastError), `[请求模拟] 所有重试均失败 (${maxRetries + 1} 次尝试)`);
   throw lastError;
 }
 
@@ -264,7 +288,7 @@ export async function httpPost(url, body, options = {}) {
 
 
       if (!response.ok) {
-        log("error", `[请求模拟] response data: `, data);
+        log("debug", `[请求模拟] response data: `, data);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -296,25 +320,7 @@ export async function httpPost(url, body, options = {}) {
         throw error;
       }
 
-      // 检查是否是超时错误
-      if (error.name === 'AbortError') {
-        log("error", `[请求模拟] 请求超时:`, error.message);
-        log("error", '详细诊断:');
-        log("error", '- URL:', url);
-        log("error", '- 超时时间:', `${timeout}ms`);
-        log("error", `- 当前尝试: ${attempt + 1}/${maxRetries + 1}`);
-      } else {
-        log("error", `[请求模拟] 请求失败:`, error.message);
-        log("error", '详细诊断:');
-        log("error", '- URL:', url);
-        log("error", '- 错误类型:', error.name);
-        log("error", '- 消息:', error.message);
-        log("error", `- 当前尝试: ${attempt + 1}/${maxRetries + 1}`);
-        if (error.cause) {
-          log("error", '- 码:', error.cause.code);
-          log("error", '- 原因:', error.cause.message);
-        }
-      }
+      logHttpError(error, url, timeout, attempt, maxRetries);
 
       // 如果还有重试机会，继续循环；否则在循环结束后抛出错误
       if (attempt < maxRetries) {
@@ -325,7 +331,7 @@ export async function httpPost(url, body, options = {}) {
   }
 
   // 所有重试都失败，抛出最后一个错误
-  log("error", `[请求模拟] 所有重试均失败 (${maxRetries + 1} 次尝试)`);
+  log(resolveHttpErrorLevel(lastError), `[请求模拟] 所有重试均失败 (${maxRetries + 1} 次尝试)`);
   throw lastError;
 }
 
@@ -365,7 +371,7 @@ async function httpRequestMethod(method, url, body, options = {}) {
     const textData = await response.text();
 
     if (!response.ok) {
-      log("error", `[请求模拟] response data: `, textData);
+      log("debug", `[请求模拟] response data: `, textData);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
@@ -382,15 +388,7 @@ async function httpRequestMethod(method, url, body, options = {}) {
       headers: Object.fromEntries(response.headers.entries())
     };
   } catch (error) {
-    log("error", `[请求模拟] 请求失败:`, error.message);
-    log("error", '详细诊断:');
-    log("error", '- URL:', url);
-    log("error", '- 错误类型:', error.name);
-    log("error", '- 消息:', error.message);
-    if (error.cause) {
-      log("error", '- 码:', error.cause?.code);
-      log("error", '- 原因:', error.cause?.message);
-    }
+    logHttpError(error, url);
     throw error;
   }
 }
