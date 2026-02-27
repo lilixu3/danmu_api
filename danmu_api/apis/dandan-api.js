@@ -785,6 +785,23 @@ function getAiReasonText(reason) {
   return reasonMap[reason] || `未知原因（${reason || "unknown"}）`;
 }
 
+/**
+ * 是否在 AI 未命中时跳过常规兜底
+ * 仅对 AI 已给出有效业务结论的未命中场景生效，技术性失败仍允许回退。
+ * @param {{reason?: string}|null} aiMatchResult
+ * @returns {boolean}
+ */
+function shouldSkipFallbackByAiResult(aiMatchResult) {
+  if (!globals.aiTrustMatchResult) return false;
+  const reason = aiMatchResult?.reason;
+  const trustedNoFallbackReasons = new Set([
+    "ai_no_candidate",
+    "ai_selected_anime_no_valid_episodes",
+    "ai_selected_anime_no_episode_match",
+  ]);
+  return trustedNoFallbackReasons.has(reason);
+}
+
 async function matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, preferredPlatform = null) {
   const aiBaseUrl = globals.aiBaseUrl;
   const aiModel = globals.aiModel;
@@ -1300,23 +1317,27 @@ export async function matchAnime(url, req) {
           if (aiMatchResult.resAnime && !aiMatchResult.resEpisode) {
             log("warn", `AI 已选中动漫但未命中剧集，回退常规匹配: ${aiMatchResult.resAnime.animeTitle}`);
           }
-          // AI匹配失败或未配置，使用传统匹配方式
-          for (const platform of dynamicPlatformOrder) {
-            const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId);
-            resEpisode = __ret.resEpisode;
-            resAnime = __ret.resAnime;
+          if (shouldSkipFallbackByAiResult(aiMatchResult)) {
+            log("info", `[AI匹配] 已启用AI结果信任，跳过常规兜底；原因：${aiReasonText}`);
+          } else {
+            // AI匹配失败或未配置，使用传统匹配方式
+            for (const platform of dynamicPlatformOrder) {
+              const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId);
+              resEpisode = __ret.resEpisode;
+              resAnime = __ret.resAnime;
 
-            if (resAnime) {
-              log("info", `Found match with platform: ${platform || 'default'}`);
-              break;
+              if (resAnime) {
+                log("info", `Found match with platform: ${platform || 'default'}`);
+                break;
+              }
             }
-          }
 
-          // 如果都没有找到则返回第一个满足剧集数的剧集
-          if (!resAnime) {
-            const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime);
-            resEpisode = __ret.resEpisode;
-            resAnime = __ret.resAnime;
+            // 如果都没有找到则返回第一个满足剧集数的剧集
+            if (!resAnime) {
+              const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime);
+              resEpisode = __ret.resEpisode;
+              resAnime = __ret.resAnime;
+            }
           }
         }
       } else {

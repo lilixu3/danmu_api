@@ -451,6 +451,7 @@ export class Envs {
       'AI_MODEL': { category: 'match', type: 'text', description: 'AI模型名称，不填默认为gpt-4o' },
       'AI_API_KEY': { category: 'match', type: 'text', description: 'AI服务API密钥，默认为空，需手动填写' },
       'AI_MATCH_PROMPT': { category: 'match', type: 'text', description: 'AI自动匹配提示词模板，不填提供默认提示词，默认提示词请查看README' },
+      'AI_TRUST_MATCH_RESULT': { category: 'match', type: 'boolean', description: '是否信任AI匹配结论（开启后AI未命中时不再执行常规兜底匹配）' },
 
       // 弹幕配置
       'BLOCKED_WORDS': { category: 'danmu', type: 'text', description: '屏蔽词列表' },
@@ -541,6 +542,7 @@ export class Envs {
       aiModel: this.get('AI_MODEL', 'gpt-4o', 'string'), // AI模型名称
       aiApiKey: this.get('AI_API_KEY', '', 'string', true), // AI服务API密钥
       aiMatchPrompt: this.get('AI_MATCH_PROMPT', this.DEFAULT_AI_MATCH_PROMPT, 'string'), // AI自动匹配提示词模板
+      aiTrustMatchResult: this.get('AI_TRUST_MATCH_RESULT', false, 'boolean'), // 是否信任AI匹配结论（默认 false，关闭）
       rememberLastSelect: this.get('REMEMBER_LAST_SELECT', true, 'boolean'), // 是否记住手动选择结果，用于match自动匹配时优选上次的选择（默认 true，记住）
       MAX_LAST_SELECT_MAP: this.get('MAX_LAST_SELECT_MAP', 100, 'number'), // 记住上次选择映射缓存大小限制（默认 100）
       deployPlatformAccount: this.get('DEPLOY_PLATFROM_ACCOUNT', '', 'string', true), // 部署平台账号ID配置（默认空）
