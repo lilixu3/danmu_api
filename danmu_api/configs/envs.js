@@ -204,6 +204,15 @@ export class Envs {
       })
       .filter(Boolean);
   }
+
+  static resolveDanmuLikePreset() {
+    const allowedPresets = ['default', 'pink_under_1k', 'outline_under_1k', 'pink_only', 'outline_only', 'off'];
+    const rawPreset = this.get('DANMU_LIKE_PRESET', 'default', 'string').trim().toLowerCase();
+    const preset = allowedPresets.includes(rawPreset) ? rawPreset : 'default';
+
+    this.accessedEnvVars.set('DANMU_LIKE_PRESET', preset);
+    return preset;
+  }
   /**
    * 解析平台排序
    * 支持单个平台或通过&连接的组合平台（如 bilibili1&dandan）
@@ -403,6 +412,7 @@ export class Envs {
       })
       .filter(Boolean);
   }
+
   /**
    * 获取记录的环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
@@ -457,6 +467,7 @@ export class Envs {
       'BLOCKED_WORDS': { category: 'danmu', type: 'text', description: '屏蔽词列表' },
       'GROUP_MINUTE': { category: 'danmu', type: 'number', description: '分钟内合并去重（0表示不去重），默认1', min: 0, max: 30 },
       'DANMU_LIMIT': { category: 'danmu', type: 'number', description: '弹幕数量限制，单位为k，即千：默认 0，表示不限制弹幕数', min: 0, max: 100 },
+      'DANMU_LIKE_PRESET': { category: 'danmu', type: 'select', options: ['default', 'pink_under_1k', 'outline_under_1k', 'pink_only', 'outline_only', 'off'], description: '点赞显示预设：default（<100♡，100~999💗，>=1000🔥）、pink_under_1k（<1000💗，>=1000🔥）、outline_under_1k（<1000♡，>=1000🔥）、pink_only（统一💗）、outline_only（统一♡）、off（关闭点赞显示）' },
       'DANMU_SIMPLIFIED_TRADITIONAL': { category: 'danmu', type: 'select', options: ['default', 'simplified', 'traditional'], description: '弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）' },
       'CONVERT_TOP_BOTTOM_TO_SCROLL': { category: 'danmu', type: 'boolean', description: '顶部/底部弹幕转换为浮动弹幕' },
       'CONVERT_COLOR': { category: 'danmu', type: 'color-list', description: '自定义随机转换颜色池（支持手动配置/排序/删除，支持真随机添加，为空则不转换）' },
@@ -506,6 +517,7 @@ export class Envs {
       blockedWords: this.get('BLOCKED_WORDS', '', 'string'), // 屏蔽词列表
       groupMinute: Math.min(this.get('GROUP_MINUTE', 1, 'number'), 30), // 分钟内合并去重（默认 1，最大值30，0表示不去重）
       danmuLimit: this.get('DANMU_LIMIT', 0, 'number'), // 等间隔采样限制弹幕总数，单位为k，即千：默认 0，表示不限制弹幕数，若改为5，弹幕总数在超过5000的情况下会将弹幕数控制在5000
+      danmuLikePreset: this.resolveDanmuLikePreset(), // 点赞显示预设（default/pink_under_1k/outline_under_1k/pink_only/outline_only/off）
       proxyUrl: this.get('PROXY_URL', '', 'string', true), // 代理/反代地址
       danmuSimplifiedTraditional: this.get('DANMU_SIMPLIFIED_TRADITIONAL', 'default', 'string'), // 弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）
       danmuFontSize: (() => {

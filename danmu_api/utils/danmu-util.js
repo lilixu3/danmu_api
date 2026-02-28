@@ -111,20 +111,59 @@ export function groupDanmusByMinute(filteredDanmus, n) {
  * @param {Array} groupedDanmus 弹幕列表
  * @returns {Array} 处理后的弹幕列表
  */
+const DANMU_LIKE_PRESETS = ['default', 'pink_under_1k', 'outline_under_1k', 'pink_only', 'outline_only', 'off'];
+
+function normalizeDanmuLikePreset(rawPreset) {
+  const preset = String(rawPreset || 'default').trim().toLowerCase();
+  return DANMU_LIKE_PRESETS.includes(preset) ? preset : 'default';
+}
+
+function resolveDanmuLikeIcon(item, preset) {
+  const like = Number(item?.like) || 0;
+
+  // 第二档：1000 以下用 💗，1000 以上用 🔥
+  if (preset === 'pink_under_1k') {
+    return like >= 1000 ? '🔥' : '💗';
+  }
+
+  // 第三档：1000 以下用 ♡，1000 以上用 🔥
+  if (preset === 'outline_under_1k') {
+    return like >= 1000 ? '🔥' : '♡';
+  }
+
+  // 第四档：统一 💗
+  if (preset === 'pink_only') {
+    return '💗';
+  }
+
+  // 第五档：统一 ♡
+  if (preset === 'outline_only') {
+    return '♡';
+  }
+
+  // 第一档（默认）：<100 用 ♡，100~999 用 💗，>=1000 用 🔥
+  if (like >= 1000) return '🔥';
+  if (like >= 100) return '💗';
+  return '♡';
+}
+
 export function handleDanmusLike(groupedDanmus) {
+  const likePreset = normalizeDanmuLikePreset(globals.danmuLikePreset);
+
+  if (likePreset === 'off') {
+    return groupedDanmus.map(item => {
+      const { like, ...rest } = item;
+      return rest;
+    });
+  }
+
   return groupedDanmus.map(item => {
     // 如果item没有like字段或者like值小于5，则不处理
     if (!item.like || item.like < 5) {
       return item;
     }
 
-    // 按点赞数分档展示图标：<100 用♡，100~999 用💗，>=1000 用🔥
-    let icon = '♡';
-    if (item.like >= 1000) {
-      icon = '🔥';
-    } else if (item.like >= 100) {
-      icon = '💗';
-    }
+    const icon = resolveDanmuLikeIcon(item, likePreset);
 
     // 格式化点赞数，缩写显示
     let formattedLike;

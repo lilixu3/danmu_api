@@ -191,6 +191,7 @@ node ./danmu_api/server.js
 | `ADMIN_TOKEN` | 系统管理令牌（不填则无法使用系统管理功能） |
 | `DANMU_OUTPUT_FORMAT` | `json` / `xml`（也可用 `?format=` 覆盖） |
 | `DANMU_FONT_SIZE` | 弹幕字体大小（B站标准，范围 10-100，默认 25） |
+| `DANMU_LIKE_PRESET` | 点赞显示预设：`default`（当前推荐）/`pink_under_1k`/`outline_under_1k`/`pink_only`/`outline_only`/`off`（关闭点赞显示） |
 | `CONVERT_COLOR` | 颜色转换：`default`/`white`/`color` 或自定义十进制颜色列表 |
 | `SEARCH_CACHE_MINUTES` / `COMMENT_CACHE_MINUTES` | 缓存时长（分钟，`0` 表示不缓存） |
 | `SEARCH_CACHE_MAX_ITEMS` / `COMMENT_CACHE_MAX_ITEMS` | 缓存最大条目数（`0` 不限制） |
