@@ -498,30 +498,46 @@ export default class HanjutvSource extends BaseSource {
     let allDanmus = [];
     let fromAxis = 0;
     const maxAxis = 100000000;
+    const maxPages = 400;
+    let pageCount = 0;
 
     try {
-      while (fromAxis < maxAxis) {
+      while (fromAxis < maxAxis && pageCount < maxPages) {
         const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${id}&toAxis=${maxAxis}`, {
           headers: {
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
           },
+          timeout: 10000,
           retries: 1,
         });
+        pageCount += 1;
+        const data = resp?.data || {};
 
         // 将当前请求的弹幕追加到总数组
-        if (resp.data && resp.data.danmus) {
-          allDanmus.push(...resp.data.danmus);
+        if (Array.isArray(data.danmus) && data.danmus.length > 0) {
+          allDanmus.push(...data.danmus);
         }
 
         // 获取 nextAxis，更新 fromAxis
-        const nextAxis = resp.data.nextAxis || maxAxis;
+        const nextAxis = Number(data.nextAxis ?? maxAxis);
+        if (!Number.isFinite(nextAxis)) {
+          log("warn", `[Hanjutv] nextAxis 非法，提前退出分页: ${data.nextAxis}`);
+          break;
+        }
         if (nextAxis >= maxAxis) {
           break; // 如果 nextAxis 达到或超过最大值，退出循环
+        }
+        if (nextAxis <= fromAxis) {
+          log("warn", `[Hanjutv] nextAxis 未前进，提前退出分页: fromAxis=${fromAxis}, nextAxis=${nextAxis}`);
+          break;
         }
         fromAxis = nextAxis;
       }
 
+      if (pageCount >= maxPages) {
+        log("warn", `[Hanjutv] 分页次数达到上限，提前停止: pid=${id}, pageCount=${pageCount}`);
+      }
       return allDanmus;
     } catch (error) {
       // 捕获请求中的错误
