@@ -179,7 +179,7 @@ export function handleDanmusLike(groupedDanmus) {
     }
 
     // 在弹幕内容m字段后面添加点赞信息
-    const likeText = ` ${icon}${formattedLike}`;
+    const likeText = `${icon}${formattedLike}`;
     const newM = item.m + likeText;
 
     // 创建新对象，复制原属性，更新m字段，并删除like字段
