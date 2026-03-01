@@ -232,7 +232,6 @@ async function testNewFlow() {
       danmuSimplifiedTraditional: 'false',
       convertTopBottomToScroll: 'false',
       convertColor: 'default',
-      likeSwitch: 'true',
       proxyUrl: '',
       tmdbApiKey: '',
     };

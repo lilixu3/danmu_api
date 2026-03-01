@@ -1120,7 +1120,7 @@ function renderValueInput(item) {
 
     if (type === 'boolean') {
         let checked;
-        if (currentKey === 'LIKE_SWITCH' || currentKey === 'REMEMBER_LAST_SELECT') {
+        if (currentKey === 'REMEMBER_LAST_SELECT') {
             checked = value === 'true' || value === true || (value === '' || value === undefined || value === null);
         } else {
             checked = value === 'true' || value === true;
