@@ -1119,7 +1119,12 @@ function renderValueInput(item) {
     const value = item ? item.value : '';
 
     if (type === 'boolean') {
-        const checked = value === 'true' || value === true;
+        let checked;
+        if (currentKey === 'LIKE_SWITCH' || currentKey === 'REMEMBER_LAST_SELECT') {
+            checked = value === 'true' || value === true || (value === '' || value === undefined || value === null);
+        } else {
+            checked = value === 'true' || value === true;
+        }
         container.innerHTML = \`
             <label class="form-label">值</label>
             <div class="switch-container">
