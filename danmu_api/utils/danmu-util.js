@@ -95,7 +95,7 @@ export function groupDanmusByMinute(filteredDanmus, n) {
         cid: data.cid,
         p: data.p,
         // 仅当计算后的逻辑计数大于1时才显示 "x N"
-        m: displayCount > 1 ? `${message} x ${displayCount}` : message,
+        m: displayCount > 1 ? `${message}\u200Ax\u200A${displayCount}` : message,
         t: data.earliestT,
         like: data.like // 包含合并后的like字段
       };
