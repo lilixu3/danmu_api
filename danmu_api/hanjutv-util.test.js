@@ -68,6 +68,21 @@ test("createHanjutvSearchHeaders 生成必要请求头", async () => {
   assert.equal(headers.uk, "Hlyp5D7xaL86V45e4NMq9lEFqaIlw70Ofr3SViAVPXw=");
 });
 
+test("createHanjutvSearchHeaders 支持覆盖版本请求头", async () => {
+  const headers = await createHanjutvSearchHeaders("AbCdEf0123456789XYza", 1700000000000, {
+    app: "hj",
+    ch: "xiaomi",
+    version: "6.8",
+    vc: "a_8260",
+    userAgent: "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)",
+  });
+  assert.equal(headers.app, "hj");
+  assert.equal(headers.ch, "xiaomi");
+  assert.equal(headers.vn, "6.8");
+  assert.equal(headers.vc, "a_8260");
+  assert.equal(headers["User-Agent"], "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)");
+});
+
 test("createHanjutvSearchHeaders 的 uk 与官方算法一致", async () => {
   const headers = await createHanjutvSearchHeaders("R4VRuaXvhTDZ8g9oOiSd", 1700000000000);
   assert.equal(headers.uk, "cU3pQcUA5bnaKgiKxs+twGGCbldX/SfYF8rpSrIk328=");
@@ -123,6 +138,13 @@ test("decodeHanjutvEncryptedPayload 支持 uid+ts 推导 key", async () => {
   payload.ts = ts;
 
   const decoded = await decodeHanjutvEncryptedPayload(payload, uid);
+  assert.deepEqual(decoded, raw);
+});
+
+test("decodeHanjutvEncryptedPayload 支持明文 JSON 字符串直通", async () => {
+  const raw = { ok: 1, list: [{ sid: "C3", name: "春夜" }] };
+  const payload = { data: JSON.stringify(raw) };
+  const decoded = await decodeHanjutvEncryptedPayload(payload);
   assert.deepEqual(decoded, raw);
 });
 

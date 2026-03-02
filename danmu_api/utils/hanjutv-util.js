@@ -351,7 +351,7 @@ export function createHanjutvUid(length = 20) {
   return randomChars(length, UID_CHARSET);
 }
 
-export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
+export async function createHanjutvSearchHeaders(uid, timestamp = Date.now(), options = {}) {
   const ts = Number(timestamp);
   const uidMd5 = md5(uid);
   const signPayload = buildSearchSignPayload(uid, ts);
@@ -359,14 +359,14 @@ export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
   const uk = await aesCbcEncryptToBase64(uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
 
   return {
-    app: "hj",
-    ch: "qq",
+    app: options.app || "hj",
+    ch: options.ch || "qq",
     uk,
     "auth-uid": "",
-    vn: HANJUTV_VERSION,
+    vn: options.version || HANJUTV_VERSION,
     sign,
-    "User-Agent": HANJUTV_UA,
-    vc: HANJUTV_VC,
+    "User-Agent": options.userAgent || HANJUTV_UA,
+    vc: options.vc || HANJUTV_VC,
     "auth-token": "",
     "Accept-Encoding": "gzip",
     Connection: "Keep-Alive",
@@ -401,6 +401,14 @@ export async function createHanjutvLiteHeaders(uid, options = {}) {
 export async function decodeHanjutvEncryptedPayload(payload, uid = "") {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   if (typeof payload.data !== "string" || payload.data.length === 0) return payload;
+
+  const rawText = payload.data.trim();
+  if ((rawText.startsWith("{") && rawText.endsWith("}")) || (rawText.startsWith("[") && rawText.endsWith("]"))) {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+    }
+  }
 
   const ts = payload.ts ?? "";
   let key = typeof payload.key === "string" && payload.key ? payload.key : "";
