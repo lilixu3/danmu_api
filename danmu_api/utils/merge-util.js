@@ -878,7 +878,7 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
   const rawPrimaryTitle = primaryAnime.animeTitle || '';
   const primaryTitleForSim = rawPrimaryTitle.replace(RegexStore.Clean.YEAR_TAG, '').replace(/【(电影|电视剧)】/g, '').trim();
   const isPrimaryDub = !!(primaryTitleForSim.match(RegexStore.Lang.CN_DUB_VER)) || RegexStore.Lang.CN.test(primaryTitleForSim);
-  const isPrimaryIgnoredYear = primaryAnime.source === 'hanjutv';
+  const isPrimaryIgnoredYear = primaryAnime.source === 'hanjutv' || primaryAnime.source === 'hanjutv2';
   const primaryDate = (rawPrimaryTitle.includes('N/A') || isPrimaryIgnoredYear) ? { year: null, month: null } : parseDate(primaryAnime.startDate);
   const primaryCount = primaryAnime.episodeCount || (primaryAnime.links ? primaryAnime.links.length : 0);
   const primaryLang = getLanguageType(rawPrimaryTitle);
@@ -907,7 +907,7 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
     const rawSecTitle = secAnime.animeTitle || '';
     const isSecCollection = collectionAnimeIds.has(secAnime.animeId);
     const isAnyCollection = isPrimaryCollection || isSecCollection;
-    const isSecIgnoredYear = secAnime.source === 'hanjutv';
+    const isSecIgnoredYear = secAnime.source === 'hanjutv' || secAnime.source === 'hanjutv2';
     const secDate = (rawSecTitle.includes('N/A') || isSecIgnoredYear) ? { year: null, month: null } : parseDate(secAnime.startDate);
     const secLang = getLanguageType(rawSecTitle);
     const secTitleForSim = rawSecTitle.replace(RegexStore.Clean.YEAR_TAG, '').replace(/【(电影|电视剧)】/g, '').trim();

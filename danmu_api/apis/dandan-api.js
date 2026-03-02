@@ -21,6 +21,7 @@ import TmdbSource from "../sources/tmdb.js";
 import DoubanSource from "../sources/douban.js";
 import RenrenSource from "../sources/renren.js";
 import HanjutvSource from "../sources/hanjutv.js";
+import Hanjutv2Source from "../sources/hanjutv2.js";
 import BahamutSource from "../sources/bahamut.js";
 import DandanSource from "../sources/dandan.js";
 import CustomSource from "../sources/custom.js";
@@ -46,6 +47,7 @@ const kan360Source = new Kan360Source();
 const vodSource = new VodSource();
 const renrenSource = new RenrenSource();
 const hanjutvSource = new HanjutvSource();
+const hanjutv2Source = new Hanjutv2Source();
 const bahamutSource = new BahamutSource();
 const dandanSource = new DandanSource();
 const customSource = new CustomSource();
@@ -463,6 +465,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       if (source === "douban") return doubanSource.search(queryTitle);
       if (source === "renren") return renrenSource.search(queryTitle);
       if (source === "hanjutv") return hanjutvSource.search(queryTitle);
+      if (source === "hanjutv2") return hanjutv2Source.search(queryTitle);
       if (source === "bahamut") return bahamutSource.search(queryTitle);
       if (source === "dandan") return dandanSource.search(queryTitle);
       if (source === "custom") return customSource.search(queryTitle);
@@ -500,7 +503,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     // 解构出返回的结果
     const {
       vod: animesVodResults, 360: animes360, tmdb: animesTmdb, douban: animesDouban, renren: animesRenren,
-      hanjutv: animesHanjutv, bahamut: animesBahamut, dandan: animesDandan, custom: animesCustom,
+      hanjutv: animesHanjutv, hanjutv2: animesHanjutv2, bahamut: animesBahamut, dandan: animesDandan, custom: animesCustom,
       tencent: animesTencent, youku: animesYouku, iqiyi: animesIqiyi, imgo: animesImgo, bilibili: animesBilibili,
       migu: animesMigu, sohu: animesSohu, leshi: animesLeshi, xigua: animesXigua, maiduidui: animesMaiduidui,
       animeko: animesAnimeko
@@ -533,6 +536,9 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
         } else if (key === 'hanjutv') {
           // 等待处理Hanjutv来源
           await hanjutvSource.handleAnimes(animesHanjutv, queryTitle, curAnimes);
+        } else if (key === 'hanjutv2') {
+          // 等待处理Hanjutv2来源
+          await hanjutv2Source.handleAnimes(animesHanjutv2, queryTitle, curAnimes);
         } else if (key === 'bahamut') {
           // 等待处理Bahamut来源
           await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes);
@@ -1641,6 +1647,7 @@ async function fetchMergedComments(url, offsetContext = {}) {
 
         if (sourceName === 'renren') sourceInstance = renrenSource;
         else if (sourceName === 'hanjutv') sourceInstance = hanjutvSource;
+        else if (sourceName === 'hanjutv2') sourceInstance = hanjutv2Source;
         else if (sourceName === 'bahamut') sourceInstance = bahamutSource;
         else if (sourceName === 'dandan') sourceInstance = dandanSource;
         else if (sourceName === 'tencent') sourceInstance = tencentSource;
@@ -1787,6 +1794,8 @@ export async function getComment(path, queryFormat, segmentFlag) {
           fetchedDanmus = await renrenSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
         } else if (plat === "hanjutv") {
           fetchedDanmus = await hanjutvSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        } else if (plat === "hanjutv2") {
+          fetchedDanmus = await hanjutv2Source.getComments(url, plat, segmentFlag, null, offsetSeconds);
         } else if (plat === "bahamut") {
           fetchedDanmus = await bahamutSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
         } else if (plat === "dandan") {
@@ -2032,6 +2041,8 @@ export async function getSegmentComment(segment, queryFormat) {
       danmus = await maiduiduiSource.getSegmentComments(segment);
     } else if (platform === "hanjutv") {
       danmus = await hanjutvSource.getSegmentComments(segment);
+    } else if (platform === "hanjutv2") {
+      danmus = await hanjutv2Source.getSegmentComments(segment);
     } else if (platform === "bahamut") {
       danmus = await bahamutSource.getSegmentComments(segment);
     } else if (platform === "renren") {
