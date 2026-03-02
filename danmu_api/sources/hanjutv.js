@@ -557,21 +557,29 @@ export default class HanjutvSource extends BaseSource {
     const tmpAnimes = [];
     let liteFallbackLoaded = false;
     let liteFallbackCandidates = [];
+    let liteFallbackPromise = null;
 
     const ensureLiteFallbackCandidates = async () => {
       if (liteFallbackLoaded) return liteFallbackCandidates;
-      liteFallbackLoaded = true;
+      if (liteFallbackPromise) return liteFallbackPromise;
 
-      try {
-        const liteSearchList = await this.searchWithLiteApi(queryTitle);
-        liteFallbackCandidates = this.dedupeBySid(liteSearchList);
-        log("info", "[Hanjutv] 主链路不可用，加载 xiawen 兜底候选: " + liteFallbackCandidates.length);
-      } catch (error) {
-        liteFallbackCandidates = [];
-        log("info", "[Hanjutv] 加载 xiawen 兜底候选失败: " + error.message);
-      }
+      liteFallbackPromise = (async () => {
+        try {
+          const liteSearchList = await this.searchWithLiteApi(queryTitle);
+          liteFallbackCandidates = this.dedupeBySid(liteSearchList);
+          log("info", "[Hanjutv] 主链路不可用，加载 xiawen 兜底候选: " + liteFallbackCandidates.length);
+        } catch (error) {
+          liteFallbackCandidates = [];
+          log("info", "[Hanjutv] 加载 xiawen 兜底候选失败: " + error.message);
+        } finally {
+          liteFallbackLoaded = true;
+          liteFallbackPromise = null;
+        }
 
-      return liteFallbackCandidates;
+        return liteFallbackCandidates;
+      })();
+
+      return liteFallbackPromise;
     };
 
     const tryFallbackToLite = async (sourceAnime) => {

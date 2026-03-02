@@ -69,3 +69,46 @@ test("handleAnimes 在 s5 主链路无分集时切换 xiawen 兜底", async () =
 
   globals.animes = oldAnimes;
 });
+
+test("handleAnimes 并发触发 xiawen 兜底时不会漏掉同名季", async () => {
+  const source = new HanjutvSource();
+  const oldAnimes = globals.animes;
+  globals.animes = [];
+
+  try {
+    let liteSearchCount = 0;
+    source.searchWithLiteApi = async () => {
+      liteSearchCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return [
+        { sid: "xw_s1", name: "模范出租车", chain: "xiawen", image: { thumb: "s1.jpg" } },
+        { sid: "xw_s2", name: "模范出租车2", chain: "xiawen", image: { thumb: "s2.jpg" } },
+        { sid: "xw_s3", name: "模范出租车3", chain: "xiawen", image: { thumb: "s3.jpg" } },
+      ];
+    };
+
+    source.getDetail = async () => ({ category: 1, rank: 8.8 });
+    source.getEpisodes = async (sid, chain) => {
+      if (chain === "hxq") return [];
+      return [{ pid: sid + "_ep1", serialNo: 1, title: "", chain: "xiawen" }];
+    };
+
+    const sourceAnimes = [
+      { animeId: 1001, sid: "hxq_s1", name: "模范出租车", chain: "hxq", image: { thumb: "a1.jpg" } },
+      { animeId: 1002, sid: "hxq_s2", name: "模范出租车2", chain: "hxq", image: { thumb: "a2.jpg" } },
+      { animeId: 1003, sid: "hxq_s3", name: "模范出租车3", chain: "hxq", image: { thumb: "a3.jpg" } },
+    ];
+
+    const curAnimes = [];
+    await source.handleAnimes(sourceAnimes, "模范出租车", curAnimes);
+
+    assert.equal(liteSearchCount, 1);
+    assert.equal(globals.animes.length, 3);
+    assert.deepEqual(
+      globals.animes.map((item) => item.animeTitle.split("(")[0]).sort(),
+      ["模范出租车", "模范出租车2", "模范出租车3"]
+    );
+  } finally {
+    globals.animes = oldAnimes;
+  }
+});
