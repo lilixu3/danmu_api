@@ -7,7 +7,7 @@ import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches, normalizeSpaces } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
-import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload } from "../utils/hanjutv-util.js";
+import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload, HANJUTV_VERSION, HANJUTV_VC, HANJUTV_UA } from "../utils/hanjutv-util.js";
 
 // =====================
 // 获取韩剧TV弹幕（韩小圈链路）
@@ -18,7 +18,7 @@ export default class HanjutvSource extends BaseSource {
     this.appHost = "https://hxqapi.hiyun.tv";
     this.oldDanmuHost = "https://hxqapi.zmdcq.com";
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
-    this.appUserAgent = "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)";
+    this.appUserAgent = HANJUTV_UA;
     this.sourceKey = "hanjutv";
     this.s5StableUid = createHanjutvUid();
   }
@@ -46,8 +46,8 @@ export default class HanjutvSource extends BaseSource {
 
   getAppHeaders() {
     return {
-      vc: "a_8260",
-      vn: "6.8",
+      vc: HANJUTV_VC,
+      vn: HANJUTV_VERSION,
       ch: "xiaomi",
       app: "hj",
       "User-Agent": this.appUserAgent,

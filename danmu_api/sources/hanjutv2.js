@@ -299,28 +299,12 @@ export default class Hanjutv2Source extends BaseSource {
       .filter((s) => titleMatches(s.name, queryTitle))
       .filter((s) => String(s?.chain || "xiawen").toLowerCase() === "xiawen");
 
-    let sharedLiteSession = null;
-    let sharedLiteSessionPromise = null;
-    const getSharedLiteSession = async () => {
-      if (sharedLiteSession) return sharedLiteSession;
-      if (sharedLiteSessionPromise) return sharedLiteSessionPromise;
-
-      sharedLiteSessionPromise = this.createLiteSession()
-        .then((session) => {
-          sharedLiteSession = session;
-          return session;
-        })
-        .finally(() => {
-          sharedLiteSessionPromise = null;
-        });
-
-      return sharedLiteSessionPromise;
-    };
+    const sharedSession = await this.createLiteSession();
 
     const processHanjutvAnimes = await Promise.all(
       matchedSourceAnimes.map(async (anime) => {
         try {
-          const requestOptions = { liteSession: await getSharedLiteSession() };
+          const requestOptions = { liteSession: sharedSession };
 
           const eps = await this.getEpisodes(anime.sid, requestOptions);
           if (!Array.isArray(eps) || eps.length === 0) {

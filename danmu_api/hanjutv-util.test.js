@@ -64,7 +64,7 @@ test("createHanjutvSearchHeaders 生成必要请求头", async () => {
   assert.equal(headers.ch, "qq");
   assert.ok(typeof headers.uk === "string" && headers.uk.length > 0);
   assert.ok(typeof headers.sign === "string" && headers.sign.length > 0);
-  assert.equal(headers.vn, "6.5.3");
+  assert.equal(headers.vn, "6.8");
   assert.equal(headers.uk, "Hlyp5D7xaL86V45e4NMq9lEFqaIlw70Ofr3SViAVPXw=");
 });
 

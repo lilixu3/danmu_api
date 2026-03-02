@@ -1,17 +1,17 @@
 import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes } from "./codec-util.js";
 
-const HANJUTV_VERSION = "6.5.3";
-const HANJUTV_VC = "a_7980";
-const HANJUTV_UA = "HanjuTV/6.5.3 (Pixel 2 XL; Android 11; Scale/2.00)";
+export const HANJUTV_VERSION = "6.8";
+export const HANJUTV_VC = "a_8260";
+export const HANJUTV_UA = "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)";
 const HANJUTV_UK_KEY = "f349wghhe784tqwh";
 const HANJUTV_UK_IV = "d3w8hf94fidk38lk";
 const HANJUTV_RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
-const HANJUTV_LITE_VERSION = "a_22570";
-const HANJUTV_LITE_VERSION_NAME = "1.7.2";
-const HANJUTV_LITE_CHANNEL = "xiaomi";
-const HANJUTV_LITE_APP_TYPE = "ztv";
-const HANJUTV_LITE_UA = "ZTV/1.7.2 (23127PN0CC; Android 16; Scale/2.00)";
-const HANJUTV_LITE_SAID = "fb3597b87601d5a7";
+export const HANJUTV_LITE_VERSION = "a_22570";
+export const HANJUTV_LITE_VERSION_NAME = "1.7.2";
+export const HANJUTV_LITE_CHANNEL = "xiaomi";
+export const HANJUTV_LITE_APP_TYPE = "ztv";
+export const HANJUTV_LITE_UA = "ZTV/1.7.2 (23127PN0CC; Android 16; Scale/2.00)";
+export const HANJUTV_LITE_SAID = "fb3597b87601d5a7";
 const UID_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const HEX_CHARSET = "0123456789abcdef";
 
@@ -65,6 +65,16 @@ function pkcs7Pad(bytes, blockSize = 16) {
   result.set(bytes, 0);
   result.fill(padSize, bytes.length);
   return result;
+}
+
+function pkcs7Unpad(bytes) {
+  if (bytes.length === 0) return bytes;
+  const padSize = bytes[bytes.length - 1];
+  if (padSize > 16 || padSize > bytes.length || padSize === 0) return bytes;
+  for (let i = bytes.length - padSize; i < bytes.length; i++) {
+    if (bytes[i] !== padSize) return bytes;
+  }
+  return bytes.slice(0, bytes.length - padSize);
 }
 
 function stripControlChars(text) {
@@ -258,7 +268,8 @@ async function aesCbcDecryptBase64NoPadding(cipherBase64, key, iv) {
   const keyBytes = utf8Encode(key);
   const ivBytes = utf8Encode(iv);
   const cipherBytes = base64ToBytes(cipherBase64);
-  const plainBytes = aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes);
+  const plainBytesWithPad = aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes);
+  const plainBytes = pkcs7Unpad(plainBytesWithPad);
   return utf8Decode(plainBytes);
 }
 
