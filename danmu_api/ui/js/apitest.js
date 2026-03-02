@@ -367,6 +367,60 @@ function loadApiParams() {
 }
 
 /* ========================================
+   JSON高亮渲染工具
+   ======================================== */
+function escapeHtmlLocal(text) {
+    if (typeof escapeHtml === 'function') {
+        return escapeHtml(text);
+    }
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+function highlightJSON(data) {
+    let jsonText = '';
+
+    try {
+        if (typeof data === 'string') {
+            const trimmed = data.trim();
+            const maybeJson = (trimmed.startsWith('{') && trimmed.endsWith('}'))
+                || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+            if (maybeJson) {
+                jsonText = JSON.stringify(JSON.parse(trimmed), null, 2);
+            } else {
+                jsonText = JSON.stringify(data, null, 2);
+            }
+        } else {
+            jsonText = JSON.stringify(data, null, 2);
+        }
+    } catch (e) {
+        jsonText = String(data ?? '');
+    }
+
+    const escaped = escapeHtmlLocal(jsonText);
+    return escaped.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        match => {
+            let cssClass = 'json-number';
+            if (/^"/.test(match)) {
+                cssClass = /:$/.test(match) ? 'json-key' : 'json-string';
+            } else if (/true|false/.test(match)) {
+                cssClass = 'json-boolean';
+            } else if (/null/.test(match)) {
+                cssClass = 'json-null';
+            }
+            return '<span class="' + cssClass + '">' + match + '</span>';
+        }
+    );
+}
+
+/* ========================================
    测试API
    ======================================== */
 function testApi() {
