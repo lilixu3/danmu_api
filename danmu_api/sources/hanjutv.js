@@ -291,7 +291,7 @@ export default class HanjutvSource extends BaseSource {
     return null;
   }
 
-  async searchWithS5Api(keyword) {
+  async searchWithS5Api(keyword, options = {}) {
     const q = encodeURIComponent(keyword);
 
     const requestWithUid = async (uid) => {
@@ -300,6 +300,7 @@ export default class HanjutvSource extends BaseSource {
         headers,
         timeout: this.getSourceTimeout(),
         retries: 1,
+        signal: options.signal,
       });
 
       const payload = resp?.data;
@@ -332,6 +333,8 @@ export default class HanjutvSource extends BaseSource {
       this.s5StableUid = currentUid;
       return items;
     } catch (error) {
+      if (options.signal?.aborted || error?.name === "AbortError") throw error;
+
       const message = String(error?.message || "");
       const shouldRotateUid = message.startsWith("s5 响应解密失败:") || message === "s5 解密后无有效结果";
       if (!shouldRotateUid) throw error;
@@ -420,32 +423,42 @@ export default class HanjutvSource extends BaseSource {
 
       const s5MatchedCount = this.countMatchedItems(s5List, key);
       const needLiteSearch = s5List.length === 0 || s5MatchedCount === 0;
-      if (needLiteSearch) {
-        if (!s5Error && s5List.length > 0 && s5MatchedCount === 0) {
-          log("info", "[Hanjutv] s5 返回 " + s5List.length + " 条但标题零命中，触发 xiawen 补偿检索");
-        }
-        await startLiteSearch();
-      } else if (liteStarted && !liteFinished) {
-        liteController?.abort();
+      if (!needLiteSearch) {
+        if (liteStarted && !liteFinished) liteController?.abort();
+        const s5Only = this.dedupeBySid(s5List);
+        log("info", "[Hanjutv] s5 命中标题，使用主链路结果: " + s5Only.length);
+        return s5Only.map((anime) => {
+          const animeId = convertToAsciiSum(anime.sid);
+          return { ...anime, animeId };
+        });
       }
 
-      const merged = this.mergeSearchCandidates(key, s5List, liteList);
-      const resultList = merged.resultList;
-      const stats = merged.stats;
+      if (!s5Error && s5List.length > 0 && s5MatchedCount === 0) {
+        log("info", "[Hanjutv] s5 返回 " + s5List.length + " 条但标题零命中，触发 xiawen 兜底");
+      }
+      await startLiteSearch();
 
-      if (resultList.length === 0) {
-        if (liteError) log("debug", "hanjutvSearchresp: s5 无有效结果，xiawen 失败: " + liteError.message);
-        log("debug", "hanjutvSearchresp: s5 与 xiawen 均无有效结果");
-        return [];
+      if (liteList.length > 0) {
+        const liteOnly = this.dedupeBySid(liteList);
+        log("info", "[Hanjutv] 使用 xiawen 兜底结果: " + liteOnly.length);
+        return liteOnly.map((anime) => {
+          const animeId = convertToAsciiSum(anime.sid);
+          return { ...anime, animeId };
+        });
       }
 
-      log("debug", "[Hanjutv] 搜索候选统计 s5=" + stats.s5Total + "(命中" + stats.s5Matched + "), xiawen=" + stats.liteTotal + "(命中" + stats.liteMatched + ")");
-      log("debug", "[Hanjutv] 搜索找到 " + resultList.length + " 个有效结果");
+      if (s5List.length > 0) {
+        const s5Fallback = this.dedupeBySid(s5List);
+        log("info", "[Hanjutv] xiawen 无有效结果，回退 s5 非命中候选: " + s5Fallback.length);
+        return s5Fallback.map((anime) => {
+          const animeId = convertToAsciiSum(anime.sid);
+          return { ...anime, animeId };
+        });
+      }
 
-      return resultList.map((anime) => {
-        const animeId = convertToAsciiSum(anime.sid);
-        return { ...anime, animeId };
-      });
+      if (liteError) log("debug", "hanjutvSearchresp: s5 无有效结果，xiawen 失败: " + liteError.message);
+      log("debug", "hanjutvSearchresp: s5 与 xiawen 均无有效结果");
+      return [];
     } catch (error) {
       log("error", "getHanjutvAnimes error:", {
         message: error.message,
@@ -455,7 +468,6 @@ export default class HanjutvSource extends BaseSource {
       return [];
     }
   }
-
   async getDetail(id, chain = "hxq") {
     try {
       const parsed = this.parsePlatformId(id, chain);
@@ -820,34 +832,9 @@ export default class HanjutvSource extends BaseSource {
   async getEpisodeDanmu(id, chain = "hxq") {
     const parsed = this.parsePlatformId(id, chain);
     if (!parsed.id) return [];
-
-    const primaryChain = parsed.chain;
-    const primaryPid = parsed.id;
-    const targetChain = this.getCounterpartChain(primaryChain);
-
-    const primaryTask = this.getEpisodeDanmuSingle(primaryPid, primaryChain);
-    const counterpartTask = (async () => {
-      const counterpartPid = await this.resolveCounterpartPid(this.encodeEpisodeId(primaryPid, primaryChain), primaryChain);
-      if (!counterpartPid) return [];
-      return this.getEpisodeDanmuSingle(counterpartPid, targetChain);
-    })();
-
-    const [primaryResult, counterpartResult] = await Promise.allSettled([primaryTask, counterpartTask]);
-    const primaryDanmus = primaryResult.status === "fulfilled" && Array.isArray(primaryResult.value) ? primaryResult.value : [];
-    const counterpartDanmus = counterpartResult.status === "fulfilled" && Array.isArray(counterpartResult.value) ? counterpartResult.value : [];
-
-    if (primaryResult.status === "rejected") {
-      log("info", "[Hanjutv] 主链路弹幕失败: " + String(primaryResult.reason?.message || primaryResult.reason || "未知错误"));
-    }
-    if (counterpartResult.status === "rejected") {
-      log("info", "[Hanjutv] 另一链路弹幕失败: " + String(counterpartResult.reason?.message || counterpartResult.reason || "未知错误"));
-    }
-
-    const merged = [...primaryDanmus, ...counterpartDanmus];
-    log("debug", `[Hanjutv] 双链路弹幕合并: primary=${primaryDanmus.length}, secondary=${counterpartDanmus.length}, merged=${merged.length}`);
-    return merged;
+    if (parsed.chain === "xiawen") return this.getEpisodeDanmuByLite(parsed.id);
+    return this.getEpisodeDanmuByHxq(parsed.id);
   }
-
   async getEpisodeDanmuSegments(id) {
     log("debug", "获取韩剧TV弹幕分段列表...", id);
 
