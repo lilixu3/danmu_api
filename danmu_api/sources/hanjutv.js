@@ -43,6 +43,14 @@ export default class HanjutvSource extends BaseSource {
     return 120;
   }
 
+  getDanmuMaxAxis() {
+    const custom = Number(globals.hanjutvDanmuMaxAxis || 0);
+    if (Number.isFinite(custom) && custom > 0) {
+      return Math.floor(custom);
+    }
+    return 100000000;
+  }
+
   logRequestFailure(stage, error) {
     log("debug", "[Hanjutv] " + stage + " 失败: " + (error?.message || error));
   }
@@ -585,7 +593,7 @@ export default class HanjutvSource extends BaseSource {
   async getEpisodeDanmuByHxq(id) {
     let allDanmus = [];
     let fromAxis = 0;
-    const maxAxis = 100000000;
+    const maxAxis = this.getDanmuMaxAxis();
     const maxPages = this.getDanmuMaxPages();
     let pageCount = 0;
 
@@ -638,20 +646,20 @@ export default class HanjutvSource extends BaseSource {
     let fromAxis = 0;
     let prevId = 0;
     let pageCount = 0;
-    const toAxis = 60000;
+    const maxAxis = this.getDanmuMaxAxis();
     const maxPages = this.getDanmuMaxPages();
 
     try {
       const session = await this.createLiteSession();
 
-      while (pageCount < maxPages) {
+      while (fromAxis < maxAxis && pageCount < maxPages) {
         const data = await this.requestLiteApi(
           "/api/v1/bulletchat/episode/get",
           {
             eid: id,
             prevId,
             fromAxis,
-            toAxis,
+            toAxis: maxAxis,
             offset: 0,
           },
           session
@@ -664,17 +672,22 @@ export default class HanjutvSource extends BaseSource {
         }
 
         const hasMore = Number(data?.more ?? 0) === 1 || data?.more === true || data?.more === "1";
-        const nextAxis = Number(data?.nextAxis ?? fromAxis);
+        const nextAxis = Number(data?.nextAxis ?? maxAxis);
         const lastId = Number(data?.lastId ?? prevId);
 
         if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-        if (!hasMore) break;
 
         if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis) {
           log("warn", "[Hanjutv] xiawen nextAxis 未前进，提前退出分页: fromAxis=" + fromAxis + ", nextAxis=" + data?.nextAxis);
           break;
         }
+
+        if (nextAxis >= maxAxis) break;
+
         fromAxis = nextAxis;
+        if (!hasMore) {
+          prevId = 0;
+        }
       }
 
       if (pageCount >= maxPages) {
