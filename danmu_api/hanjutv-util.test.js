@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { md5 } from "./utils/codec-util.js";
-import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload } from "./utils/hanjutv-util.js";
+import { createHanjutvUid, createHanjutvSearchHeaders, createHanjutvLiteHeaders, decodeHanjutvEncryptedPayload } from "./utils/hanjutv-util.js";
 
 const RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
 
@@ -73,6 +73,36 @@ test("createHanjutvSearchHeaders 的 uk 与官方算法一致", async () => {
   assert.equal(headers.uk, "cU3pQcUA5bnaKgiKxs+twGGCbldX/SfYF8rpSrIk328=");
 });
 
+test("createHanjutvLiteHeaders 生成必要请求头", async () => {
+  const headers = await createHanjutvLiteHeaders("AbCdEf0123456789XYza", {
+    timestamp: 1700000000000,
+    oa: "a5bfd047b9aba489",
+    said: "fb3597b87601d5a7",
+  });
+  assert.equal(headers.version, "a_22570");
+  assert.equal(headers["version-name"], "1.7.2");
+  assert.equal(headers.channel, "xiaomi");
+  assert.equal(headers["app-type"], "ztv");
+  assert.ok(typeof headers.di === "string" && headers.di.length > 0);
+  assert.ok(typeof headers.rp === "string" && headers.rp.length > 0);
+});
+
+test("createHanjutvLiteHeaders 固定输入稳定且 oa 改变时 rp 改变", async () => {
+  const options = {
+    timestamp: 1700000000000,
+    oa: "a5bfd047b9aba489",
+    said: "fb3597b87601d5a7",
+  };
+  const h1 = await createHanjutvLiteHeaders("R4VRuaXvhTDZ8g9oOiSd", options);
+  const h2 = await createHanjutvLiteHeaders("R4VRuaXvhTDZ8g9oOiSd", options);
+  const h3 = await createHanjutvLiteHeaders("R4VRuaXvhTDZ8g9oOiSd", {
+    ...options,
+    oa: "ffffffffffffffff",
+  });
+  assert.equal(h1.di, h2.di);
+  assert.equal(h1.rp, h2.rp);
+  assert.notEqual(h1.rp, h3.rp);
+});
 test("decodeHanjutvEncryptedPayload 支持 key 解密", async () => {
   const raw = { ok: 1, list: [{ sid: "A1", name: "测试剧集" }] };
   const key = "0123456789abcdef0123456789abcdef";

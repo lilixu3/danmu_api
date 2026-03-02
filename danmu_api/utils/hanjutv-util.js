@@ -6,7 +6,14 @@ const HANJUTV_UA = "HanjuTV/6.5.3 (Pixel 2 XL; Android 11; Scale/2.00)";
 const HANJUTV_UK_KEY = "f349wghhe784tqwh";
 const HANJUTV_UK_IV = "d3w8hf94fidk38lk";
 const HANJUTV_RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
+const HANJUTV_LITE_VERSION = "a_22570";
+const HANJUTV_LITE_VERSION_NAME = "1.7.2";
+const HANJUTV_LITE_CHANNEL = "xiaomi";
+const HANJUTV_LITE_APP_TYPE = "ztv";
+const HANJUTV_LITE_UA = "ZTV/1.7.2 (23127PN0CC; Android 16; Scale/2.00)";
+const HANJUTV_LITE_SAID = "fb3597b87601d5a7";
 const UID_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const HEX_CHARSET = "0123456789abcdef";
 
 const SBOX = [
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -264,6 +271,14 @@ function randomInt(max) {
   return Math.floor(Math.random() * max);
 }
 
+function randomChars(length, charset) {
+  let output = "";
+  for (let i = 0; i < length; i++) {
+    output += charset[randomInt(charset.length)];
+  }
+  return output;
+}
+
 function buildSearchSignPayload(uid, timestamp) {
   return JSON.stringify({
     emu: 0,
@@ -299,10 +314,41 @@ function buildSearchSignPayload(uid, timestamp) {
   });
 }
 
+function buildLiteRpPayload(uid, timestamp, said, oa) {
+  return JSON.stringify({
+    emu: 0,
+    ou: 0,
+    it: timestamp,
+    iit: timestamp,
+    bs: 0,
+    uid,
+    isp: "",
+    pc: 0,
+    tm: 50,
+    d8m: "0,0,0,0,0,0,14,7",
+    md: "23127PN0CC",
+    dn: "",
+    osv: "16",
+    br: 50,
+    rpc: 0,
+    scc: 1,
+    plc: 1,
+    toc: 5,
+    tsc: 7,
+    ts: timestamp,
+    nw: 2,
+    px: "0",
+    ai: said,
+    oa,
+    dpc: 0,
+    dsc: 0,
+    qpc: 0,
+    apad: 0,
+  });
+}
+
 export function createHanjutvUid(length = 20) {
-  let uid = "";
-  for (let i = 0; i < length; i++) uid += UID_CHARSET[randomInt(UID_CHARSET.length)];
-  return uid;
+  return randomChars(length, UID_CHARSET);
 }
 
 export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
@@ -322,6 +368,31 @@ export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
     "User-Agent": HANJUTV_UA,
     vc: HANJUTV_VC,
     "auth-token": "",
+    "Accept-Encoding": "gzip",
+    Connection: "Keep-Alive",
+  };
+}
+
+export async function createHanjutvLiteHeaders(uid, options = {}) {
+  const ts = Number(options.timestamp ?? Date.now());
+  const said = String(options.said || HANJUTV_LITE_SAID);
+  const oa = String(options.oa || randomChars(16, HEX_CHARSET));
+  const uidMd5 = md5(uid);
+  const rpPayload = buildLiteRpPayload(uid, ts, said, oa);
+  const di = await aesCbcEncryptToBase64(uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
+  const rp = await aesCbcEncryptToBase64(rpPayload, uidMd5.slice(0, 16), uidMd5.slice(16, 32));
+
+  return {
+    version: options.version || HANJUTV_LITE_VERSION,
+    "version-name": options.versionName || HANJUTV_LITE_VERSION_NAME,
+    channel: options.channel || HANJUTV_LITE_CHANNEL,
+    "app-type": options.appType || HANJUTV_LITE_APP_TYPE,
+    "User-Agent": options.userAgent || HANJUTV_LITE_UA,
+    said,
+    di,
+    token: "",
+    uid: "",
+    rp,
     "Accept-Encoding": "gzip",
     Connection: "Keep-Alive",
   };
