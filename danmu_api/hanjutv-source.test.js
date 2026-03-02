@@ -151,3 +151,84 @@ test("handleAnimes 触发降级后直接返回 xiawen 全量兜底结果", async
     globals.animes = oldAnimes;
   }
 });
+
+test("search 同名剧在 s5 与 xiawen 链路生成稳定 animeId", async () => {
+  const source = new HanjutvSource();
+  source.searchHedgeDelayMs = 100000;
+
+  source.searchWithS5Api = async () => [
+    { sid: "s5_same", name: "海岸村恰恰恰", chain: "hxq" },
+  ];
+  source.searchWithLiteApi = async () => [
+    { sid: "xw_same", name: "海岸村恰恰恰", chain: "xiawen" },
+  ];
+
+  const s5Result = await source.search("海岸村恰恰恰");
+  assert.equal(s5Result.length, 1);
+  const stableId = s5Result[0].animeId;
+
+  source.searchWithS5Api = async () => {
+    throw new Error("mock s5 fail");
+  };
+
+  const liteResult = await source.search("海岸村恰恰恰");
+  assert.equal(liteResult.length, 1);
+  assert.equal(liteResult[0].animeId, stableId);
+});
+
+test("handleAnimes 全量兜底时复用同一个 xiawen 会话", async () => {
+  const source = new HanjutvSource();
+  const oldAnimes = globals.animes;
+  globals.animes = [];
+
+  try {
+    let createLiteSessionCount = 0;
+    const originalGetEpisodes = source.getEpisodes.bind(source);
+    const originalGetDetail = source.getDetail.bind(source);
+
+    source.getEpisodes = async (sid, chain, options = {}) => {
+      if (chain === "hxq") return [];
+      return originalGetEpisodes(sid, chain, options);
+    };
+    source.getDetail = async (sid, chain, options = {}) => {
+      if (chain === "hxq") return {};
+      return originalGetDetail(sid, chain, options);
+    };
+
+    source.searchWithLiteApi = async () => [
+      { sid: "xw_h1", name: "海岸村恰恰恰", chain: "xiawen", image: { thumb: "1.jpg" } },
+      { sid: "xw_h2", name: "海岸村恰恰恰2", chain: "xiawen", image: { thumb: "2.jpg" } },
+    ];
+
+    source.createLiteSession = async () => {
+      createLiteSessionCount += 1;
+      return { uid: "shared_uid", headers: {} };
+    };
+
+    source.requestLiteApi = async (pathname, query, session) => {
+      assert.equal(session?.uid, "shared_uid");
+      if (pathname === "/api/v1/series/detail/query") {
+        return {
+          series: { category: 1, rank: 9.2 },
+          episodes: [{ pid: String(query.sid) + "_ep1", serialNo: 1, title: "" }],
+        };
+      }
+      if (pathname === "/api/v1/series/program/query") {
+        return { programs: [] };
+      }
+      return {};
+    };
+
+    const curAnimes = [];
+    const sourceAnimes = [
+      { animeId: 4001, sid: "hxq_trigger", name: "海岸村恰恰恰", chain: "hxq", image: { thumb: "h.jpg" } },
+    ];
+
+    await source.handleAnimes(sourceAnimes, "海岸村恰恰恰", curAnimes);
+
+    assert.equal(createLiteSessionCount, 1);
+    assert.equal(globals.animes.length, 2);
+  } finally {
+    globals.animes = oldAnimes;
+  }
+});

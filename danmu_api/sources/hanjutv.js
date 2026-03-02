@@ -194,6 +194,21 @@ export default class HanjutvSource extends BaseSource {
     }, 0);
   }
 
+  buildStableAnimeId(name = "", sid = "") {
+    const normalizedName = normalizeSpaces(name).toLowerCase();
+    if (normalizedName) {
+      return convertToAsciiSum("hanjutv:" + normalizedName);
+    }
+    return convertToAsciiSum("hanjutv:sid:" + String(sid || ""));
+  }
+
+  decorateSearchAnime(anime = {}) {
+    return {
+      ...anime,
+      animeId: this.buildStableAnimeId(anime?.name, anime?.sid),
+    };
+  }
+
   async searchWithS5Api(keyword, options = {}) {
     const q = encodeURIComponent(keyword);
 
@@ -337,10 +352,7 @@ export default class HanjutvSource extends BaseSource {
         if (liteStarted && !liteFinished) liteController?.abort();
         const s5Only = this.dedupeBySid(s5List);
         log("info", "[Hanjutv] s5 命中标题，使用主链路结果: " + s5Only.length);
-        return s5Only.map((anime) => {
-          const animeId = convertToAsciiSum(anime.sid);
-          return { ...anime, animeId };
-        });
+        return s5Only.map((anime) => this.decorateSearchAnime(anime));
       }
 
       if (!s5Error && s5List.length > 0 && s5MatchedCount === 0) {
@@ -351,19 +363,13 @@ export default class HanjutvSource extends BaseSource {
       if (liteList.length > 0) {
         const liteOnly = this.dedupeBySid(liteList);
         log("info", "[Hanjutv] 使用 xiawen 兜底结果: " + liteOnly.length);
-        return liteOnly.map((anime) => {
-          const animeId = convertToAsciiSum(anime.sid);
-          return { ...anime, animeId };
-        });
+        return liteOnly.map((anime) => this.decorateSearchAnime(anime));
       }
 
       if (s5List.length > 0) {
         const s5Fallback = this.dedupeBySid(s5List);
         log("info", "[Hanjutv] xiawen 无有效结果，回退 s5 非命中候选: " + s5Fallback.length);
-        return s5Fallback.map((anime) => {
-          const animeId = convertToAsciiSum(anime.sid);
-          return { ...anime, animeId };
-        });
+        return s5Fallback.map((anime) => this.decorateSearchAnime(anime));
       }
 
       if (liteError) log("debug", "hanjutvSearchresp: s5 无有效结果，xiawen 失败: " + liteError.message);
@@ -378,7 +384,7 @@ export default class HanjutvSource extends BaseSource {
       return [];
     }
   }
-  async getDetail(id, chain = "hxq") {
+  async getDetail(id, chain = "hxq", options = {}) {
     try {
       const parsed = this.parsePlatformId(id, chain);
       const sid = parsed.id;
@@ -389,7 +395,7 @@ export default class HanjutvSource extends BaseSource {
 
       if (finalChain === "xiawen") {
         try {
-          const session = await this.createLiteSession();
+          const session = options?.liteSession || await this.createLiteSession();
           const detailData = await this.requestLiteApi("/api/v1/series/detail/query", { sid }, session);
           detail = detailData?.series || null;
         } catch (error) {
@@ -424,7 +430,7 @@ export default class HanjutvSource extends BaseSource {
     }
   }
 
-  async getEpisodes(id, chain = "hxq") {
+  async getEpisodes(id, chain = "hxq", options = {}) {
     try {
       const parsed = this.parsePlatformId(id, chain);
       const sid = parsed.id;
@@ -434,7 +440,7 @@ export default class HanjutvSource extends BaseSource {
       let episodes = [];
 
       if (finalChain === "xiawen") {
-        const session = await this.createLiteSession();
+        const session = options?.liteSession || await this.createLiteSession();
         try {
           const detailData = await this.requestLiteApi("/api/v1/series/detail/query", { sid }, session);
           const detailEpisodes = Array.isArray(detailData?.episodes) ? detailData.episodes : [];
@@ -599,32 +605,61 @@ export default class HanjutvSource extends BaseSource {
     const matchedSourceAnimes = sourceAnimes.filter((s) => titleMatches(s.name, queryTitle));
     const episodePrefetchMap = new Map();
     const getEpisodeCacheKey = (sid, chain) => this.normalizeChain(chain) + ":" + String(sid || "");
+    const hxqMatchedSourceAnimes = matchedSourceAnimes.filter((anime) => this.normalizeChain(anime.chain) === "hxq");
 
     let forceLiteOnly = false;
     let processingSourceAnimes = matchedSourceAnimes;
 
-    for (const anime of matchedSourceAnimes) {
-      const chain = this.normalizeChain(anime.chain);
-      if (chain !== "hxq") continue;
+    const episodeProbeBatchSize = 3;
+    let fallbackTriggerAnime = null;
 
-      const cacheKey = getEpisodeCacheKey(anime.sid, chain);
-      const eps = await this.getEpisodes(anime.sid, chain);
-      episodePrefetchMap.set(cacheKey, eps);
+    for (let i = 0; i < hxqMatchedSourceAnimes.length; i += episodeProbeBatchSize) {
+      const probeBatch = hxqMatchedSourceAnimes.slice(i, i + episodeProbeBatchSize);
+      const batchResults = await Promise.all(
+        probeBatch.map(async (anime) => {
+          const cacheKey = getEpisodeCacheKey(anime.sid, "hxq");
+          const eps = await this.getEpisodes(anime.sid, "hxq");
+          episodePrefetchMap.set(cacheKey, eps);
+          return { anime, eps };
+        })
+      );
 
-      const mainUnavailable = !Array.isArray(eps) || eps.length === 0;
-      if (!mainUnavailable) continue;
+      const missingResult = batchResults.find(({ eps }) => !Array.isArray(eps) || eps.length === 0);
+      if (missingResult) {
+        fallbackTriggerAnime = missingResult.anime;
+        break;
+      }
+    }
 
+    if (fallbackTriggerAnime) {
       const candidates = await ensureLiteFallbackCandidates();
       const liteMatched = candidates.filter((item) => titleMatches(item?.name || "", queryTitle));
       if (liteMatched.length > 0) {
         forceLiteOnly = true;
         processingSourceAnimes = liteMatched;
-        log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 全量兜底: " + anime.name + "，兜底结果=" + liteMatched.length);
+        log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 全量兜底: " + fallbackTriggerAnime.name + "，兜底结果=" + liteMatched.length);
       } else {
         log("info", "[Hanjutv] 主链路无有效分集，且 xiawen 无命中候选，保留主链路候选");
       }
-      break;
     }
+
+    let sharedLiteSession = null;
+    let sharedLiteSessionPromise = null;
+    const getSharedLiteSession = async () => {
+      if (sharedLiteSession) return sharedLiteSession;
+      if (sharedLiteSessionPromise) return sharedLiteSessionPromise;
+
+      sharedLiteSessionPromise = this.createLiteSession()
+        .then((session) => {
+          sharedLiteSession = session;
+          return session;
+        })
+        .finally(() => {
+          sharedLiteSessionPromise = null;
+        });
+
+      return sharedLiteSessionPromise;
+    };
 
     const processHanjutvAnimes = await Promise.all(
       processingSourceAnimes.map(async (anime) => {
@@ -642,7 +677,10 @@ export default class HanjutvSource extends BaseSource {
               eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
             }
           } else {
-            eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
+            const episodeOptions = selectedChain === "xiawen"
+              ? { liteSession: await getSharedLiteSession() }
+              : {};
+            eps = await this.getEpisodes(selectedAnime.sid, selectedChain, episodeOptions);
           }
 
           const mainUnavailable = !forceLiteOnly
@@ -655,7 +693,9 @@ export default class HanjutvSource extends BaseSource {
               log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 兜底: " + anime.name);
               selectedAnime = { ...liteAnime, animeId: anime.animeId };
               selectedChain = "xiawen";
-              eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
+              eps = await this.getEpisodes(selectedAnime.sid, selectedChain, {
+                liteSession: await getSharedLiteSession(),
+              });
             }
           }
 
@@ -664,7 +704,10 @@ export default class HanjutvSource extends BaseSource {
             return;
           }
 
-          let detail = await this.getDetail(selectedAnime.sid, selectedChain);
+          const detailOptions = selectedChain === "xiawen"
+            ? { liteSession: await getSharedLiteSession() }
+            : {};
+          let detail = await this.getDetail(selectedAnime.sid, selectedChain, detailOptions);
           if (!detail || typeof detail !== "object") detail = {};
 
           const links = [];
@@ -688,7 +731,9 @@ export default class HanjutvSource extends BaseSource {
               new Date(detail?.publishTime || 0).getFullYear(),
             ].filter((year) => Number.isFinite(year) && year >= 1900 && year <= 2099);
             const year = candidateYears[0] || nowYear;
-            const animeId = anime.animeId || convertToAsciiSum(selectedAnime.sid);
+            const animeId = Number(anime.animeId) > 0
+              ? Number(anime.animeId)
+              : this.buildStableAnimeId(selectedAnime.name || anime.name, selectedAnime.sid);
 
             const transformedAnime = {
               animeId,
