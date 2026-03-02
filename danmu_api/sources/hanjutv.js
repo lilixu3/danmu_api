@@ -638,14 +638,13 @@ export default class HanjutvSource extends BaseSource {
     let fromAxis = 0;
     let prevId = 0;
     let pageCount = 0;
-    const axisStep = 60000;
+    const toAxis = 60000;
     const maxPages = this.getDanmuMaxPages();
 
     try {
       const session = await this.createLiteSession();
 
       while (pageCount < maxPages) {
-        const toAxis = fromAxis + axisStep;
         const data = await this.requestLiteApi(
           "/api/v1/bulletchat/episode/get",
           {
@@ -664,12 +663,12 @@ export default class HanjutvSource extends BaseSource {
           allDanmus.push(...currentDanmus);
         }
 
-        const more = Number(data?.more ?? 0);
+        const hasMore = Number(data?.more ?? 0) === 1 || data?.more === true || data?.more === "1";
         const nextAxis = Number(data?.nextAxis ?? fromAxis);
         const lastId = Number(data?.lastId ?? prevId);
 
         if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-        if (more !== 1) break;
+        if (!hasMore) break;
 
         if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis) {
           log("warn", "[Hanjutv] xiawen nextAxis 未前进，提前退出分页: fromAxis=" + fromAxis + ", nextAxis=" + data?.nextAxis);
