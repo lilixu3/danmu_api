@@ -596,85 +596,124 @@ export default class HanjutvSource extends BaseSource {
       return [];
     }
 
+    const matchedSourceAnimes = sourceAnimes.filter((s) => titleMatches(s.name, queryTitle));
+    const episodePrefetchMap = new Map();
+    const getEpisodeCacheKey = (sid, chain) => this.normalizeChain(chain) + ":" + String(sid || "");
+
+    let forceLiteOnly = false;
+    let processingSourceAnimes = matchedSourceAnimes;
+
+    for (const anime of matchedSourceAnimes) {
+      const chain = this.normalizeChain(anime.chain);
+      if (chain !== "hxq") continue;
+
+      const cacheKey = getEpisodeCacheKey(anime.sid, chain);
+      const eps = await this.getEpisodes(anime.sid, chain);
+      episodePrefetchMap.set(cacheKey, eps);
+
+      const mainUnavailable = !Array.isArray(eps) || eps.length === 0;
+      if (!mainUnavailable) continue;
+
+      const candidates = await ensureLiteFallbackCandidates();
+      const liteMatched = candidates.filter((item) => titleMatches(item?.name || "", queryTitle));
+      if (liteMatched.length > 0) {
+        forceLiteOnly = true;
+        processingSourceAnimes = liteMatched;
+        log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 全量兜底: " + anime.name + "，兜底结果=" + liteMatched.length);
+      } else {
+        log("info", "[Hanjutv] 主链路无有效分集，且 xiawen 无命中候选，保留主链路候选");
+      }
+      break;
+    }
+
     const processHanjutvAnimes = await Promise.all(
-      sourceAnimes
-        .filter((s) => titleMatches(s.name, queryTitle))
-        .map(async (anime) => {
-          try {
-            const originalChain = this.normalizeChain(anime.chain);
-            let selectedAnime = anime;
-            let selectedChain = originalChain;
-            let eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
+      processingSourceAnimes.map(async (anime) => {
+        try {
+          const originalChain = forceLiteOnly ? "xiawen" : this.normalizeChain(anime.chain);
+          let selectedAnime = anime;
+          let selectedChain = originalChain;
 
-            const mainUnavailable = selectedChain === "hxq"
-              && (!Array.isArray(eps) || eps.length === 0);
-
-            if (mainUnavailable) {
-              const liteAnime = await tryFallbackToLite(anime);
-              if (liteAnime?.sid) {
-                log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 兜底: " + anime.name);
-                selectedAnime = { ...liteAnime, animeId: anime.animeId };
-                selectedChain = "xiawen";
-                eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
-              }
+          let eps = [];
+          if (!forceLiteOnly && selectedChain === "hxq") {
+            const cacheKey = getEpisodeCacheKey(selectedAnime.sid, selectedChain);
+            if (episodePrefetchMap.has(cacheKey)) {
+              eps = episodePrefetchMap.get(cacheKey);
+            } else {
+              eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
             }
-
-            if (!Array.isArray(eps) || eps.length === 0) {
-              log("debug", "[Hanjutv] 无可用分集，跳过: " + (selectedAnime?.name || anime.name));
-              return;
-            }
-
-            let detail = await this.getDetail(selectedAnime.sid, selectedChain);
-            if (!detail || typeof detail !== "object") detail = {};
-
-            const links = [];
-            for (const ep of eps) {
-              const epTitle = ep.title && ep.title.trim() !== "" ? `第${ep.serialNo}集：${ep.title}` : `第${ep.serialNo}集`;
-              const encodedPid = this.encodeEpisodeId(ep.pid, ep.chain || selectedChain);
-              links.push({
-                name: epTitle,
-                url: encodedPid,
-                title: `【hanjutv】 ${epTitle}`,
-              });
-            }
-
-            if (links.length > 0) {
-              const nowYear = new Date().getFullYear();
-              const candidateYears = [
-                new Date(selectedAnime.updateTime || anime.updateTime || 0).getFullYear(),
-                new Date(selectedAnime.publishTime || anime.publishTime || 0).getFullYear(),
-                Number(selectedAnime.year || anime.year),
-                new Date(detail?.updateTime || 0).getFullYear(),
-                new Date(detail?.publishTime || 0).getFullYear(),
-              ].filter((year) => Number.isFinite(year) && year >= 1900 && year <= 2099);
-              const year = candidateYears[0] || nowYear;
-              const animeId = anime.animeId || convertToAsciiSum(selectedAnime.sid);
-
-              const transformedAnime = {
-                animeId,
-                bangumiId: String(animeId),
-                animeTitle: `${selectedAnime.name}(${year})【${getCategory(detail?.category)}】from hanjutv`,
-                type: getCategory(detail?.category),
-                typeDescription: getCategory(detail?.category),
-                imageUrl: selectedAnime.image?.thumb || anime.image?.thumb || "",
-                startDate: generateValidStartDate(year),
-                episodeCount: links.length,
-                rating: detail?.rank,
-                isFavorited: true,
-                source: "hanjutv",
-              };
-
-              tmpAnimes.push(transformedAnime);
-              addAnime({ ...transformedAnime, links });
-
-              if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
-            }
-          } catch (error) {
-            log("error", `[Hanjutv] Error processing anime: ${error.message}`);
+          } else {
+            eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
           }
-        })
-    );
 
+          const mainUnavailable = !forceLiteOnly
+            && selectedChain === "hxq"
+            && (!Array.isArray(eps) || eps.length === 0);
+
+          if (mainUnavailable) {
+            const liteAnime = await tryFallbackToLite(anime);
+            if (liteAnime?.sid) {
+              log("info", "[Hanjutv] s5 命中但主链路无有效分集，触发 xiawen 兜底: " + anime.name);
+              selectedAnime = { ...liteAnime, animeId: anime.animeId };
+              selectedChain = "xiawen";
+              eps = await this.getEpisodes(selectedAnime.sid, selectedChain);
+            }
+          }
+
+          if (!Array.isArray(eps) || eps.length === 0) {
+            log("debug", "[Hanjutv] 无可用分集，跳过: " + (selectedAnime?.name || anime.name));
+            return;
+          }
+
+          let detail = await this.getDetail(selectedAnime.sid, selectedChain);
+          if (!detail || typeof detail !== "object") detail = {};
+
+          const links = [];
+          for (const ep of eps) {
+            const epTitle = ep.title && ep.title.trim() !== "" ? ("第" + ep.serialNo + "集：" + ep.title) : ("第" + ep.serialNo + "集");
+            const encodedPid = this.encodeEpisodeId(ep.pid, ep.chain || selectedChain);
+            links.push({
+              name: epTitle,
+              url: encodedPid,
+              title: "【hanjutv】 " + epTitle,
+            });
+          }
+
+          if (links.length > 0) {
+            const nowYear = new Date().getFullYear();
+            const candidateYears = [
+              new Date(selectedAnime.updateTime || anime.updateTime || 0).getFullYear(),
+              new Date(selectedAnime.publishTime || anime.publishTime || 0).getFullYear(),
+              Number(selectedAnime.year || anime.year),
+              new Date(detail?.updateTime || 0).getFullYear(),
+              new Date(detail?.publishTime || 0).getFullYear(),
+            ].filter((year) => Number.isFinite(year) && year >= 1900 && year <= 2099);
+            const year = candidateYears[0] || nowYear;
+            const animeId = anime.animeId || convertToAsciiSum(selectedAnime.sid);
+
+            const transformedAnime = {
+              animeId,
+              bangumiId: String(animeId),
+              animeTitle: selectedAnime.name + "(" + year + ")【" + getCategory(detail?.category) + "】from hanjutv",
+              type: getCategory(detail?.category),
+              typeDescription: getCategory(detail?.category),
+              imageUrl: selectedAnime.image?.thumb || anime.image?.thumb || "",
+              startDate: generateValidStartDate(year),
+              episodeCount: links.length,
+              rating: detail?.rank,
+              isFavorited: true,
+              source: "hanjutv",
+            };
+
+            tmpAnimes.push(transformedAnime);
+            addAnime({ ...transformedAnime, links });
+
+            if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
+          }
+        } catch (error) {
+          log("error", `[Hanjutv] Error processing anime: ${error.message}`);
+        }
+      })
+    );
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
 
     return processHanjutvAnimes;
