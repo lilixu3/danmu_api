@@ -28,10 +28,11 @@ async function createLocalRedisClient() {
       url: localRedisUrl,
       socket: {
         reconnectStrategy: (retries) => {
-          if (retries >= 0) {
+          // 最多重试 5 次，避免无限重连
+          if (retries >= 5) {
             return new Error('已达到最大重试次数，停止重连');
           }
-          return 1000; // 重试间隔 ms
+          return Math.min(1000 * (retries + 1), 5000);
         }
       }
     });
@@ -157,7 +158,7 @@ export async function setLocalRedisKeyWithExpiry(key, value, expirySeconds) {
 
 // 优化后的 getLocalRedisCaches，批量获取所有键
 export async function getLocalRedisCaches() {
-  if (!globals.localCacheInitialized) {
+  if (!globals.localRedisCacheInitialized) {
     try {
       log("info", 'getLocalRedisCaches start.');
       
@@ -194,11 +195,11 @@ export async function getLocalRedisCaches() {
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
 
-      globals.localCacheInitialized = true;
+      globals.localRedisCacheInitialized = true;
       log("info", 'getLocalRedisCaches completed successfully.');
     } catch (error) {
       log("error", `getLocalRedisCaches failed: ${error.message}`, error.stack);
-      globals.localCacheInitialized = true; // 标记为已初始化，避免重复尝试
+      globals.localRedisCacheInitialized = true; // 标记为已初始化，避免重复尝试
     }
   }
 }

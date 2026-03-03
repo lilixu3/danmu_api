@@ -26,6 +26,7 @@ export const Globals = {
   requestHistory: new Map(), // 记录每个 IP 地址的请求历史
   localCacheValid: false, // 本地缓存是否生效
   localCacheInitialized: false, // 本地缓存是否已初始化
+  localRedisCacheInitialized: false, // 本地Redis缓存是否已初始化
   redisValid: false, // redis是否生效
   localRedisValid: false, // 本地redis是否生效
   aiValid: false, // AI配置是否生效
@@ -136,9 +137,12 @@ export const Globals = {
         return `${cleanProxy}/${targetUrl}`;
     }
 
-    // 3. 正向代理 (仅本地环境回退到 5321 中转)
+    // 3. 正向代理仅在本地 Node 运行时可用（依赖 5321 中转服务）
     if (forwardProxy) {
-        return `http://127.0.0.1:5321/proxy?url=${encodeURIComponent(targetUrl)}`;
+        if (this.deployPlatform === 'node') {
+          return `http://127.0.0.1:5321/proxy?url=${encodeURIComponent(targetUrl)}`;
+        }
+        return targetUrl;
     }
 
     return targetUrl;

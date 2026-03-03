@@ -28,6 +28,14 @@ const ADMIN_MUTATION_ROUTES = new Set([
   'POST /api/env/del',
   'POST /api/deploy',
   'POST /api/cache/clear',
+  'POST /api/cookie/qr/generate',
+  'POST /api/cookie/qr/check',
+  'POST /api/cookie/verify',
+  'POST /api/cookie/save',
+  'POST /api/cookie/clear',
+  'POST /api/cookie/refresh',
+  'POST /api/cookie/refresh-token',
+  'POST /api/ai/verify',
 ]);
 const AI_VERIFY_COOLDOWN_MS = 5 * 60 * 1000;
 let pendingAiVerify = null;
@@ -164,8 +172,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     
     if (lastRecord) {
       const lastDate = new Date(lastRecord.timestamp).toDateString();
-      console.log("currentDate: ", currentDate);
-      console.log("lastDate: ", lastDate);
+      log("debug", `[ReqRecords] currentDate=${currentDate}, lastDate=${lastDate}`);
       if (lastDate !== currentDate) {
         // 新的一天，重置计数
         globals.todayReqNum = 1;

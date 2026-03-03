@@ -4,6 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
+
+function isValidEnvKey(key) {
+  return typeof key === 'string' && ENV_KEY_PATTERN.test(key.trim());
+}
+
 // =====================
 // Node环境变量处理类
 // =====================
@@ -13,6 +19,9 @@ export class NodeHandler extends BaseHandler {
    * 在本地配置文件中设置环境变量
    */
   updateConfigValue(key, value) {
+    if (!isValidEnvKey(key)) {
+      throw new Error('环境变量名称格式无效，仅支持大写字母、数字和下划线，且不能以数字开头');
+    }
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
@@ -79,6 +88,9 @@ export class NodeHandler extends BaseHandler {
    * 设置环境变量并重新初始化全局配置
    */
   async setEnv(key, value) {
+    if (!isValidEnvKey(key)) {
+      throw new Error('环境变量名称格式无效，仅支持大写字母、数字和下划线，且不能以数字开头');
+    }
     log("info", '[server] Setting environment variable:', key, '=', value);
 
     try {
@@ -107,6 +119,9 @@ export class NodeHandler extends BaseHandler {
    * 删除环境变量
    */
   async delEnv(key) {
+    if (!isValidEnvKey(key)) {
+      throw new Error('环境变量名称格式无效，仅支持大写字母、数字和下划线，且不能以数字开头');
+    }
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 

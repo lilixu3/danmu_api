@@ -3,16 +3,30 @@ import { HandlerFactory } from '../configs/handlers/handler-factory.js';
 import { globals } from '../configs/globals.js';
 import AIClient from '../utils/ai-util.js';
 
+const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
+
+function normalizeAndValidateEnvKey(rawKey) {
+  const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+  if (!key) {
+    return { ok: false, message: '缺少环境变量名称' };
+  }
+  if (!ENV_KEY_PATTERN.test(key)) {
+    return { ok: false, message: '环境变量名称格式无效，仅支持大写字母、数字和下划线，且不能以数字开头' };
+  }
+  return { ok: true, key };
+}
+
 /**
  * 处理设置环境变量的请求
  */
 export async function handleSetEnv(request) {
   try {
-    const { key, value } = await request.json();
-    
-    if (!key) {
-      return jsonResponse({ success: false, message: '缺少环境变量名称' }, 400);
+    const { key: rawKey, value } = await request.json();
+    const keyValidation = normalizeAndValidateEnvKey(rawKey);
+    if (!keyValidation.ok) {
+      return jsonResponse({ success: false, message: keyValidation.message }, 400);
     }
+    const key = keyValidation.key;
 
     // 获取当前部署平台
     const deployPlatform = globals.deployPlatform;
@@ -39,11 +53,12 @@ export async function handleSetEnv(request) {
  */
 export async function handleAddEnv(request) {
   try {
-    const { key, value } = await request.json();
-    
-    if (!key) {
-      return jsonResponse({ success: false, message: '缺少环境变量名称' }, 400);
+    const { key: rawKey, value } = await request.json();
+    const keyValidation = normalizeAndValidateEnvKey(rawKey);
+    if (!keyValidation.ok) {
+      return jsonResponse({ success: false, message: keyValidation.message }, 400);
     }
+    const key = keyValidation.key;
 
     // 获取当前部署平台
     const deployPlatform = globals.deployPlatform ;
@@ -70,11 +85,12 @@ export async function handleAddEnv(request) {
  */
 export async function handleDelEnv(request) {
   try {
-    const { key } = await request.json();
-    
-    if (!key) {
-      return jsonResponse({ success: false, message: '缺少环境变量名称' }, 400);
+    const { key: rawKey } = await request.json();
+    const keyValidation = normalizeAndValidateEnvKey(rawKey);
+    if (!keyValidation.ok) {
+      return jsonResponse({ success: false, message: keyValidation.message }, 400);
     }
+    const key = keyValidation.key;
 
     // 获取当前部署平台
     const deployPlatform = globals.deployPlatform;
