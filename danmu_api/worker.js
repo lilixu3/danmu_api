@@ -114,9 +114,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     }
   }
 
-  log("debug", `request url: ${JSON.stringify(url)}`);
-  log("debug", `request path: ${path}`);
-  log("debug", `client ip: ${clientIp}`);
+  log("info", `request url: ${JSON.stringify(url)}`);
+  log("info", `request path: ${path}`);
+  log("info", `client ip: ${clientIp}`);
 
   // --- 校验 token ---
   const parts = path.split("/").filter(Boolean); // 去掉空段
@@ -288,19 +288,19 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     return handleReqRecords(authContext);
   }
 
-  log("debug", path);
+  log("info", path);
 
   // 智能处理API路径前缀，确保最终有一个正确的 /api/v2
   if (path !== "/" && path !== "/api/logs" && !path.startsWith('/api/env') 
     && !path.startsWith('/api/deploy') && !path.startsWith('/api/cache')
     && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
     && !path.startsWith('/api/ai')) {
-      log("debug", `[Path Check] Starting path normalization for: "${path}"`);
+      log("info", `[Path Check] Starting path normalization for: "${path}"`);
       const pathBeforeCleanup = path; // 保存清理前的路径检查是否修改
       
       // 1. 清理：应对"用户填写/api/v2"+"客户端添加/api/v2"导致的重复前缀
       while (path.startsWith('/api/v2/api/v2/')) {
-          log("debug", `[Path Check] Found redundant /api/v2 prefix. Cleaning...`);
+          log("info", `[Path Check] Found redundant /api/v2 prefix. Cleaning...`);
           // 从第二个 /api/v2 的位置开始截取，相当于移除第一个
           path = path.substring('/api/v2'.length);
       }
@@ -314,9 +314,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       
       // 打印日志：只有在发生清理时才显示清理后的路径，否则显示"无需清理"
       if (path !== pathBeforeCleanup) {
-          log("debug", `[Path Check] Path after cleanup: "${path}"`);
+          log("info", `[Path Check] Path after cleanup: "${path}"`);
       } else {
-          log("debug", `[Path Check] Path after cleanup: No cleanup needed.`);
+          log("info", `[Path Check] Path after cleanup: No cleanup needed.`);
       }
       
       // 2. 补全：如果路径缺少前缀（例如请求原始路径为 /search/anime），则补全
@@ -325,16 +325,16 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
         && !path.startsWith('/api/env') && !path.startsWith('/api/cache')
         && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
         && !path.startsWith('/api/ai')) {
-          log("debug", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
+          log("info", `[Path Check] Path is missing /api/v2 prefix. Adding...`);
           path = '/api/v2' + path;
       }
         
       // 打印日志：只有在发生添加前缀时才显示添加后的路径，否则显示"无需补全"
       if (path === pathBeforePrefixCheck) {
-          log("debug", `[Path Check] Prefix Check: No prefix addition needed.`);
+          log("info", `[Path Check] Prefix Check: No prefix addition needed.`);
       }
       
-      log("debug", `[Path Check] Final normalized path: "${path}"`);
+      log("info", `[Path Check] Final normalized path: "${path}"`);
   }
   
   // GET /
@@ -384,7 +384,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 先检查缓存（分片列表请求不走弹幕缓存）
       const cachedComments = !segmentFlag ? getCommentCache(videoUrl) : null;
       if (cachedComments !== null) {
-        log("debug", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
+        log("info", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
         return formatDanmuResponse(responseData, queryFormat);
       }
@@ -417,7 +417,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
         // 记录本次请求时间戳
         recentRequests.push(currentTime);
         globals.requestHistory.set(clientIp, recentRequests);
-        log("debug", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+        log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
       }
 
       // 通过URL获取弹幕
@@ -440,7 +440,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 检查弹幕缓存（分片列表请求不走弹幕缓存）- 缓存命中时直接返回，不计入限流
       const cachedComments = !segmentFlag ? getCommentCache(urlForComment) : null;
       if (cachedComments !== null) {
-        log("debug", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
+        log("info", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
         return formatDanmuResponse(responseData, queryFormat);
       }
@@ -478,7 +478,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 记录本次请求时间戳
       recentRequests.push(currentTime);
       globals.requestHistory.set(clientIp, recentRequests);
-      log("debug", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
+      log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
     }
 
     return getComment(path, queryFormat, segmentFlag);

@@ -264,7 +264,7 @@ export default class HanjutvSource extends BaseSource {
       }
 
       if (!detail) {
-        log("debug", "getHanjutvDetail: series 不存在");
+        log("info", "getHanjutvDetail: series 不存在");
         return [];
       }
 
@@ -334,7 +334,7 @@ export default class HanjutvSource extends BaseSource {
       }
 
       if (episodes.length === 0) {
-        log("debug", "getHanjutvEposides: episodes 不存在");
+        log("info", "getHanjutvEposides: episodes 不存在");
         return [];
       }
 
@@ -490,7 +490,7 @@ export default class HanjutvSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("debug", "获取韩剧TV弹幕分段列表...", id);
+    log("info", "获取韩剧TV弹幕分段列表...", id);
 
     return new SegmentListResponse({
       type: this.sourceKey,

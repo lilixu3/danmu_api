@@ -21,18 +21,18 @@ export default class CustomSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!resp || !resp.data) {
-        log("debug", "customSourceSearchresp: 请求失败或无数据返回");
+        log("info", "customSourceSearchresp: 请求失败或无数据返回");
         return [];
       }
 
       // 判断 seriesData 是否存在
       if (!resp.data.animes) {
-        log("debug", "customSourceSearchresp: seriesData 或 seriesList 不存在");
+        log("info", "customSourceSearchresp: seriesData 或 seriesList 不存在");
         return [];
       }
 
       // 正常情况下输出 JSON 字符串
-      log("debug", `[Custom] 搜索找到 ${resp.data.animes.length} 个有效结果`);
+      log("info", `[Custom] 搜索找到 ${resp.data.animes.length} 个有效结果`);
 
       return resp.data.animes;
     } catch (error) {
@@ -57,18 +57,18 @@ export default class CustomSource extends BaseSource {
 
       // 判断 resp 和 resp.data 是否存在
       if (!resp || !resp.data) {
-        log("debug", "getCustomSourceEposides: 请求失败或无数据返回");
+        log("info", "getCustomSourceEposides: 请求失败或无数据返回");
         return [];
       }
 
       // 判断 seriesData 是否存在
       if (!resp.data.bangumi || !resp.data.bangumi.episodes) {
-        log("debug", `getCustomSourceEposides: episodes 不存在. Response: ${JSON.stringify(resp.data)}`);
+        log("info", `getCustomSourceEposides: episodes 不存在. Response: ${JSON.stringify(resp.data)}`);
         return [];
       }
 
       // 正常情况下输出 JSON 字符串
-      log("debug", `getCustomSourceEposides: ${JSON.stringify(resp.data.bangumi.episodes)}`);
+      log("info", `getCustomSourceEposides: ${JSON.stringify(resp.data.bangumi.episodes)}`);
 
       return resp.data.bangumi.episodes;
     } catch (error) {
@@ -168,7 +168,7 @@ export default class CustomSource extends BaseSource {
   }
 
   async getEpisodeDanmuSegments(id) {
-    log("debug", "获取Custom Source弹幕分段列表...", id);
+    log("info", "获取Custom Source弹幕分段列表...", id);
 
     return new SegmentListResponse({
       "type": "custom",
