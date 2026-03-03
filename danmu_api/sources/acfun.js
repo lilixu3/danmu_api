@@ -23,8 +23,12 @@ export default class AcfunSource extends BaseSource {
     this.maxSegmentSplitDepth = 2;
     this.maxConcurrent = 20;
     this.maxProbeDurationMs = 3 * 60 * 60 * 1000; // 未知时长时最多探测 3 小时
+    this.minProbeBreakMs = 60 * 1000; // 至少拉取 1 分钟后才允许提前停止
     this.emptyProbeThreshold = 6; // 连续空窗口阈值
+    this.sparseProbeStepMs = 5 * 60 * 1000; // 长空窗时用 5 分钟步进做前探
+    this.sparseProbeWindowMs = 2 * 60 * 1000; // 前探窗口扩大到 2 分钟降低漏检概率
     this.durationCache = new Map();
+    this.probeNoticeCache = new Set();
   }
 
   async requestGet(url, options = {}) {
@@ -146,6 +150,78 @@ export default class AcfunSource extends BaseSource {
       segments.push(this.buildDanmuSegment(videoId, start, end));
     }
     return segments;
+  }
+
+  getVideoDurationCacheKey(videoId) {
+    return `video:${videoId}`;
+  }
+
+  readDurationFromCache(videoId, bangumiId = "") {
+    const keys = [];
+    if (bangumiId) keys.push(`${bangumiId}:${videoId}`);
+    keys.push(this.getVideoDurationCacheKey(videoId));
+
+    for (const key of keys) {
+      if (!this.durationCache.has(key)) continue;
+      const durationMs = Number(this.durationCache.get(key) || 0);
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        return Math.floor(durationMs);
+      }
+    }
+    return 0;
+  }
+
+  cacheDuration(videoId, bangumiId, durationMs) {
+    const safeDurationMs = Number(durationMs);
+    if (!Number.isFinite(safeDurationMs) || safeDurationMs <= 0) return;
+    const rounded = Math.floor(safeDurationMs);
+    if (bangumiId) this.durationCache.set(`${bangumiId}:${videoId}`, rounded);
+    this.durationCache.set(this.getVideoDurationCacheKey(videoId), rounded);
+  }
+
+  extractDurationFromCastData(data) {
+    const candidates = [
+      data?.playInfo?.durationMillis,
+      data?.playInfo?.duration,
+      data?.playInfo?.streams?.[0]?.durationMillis,
+      data?.playInfo?.streams?.[0]?.duration
+    ];
+    for (const value of candidates) {
+      const durationMs = Number(value);
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        return Math.floor(durationMs);
+      }
+    }
+    return 0;
+  }
+
+  async fetchDurationByCast(videoId, resourceId, resourceType) {
+    try {
+      const url = `${this.buildApiUrl("/rest/app/play/playInfo/cast")}&videoId=${encodeURIComponent(videoId)}&resourceId=${encodeURIComponent(resourceId)}&resourceType=${resourceType}&expiredSeconds=0`;
+      const response = await this.requestGet(url, {
+        headers: {
+          "User-Agent": this.getCommonHeaders()["User-Agent"],
+          "Accept": "application/json, text/plain, */*"
+        }
+      });
+
+      if (!response || !response.data) {
+        return { durationMs: 0, resultCode: -1 };
+      }
+
+      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+      const resultCode = Number(data.result);
+      if (resultCode !== 0) {
+        return { durationMs: 0, resultCode };
+      }
+
+      return {
+        durationMs: this.extractDurationFromCastData(data),
+        resultCode: 0
+      };
+    } catch (error) {
+      return { durationMs: 0, resultCode: -1, error };
+    }
   }
 
   getCommentUniqueKey(comment) {
@@ -407,37 +483,50 @@ export default class AcfunSource extends BaseSource {
   async getVideoDuration(videoId, bangumiId) {
     const safeVideoId = String(videoId || "");
     const safeBangumiId = String(bangumiId || "");
-    if (!safeVideoId || !safeBangumiId) return 0;
+    if (!safeVideoId) return 0;
 
-    const cacheKey = `${safeBangumiId}:${safeVideoId}`;
-    if (this.durationCache.has(cacheKey)) {
-      return this.durationCache.get(cacheKey) || 0;
+    const cachedDuration = this.readDurationFromCache(safeVideoId, safeBangumiId);
+    if (cachedDuration > 0) {
+      return cachedDuration;
     }
 
-    try {
-      const url = `${this.buildApiUrl("/rest/app/play/playInfo/cast")}&videoId=${encodeURIComponent(safeVideoId)}&resourceId=${encodeURIComponent(safeBangumiId)}&resourceType=1&expiredSeconds=0`;
-      const response = await this.requestGet(url, {
-        headers: {
-          "User-Agent": this.getCommonHeaders()["User-Agent"],
-          "Accept": "application/json, text/plain, */*"
-        }
-      });
+    const candidates = [];
+    if (safeBangumiId) {
+      candidates.push({ resourceId: safeBangumiId, resourceType: 1 });
+    }
+    candidates.push({ resourceId: safeVideoId, resourceType: 9 });
 
-      if (!response || !response.data) return 0;
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (Number(data.result) !== 0) return 0;
-
-      const durationMs = Number(data.playInfo?.durationMillis || data.playInfo?.duration || 0);
+    for (const candidate of candidates) {
+      const castResult = await this.fetchDurationByCast(safeVideoId, candidate.resourceId, candidate.resourceType);
+      const durationMs = Number(castResult.durationMs || 0);
       if (Number.isFinite(durationMs) && durationMs > 0) {
-        const safeDuration = Math.floor(durationMs);
-        this.durationCache.set(cacheKey, safeDuration);
-        return safeDuration;
+        this.cacheDuration(safeVideoId, safeBangumiId, durationMs);
+        return Math.floor(durationMs);
       }
-      return 0;
-    } catch (error) {
-      log("warn", `[AcFun] 获取时长失败: ${error.message}`);
-      return 0;
     }
+
+    return 0;
+  }
+
+  async findNextProbeHit(videoId, startMs) {
+    const safeStartMs = Math.max(0, Math.floor(Number(startMs) || 0));
+    const maxStartMs = Math.max(0, this.maxProbeDurationMs - this.sparseProbeWindowMs);
+
+    for (let probeStart = safeStartMs; probeStart <= maxStartMs; probeStart += this.sparseProbeStepMs) {
+      const probeEnd = Math.min(probeStart + this.sparseProbeWindowMs, this.maxProbeDurationMs);
+      const comments = await this.pollDanmuWindow(videoId, probeStart, probeEnd);
+      if (comments.length > 0) {
+        return probeStart;
+      }
+    }
+    return -1;
+  }
+
+  logProbeModeOnce(videoId) {
+    const key = String(videoId || "");
+    if (!key || this.probeNoticeCache.has(key)) return;
+    this.probeNoticeCache.add(key);
+    log("info", `[AcFun] 上游未返回时长，改用弹幕探测: videoId=${key}`);
   }
 
   async handleAnimes(sourceAnimes, queryTitle, curAnimes) {
@@ -566,8 +655,14 @@ export default class AcfunSource extends BaseSource {
         });
       }
 
-      // 至少拉取 1 分钟后才允许提前停止
-      if (start >= 60000 && emptyStreak >= this.emptyProbeThreshold) {
+      // 长空窗前先做稀疏前探，避免跨越长静默段导致漏弹幕
+      if (start >= this.minProbeBreakMs && emptyStreak >= this.emptyProbeThreshold) {
+        const nextProbeStart = await this.findNextProbeHit(videoId, end);
+        if (nextProbeStart > start) {
+          start = nextProbeStart;
+          emptyStreak = 0;
+          continue;
+        }
         break;
       }
       start = end;
@@ -584,7 +679,7 @@ export default class AcfunSource extends BaseSource {
     }
 
     let durationMs = parsedDurationMs;
-    if (durationMs <= 0 && bangumiId) {
+    if (durationMs <= 0) {
       durationMs = await this.getVideoDuration(videoId, bangumiId);
     }
 
@@ -594,7 +689,7 @@ export default class AcfunSource extends BaseSource {
       const segments = this.buildSegmentList(videoId, durationMs);
       comments = await this.fetchBySegmentList(segments);
     } else {
-      log("warn", `[AcFun] 未提供时长，进入探测拉取模式: videoId=${videoId}`);
+      this.logProbeModeOnce(videoId);
       comments = await this.fetchByProbe(videoId);
     }
 
@@ -610,7 +705,7 @@ export default class AcfunSource extends BaseSource {
   async getEpisodeDanmuSegments(id) {
     const { videoId, durationMs: parsedDurationMs, bangumiId } = this.parseEpisodeRef(id);
     let durationMs = parsedDurationMs;
-    if (durationMs <= 0 && bangumiId) {
+    if (durationMs <= 0) {
       durationMs = await this.getVideoDuration(videoId, bangumiId);
     }
 
