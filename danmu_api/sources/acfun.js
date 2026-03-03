@@ -17,7 +17,10 @@ const ACFUN_APP_QUERY = 'market=xiaomi&product=ACFUN_APP&sys_version=16&app_vers
 export default class AcfunSource extends BaseSource {
   constructor() {
     super();
-    this.segmentDurationMs = 10000; // 10 秒一个窗口
+    this.segmentDurationMs = 30000; // AcFun 接口单次有效窗口约 30 秒
+    this.minSegmentDurationMs = 10000; // 高密度场景拆分到 10 秒兜底
+    this.segmentSplitThreshold = 243; // 接近接口单次返回上限时触发细分
+    this.maxSegmentSplitDepth = 2;
     this.maxConcurrent = 20;
     this.maxProbeDurationMs = 3 * 60 * 60 * 1000; // 未知时长时最多探测 3 小时
     this.emptyProbeThreshold = 6; // 连续空窗口阈值
@@ -143,6 +146,135 @@ export default class AcfunSource extends BaseSource {
       segments.push(this.buildDanmuSegment(videoId, start, end));
     }
     return segments;
+  }
+
+  getCommentUniqueKey(comment) {
+    const idKey = String(comment?.danmakuId || comment?.id || "").trim();
+    return idKey ? ('id:' + idKey) : "";
+  }
+
+  normalizeAndSortComments(comments) {
+    return (comments || []).sort((a, b) => {
+      const pDiff = Number(a.position || 0) - Number(b.position || 0);
+      if (pDiff !== 0) return pDiff;
+      return Number(a.danmakuId || a.id || 0) - Number(b.danmakuId || b.id || 0);
+    });
+  }
+
+  parseSegmentRange(segment) {
+    const params = new URLSearchParams(segment?.data || "");
+    const videoId = String(params.get("resourceId") || "");
+
+    let startMs = Number(params.get("positionFromInclude"));
+    let endMs = Number(params.get("positionToExclude"));
+
+    if (!Number.isFinite(startMs)) {
+      startMs = Number(segment?.segment_start || 0) * 1000;
+    }
+    if (!Number.isFinite(endMs)) {
+      endMs = Number(segment?.segment_end || 0) * 1000;
+    }
+
+    startMs = Math.max(0, Math.floor(startMs || 0));
+    endMs = Math.max(startMs + 1, Math.floor(endMs || startMs + 1));
+
+    return {
+      videoId,
+      startMs,
+      endMs,
+      rangeMs: endMs - startMs
+    };
+  }
+
+  shouldSplitSegment(rangeMs, commentCount, depth) {
+    if (depth >= this.maxSegmentSplitDepth) return false;
+    if (rangeMs <= this.minSegmentDurationMs) return false;
+    return Number(commentCount) >= this.segmentSplitThreshold;
+  }
+
+  buildSubSegments(videoId, startMs, endMs, stepMs = this.minSegmentDurationMs) {
+    const segments = [];
+    const safeStep = Math.max(1000, Math.floor(Number(stepMs) || this.minSegmentDurationMs));
+    for (let start = startMs; start < endMs; start += safeStep) {
+      const end = Math.min(start + safeStep, endMs);
+      segments.push(this.buildDanmuSegment(videoId, start, end));
+    }
+    return segments;
+  }
+
+  async requestSegmentPayload(segment) {
+    try {
+      const response = await this.requestPost(segment.url, segment.data || "", {
+        headers: this.getCommonHeaders(),
+        timeout: 12000,
+        retries: 1
+      });
+
+      if (!response || !response.data) {
+        return { comments: [], totalCount: 0 };
+      }
+
+      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+      if (Number(data.result) !== 0) {
+        return { comments: [], totalCount: Number(data?.totalCount || 0) };
+      }
+
+      return {
+        comments: Array.isArray(data.danmakus) ? data.danmakus : [],
+        totalCount: Number(data.totalCount || 0)
+      };
+    } catch (error) {
+      log("warn", '[AcFun] 拉取分段弹幕失败: ' + error.message);
+      return { comments: [], totalCount: 0 };
+    }
+  }
+
+  async fetchSegmentPayloadSmart(segment, depth = 0) {
+    const rawPayload = await this.requestSegmentPayload(segment);
+    const { videoId, startMs, endMs, rangeMs } = this.parseSegmentRange(segment);
+
+    if (!videoId || !this.shouldSplitSegment(rangeMs, rawPayload.comments.length, depth)) {
+      return rawPayload;
+    }
+
+    const subSegments = this.buildSubSegments(videoId, startMs, endMs, this.minSegmentDurationMs);
+    if (subSegments.length <= 1) {
+      return rawPayload;
+    }
+
+    const mergedComments = [];
+    const seenKeys = new Set();
+    let totalCount = Number(rawPayload.totalCount || 0);
+
+    const appendComments = (commentList) => {
+      (commentList || []).forEach(comment => {
+        const key = this.getCommentUniqueKey(comment);
+        if (key) {
+          if (seenKeys.has(key)) return;
+          seenKeys.add(key);
+        }
+        mergedComments.push(comment);
+      });
+    };
+
+    // 先写入父段结果，子段失败时也能保底返回
+    appendComments(rawPayload.comments);
+
+    const settled = await Promise.allSettled(
+      subSegments.map(subSegment => this.fetchSegmentPayloadSmart(subSegment, depth + 1))
+    );
+
+    for (const result of settled) {
+      if (result.status !== "fulfilled") continue;
+      const payload = result.value || {};
+      totalCount = Math.max(totalCount, Number(payload.totalCount || 0));
+      appendComments(Array.isArray(payload.comments) ? payload.comments : []);
+    }
+
+    return {
+      comments: mergedComments,
+      totalCount
+    };
   }
 
   mapMode(mode) {
@@ -373,35 +505,41 @@ export default class AcfunSource extends BaseSource {
   async fetchBySegmentList(segmentList) {
     const allComments = [];
     const seenIds = new Set();
+    let expectedTotalCount = 0;
 
     for (let i = 0; i < segmentList.length; i += this.maxConcurrent) {
       const batch = segmentList.slice(i, i + this.maxConcurrent);
-      const batchResults = await Promise.allSettled(batch.map(segment => this.getEpisodeSegmentDanmu(segment)));
+      const batchResults = await Promise.allSettled(
+        batch.map(segment => this.fetchSegmentPayloadSmart(segment))
+      );
 
       for (let j = 0; j < batchResults.length; j++) {
         const result = batchResults[j];
         if (result.status !== "fulfilled") {
-          log("warn", `[AcFun] 分段拉取失败: ${result.reason?.message || "unknown error"}`);
+          log("warn", '[AcFun] 分段拉取失败: ' + (result.reason?.message || 'unknown error'));
           continue;
         }
 
-        const comments = Array.isArray(result.value) ? result.value : [];
+        const payload = result.value || {};
+        expectedTotalCount = Math.max(expectedTotalCount, Number(payload.totalCount || 0));
+        const comments = Array.isArray(payload.comments) ? payload.comments : [];
         comments.forEach(comment => {
-          const key = String(comment?.danmakuId || comment?.id || "");
-          if (!key || seenIds.has(key)) return;
-          seenIds.add(key);
+          const key = this.getCommentUniqueKey(comment);
+          if (key) {
+            if (seenIds.has(key)) return;
+            seenIds.add(key);
+          }
           allComments.push(comment);
         });
       }
+
+      // 接口返回了全量数量且已收齐时提前结束，减少尾段空请求
+      if (expectedTotalCount > 0 && allComments.length >= expectedTotalCount) {
+        break;
+      }
     }
 
-    allComments.sort((a, b) => {
-      const pDiff = Number(a.position || 0) - Number(b.position || 0);
-      if (pDiff !== 0) return pDiff;
-      return Number(a.danmakuId || 0) - Number(b.danmakuId || 0);
-    });
-
-    return allComments;
+    return this.normalizeAndSortComments(allComments);
   }
 
   async fetchByProbe(videoId) {
@@ -419,9 +557,11 @@ export default class AcfunSource extends BaseSource {
       } else {
         emptyStreak = 0;
         comments.forEach(comment => {
-          const key = String(comment?.danmakuId || comment?.id || "");
-          if (!key || seenIds.has(key)) return;
-          seenIds.add(key);
+          const key = this.getCommentUniqueKey(comment);
+          if (key) {
+            if (seenIds.has(key)) return;
+            seenIds.add(key);
+          }
           allComments.push(comment);
         });
       }
@@ -433,13 +573,7 @@ export default class AcfunSource extends BaseSource {
       start = end;
     }
 
-    allComments.sort((a, b) => {
-      const pDiff = Number(a.position || 0) - Number(b.position || 0);
-      if (pDiff !== 0) return pDiff;
-      return Number(a.danmakuId || 0) - Number(b.danmakuId || 0);
-    });
-
-    return allComments;
+    return this.normalizeAndSortComments(allComments);
   }
 
   async getEpisodeDanmu(id) {
@@ -495,21 +629,8 @@ export default class AcfunSource extends BaseSource {
   }
 
   async getEpisodeSegmentDanmu(segment) {
-    try {
-      const response = await this.requestPost(segment.url, segment.data || "", {
-        headers: this.getCommonHeaders(),
-        timeout: 12000,
-        retries: 1
-      });
-
-      if (!response || !response.data) return [];
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (Number(data.result) !== 0) return [];
-      return Array.isArray(data.danmakus) ? data.danmakus : [];
-    } catch (error) {
-      log("warn", `[AcFun] 拉取分段弹幕失败: ${error.message}`);
-      return [];
-    }
+    const payload = await this.fetchSegmentPayloadSmart(segment);
+    return Array.isArray(payload.comments) ? payload.comments : [];
   }
 
   formatComments(comments) {

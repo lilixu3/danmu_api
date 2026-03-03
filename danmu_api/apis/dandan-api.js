@@ -2000,6 +2000,26 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
   }
 }
 
+function buildSegmentCommentCacheKey(segment = {}) {
+  const url = String(segment?.url || '');
+  const type = String(segment?.type || '');
+  const start = Number(segment?.segment_start);
+  const end = Number(segment?.segment_end);
+
+  let dataPart = '';
+  if (typeof segment?.data === 'string') {
+    dataPart = segment.data;
+  } else if (segment?.data !== undefined && segment?.data !== null) {
+    try {
+      dataPart = JSON.stringify(segment.data);
+    } catch {
+      dataPart = String(segment.data);
+    }
+  }
+
+  return ['segment', type, url, Number.isFinite(start) ? start : '', Number.isFinite(end) ? end : '', dataPart].join('|');
+}
+
 // Extracted function for GET /api/v2/segmentcomment
 export async function getSegmentComment(segment, queryFormat) {
   try {
@@ -2012,11 +2032,12 @@ export async function getSegmentComment(segment, queryFormat) {
     }
     url = validation.normalizedUrl;
     segment.url = url;
+    const segmentCacheKey = buildSegmentCommentCacheKey(segment);
 
     log("debug", `Processing segment comment request for URL: ${url}`);
 
     // 检查弹幕缓存
-    const cachedComments = getCommentCache(url);
+    const cachedComments = getCommentCache(segmentCacheKey);
     if (cachedComments !== null) {
       const responseData = {
         errorCode: 0,
@@ -2076,7 +2097,7 @@ export async function getSegmentComment(segment, queryFormat) {
 
     // 缓存弹幕结果
     if (danmus.length > 0) {
-      setCommentCache(url, danmus);
+      setCommentCache(segmentCacheKey, danmus);
     }
 
     const responseData = {
