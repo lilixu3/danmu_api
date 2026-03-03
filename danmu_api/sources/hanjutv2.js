@@ -17,7 +17,6 @@ export default class Hanjutv2Source extends BaseSource {
     super();
     this.liteHost = "https://api.xiawen.tv";
     this.sourceKey = "hanjutv2";
-    this.episodeDanmuCache = new Map();
   }
 
   getSourceTimeout() {
@@ -31,154 +30,6 @@ export default class Hanjutv2Source extends BaseSource {
 
   getDanmuMaxAxis() {
     return 100000000;
-  }
-
-  getEpisodeDanmuCacheTtlMs() {
-    return 120000;
-  }
-
-  getEpisodeDanmuCacheMaxEntries() {
-    return 8;
-  }
-
-  getDanmuTailTrimConfig() {
-    return {
-      minSamples: 1000,
-      triggerGapMs: 20 * 60 * 1000,
-      keepTailBufferMs: 5 * 60 * 1000,
-      maxTailRatio: 0.02,
-    };
-  }
-
-  getDanmuMaxTimeMs(comments = []) {
-    let maxTimeMs = 0;
-    for (const item of comments) {
-      const timeMs = Number(item?.t);
-      if (Number.isFinite(timeMs) && timeMs > maxTimeMs) {
-        maxTimeMs = timeMs;
-      }
-    }
-    return maxTimeMs;
-  }
-
-  getCachedEpisodeDanmu(pid) {
-    const key = String(pid || "").trim();
-    if (!key) return null;
-    const cached = this.episodeDanmuCache.get(key);
-    if (!cached) return null;
-    if (!Number.isFinite(cached.expiresAt) || cached.expiresAt <= Date.now()) {
-      this.episodeDanmuCache.delete(key);
-      return null;
-    }
-    return cached;
-  }
-
-  setCachedEpisodeDanmu(pid, danmus = [], maxTimeMs = 0) {
-    const key = String(pid || "").trim();
-    if (!key) return;
-
-    const ttlMs = Number(this.getEpisodeDanmuCacheTtlMs());
-    if (!Number.isFinite(ttlMs) || ttlMs <= 0) return;
-
-    const list = Array.isArray(danmus) ? danmus : [];
-    const safeMaxTimeMs = Number.isFinite(maxTimeMs) && maxTimeMs > 0
-      ? maxTimeMs
-      : this.getDanmuMaxTimeMs(list);
-
-    this.episodeDanmuCache.delete(key);
-    this.episodeDanmuCache.set(key, {
-      danmus: list,
-      maxTimeMs: safeMaxTimeMs,
-      expiresAt: Date.now() + ttlMs,
-    });
-
-    const maxEntries = Number(this.getEpisodeDanmuCacheMaxEntries());
-    if (!Number.isFinite(maxEntries) || maxEntries <= 0) return;
-    while (this.episodeDanmuCache.size > maxEntries) {
-      const oldestKey = this.episodeDanmuCache.keys().next().value;
-      if (oldestKey === undefined) break;
-      this.episodeDanmuCache.delete(oldestKey);
-    }
-  }
-
-  trimDanmuTailOutliers(comments = []) {
-    const list = Array.isArray(comments) ? comments : [];
-    if (list.length === 0) {
-      return { comments: [], maxTimeMs: 0, trimmedCount: 0, cutoffMs: null };
-    }
-
-    const sortedTimes = [];
-    for (const item of list) {
-      const timeMs = Number(item?.t);
-      if (Number.isFinite(timeMs) && timeMs >= 0) {
-        sortedTimes.push(timeMs);
-      }
-    }
-    if (sortedTimes.length === 0) {
-      return { comments: list, maxTimeMs: 0, trimmedCount: 0, cutoffMs: null };
-    }
-    sortedTimes.sort((a, b) => a - b);
-
-    const maxTimeMs = sortedTimes[sortedTimes.length - 1];
-    const config = this.getDanmuTailTrimConfig();
-    const minSamples = Number(config?.minSamples);
-    const triggerGapMs = Number(config?.triggerGapMs);
-    const keepTailBufferMs = Number(config?.keepTailBufferMs);
-    const maxTailRatio = Number(config?.maxTailRatio);
-
-    if (!Number.isFinite(minSamples) || minSamples <= 0 || sortedTimes.length < minSamples) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-    if (!Number.isFinite(triggerGapMs) || triggerGapMs <= 0) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-    if (!Number.isFinite(keepTailBufferMs) || keepTailBufferMs < 0) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-
-    const p995Index = Math.min(sortedTimes.length - 1, Math.floor(sortedTimes.length * 0.995));
-    const p995TimeMs = sortedTimes[p995Index];
-    if (!Number.isFinite(p995TimeMs) || (maxTimeMs - p995TimeMs) < triggerGapMs) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-
-    const cutoffMs = p995TimeMs + keepTailBufferMs;
-    if (!Number.isFinite(cutoffMs) || cutoffMs <= 0) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-
-    let tailCount = 0;
-    for (const item of list) {
-      const timeMs = Number(item?.t);
-      if (Number.isFinite(timeMs) && timeMs > cutoffMs) tailCount += 1;
-    }
-    const tailRatio = list.length > 0 ? (tailCount / list.length) : 0;
-    if (Number.isFinite(maxTailRatio) && maxTailRatio > 0 && tailRatio > maxTailRatio) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-
-    const trimmedComments = list.filter((item) => {
-      const timeMs = Number(item?.t);
-      return !Number.isFinite(timeMs) || timeMs <= cutoffMs;
-    });
-    const trimmedCount = list.length - trimmedComments.length;
-    if (trimmedCount <= 0) {
-      return { comments: list, maxTimeMs, trimmedCount: 0, cutoffMs: null };
-    }
-
-    return {
-      comments: trimmedComments,
-      maxTimeMs: this.getDanmuMaxTimeMs(trimmedComments),
-      trimmedCount,
-      cutoffMs,
-    };
-  }
-
-  buildSegmentEndSeconds(maxTimeMs) {
-    const safeMaxTimeMs = Number(maxTimeMs);
-    if (!Number.isFinite(safeMaxTimeMs) || safeMaxTimeMs <= 0) return 30000;
-    const safeEnd = Math.ceil(safeMaxTimeMs / 1000) + 60;
-    return Math.max(30, safeEnd);
   }
 
   normalizeChain() {
@@ -519,9 +370,6 @@ export default class Hanjutv2Source extends BaseSource {
   }
 
   async getEpisodeDanmuByLite(id) {
-    const cacheHit = this.getCachedEpisodeDanmu(id);
-    if (cacheHit) return cacheHit.danmus;
-
     let allDanmus = [];
     let fromAxis = 0;
     let prevId = 0;
@@ -573,19 +421,7 @@ export default class Hanjutv2Source extends BaseSource {
       if (pageCount >= maxPages) {
         log("warn", "[Hanjutv2] xiawen 分页次数达到上限，提前停止: pid=" + id + ", pageCount=" + pageCount);
       }
-
-      const trimResult = this.trimDanmuTailOutliers(allDanmus);
-      if (trimResult.trimmedCount > 0) {
-        log("info", "[Hanjutv2] xiawen 弹幕时间轴裁剪: pid=" + id
-          + ", removed=" + trimResult.trimmedCount
-          + ", cutoffMs=" + Math.round(Number(trimResult.cutoffMs || 0))
-          + ", beforeMaxMs=" + this.getDanmuMaxTimeMs(allDanmus)
-          + ", afterMaxMs=" + trimResult.maxTimeMs);
-      }
-
-      const finalDanmus = trimResult.comments;
-      this.setCachedEpisodeDanmu(id, finalDanmus, trimResult.maxTimeMs);
-      return finalDanmus;
+      return allDanmus;
     } catch (error) {
       log("error", "fetchHanjutv2LiteEpisodeDanmu error:", {
         message: error.message,
@@ -605,30 +441,14 @@ export default class Hanjutv2Source extends BaseSource {
   async getEpisodeDanmuSegments(id) {
     log("debug", "获取韩剧TV极简版弹幕分段列表...", id);
 
-    const parsed = this.parsePlatformId(id);
-    const pid = parsed.id;
-    const segmentUrl = String(id || "").trim().startsWith("xw:") ? String(id).trim() : this.encodeEpisodeId(pid);
-
-    let maxTimeMs = 0;
-    if (pid) {
-      const cached = this.getCachedEpisodeDanmu(pid);
-      if (cached) {
-        maxTimeMs = Number(cached.maxTimeMs || 0);
-      } else {
-        const danmus = await this.getEpisodeDanmuByLite(pid);
-        maxTimeMs = this.getDanmuMaxTimeMs(danmus);
-      }
-    }
-    const segmentEnd = this.buildSegmentEndSeconds(maxTimeMs);
-
     return new SegmentListResponse({
       type: this.sourceKey,
       segmentList: [
         {
           type: this.sourceKey,
           segment_start: 0,
-          segment_end: segmentEnd,
-          url: segmentUrl || id,
+          segment_end: 30000,
+          url: id,
         },
       ],
     });
