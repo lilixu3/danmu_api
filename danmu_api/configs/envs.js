@@ -10,9 +10,9 @@ export class Envs {
   static accessedEnvVars = new Map();
 
   static VOD_ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'sohu', 'leshi', 'xigua', 'maiduidui']; // vod允许的播放平台
-  static ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko', 'custom']; // 全部源允许的播放平台
-  static ALLOWED_SOURCES = ['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko', 'custom']; // 允许的源
-  static MERGE_ALLOWED_SOURCES = ['tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko']; // 允许的源合并
+  static ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'acfun', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko', 'custom']; // 全部源允许的播放平台
+  static ALLOWED_SOURCES = ['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'acfun', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko', 'custom']; // 允许的源
+  static MERGE_ALLOWED_SOURCES = ['tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'acfun', 'renren', 'hanjutv', 'hanjutv2', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'animeko']; // 允许的源合并
   static TIMELINE_OFFSET_ALL = 'all';
   static TIMELINE_OFFSET_ALLOWED_PLATFORMS = Envs.ALLOWED_PLATFORMS;
 
