@@ -1,19 +1,19 @@
 import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, invSubBytes, subWord, keyExpansion, invShiftRows } from "./codec-util.js";
 
-export const HANJUTV_VERSION = "6.8";
-export const HANJUTV_VC = "a_8260";
-export const HANJUTV_UA = "HanjuTV/6.8 (23127PN0CC; Android 16; Scale/2.00)";
+// 移动端参数
+const HANJUTV_VERSION = "6.5.3";
+const HANJUTV_VC = "a_7980";
+const HANJUTV_UA = "HanjuTV/6.5.3 (Pixel 2 XL; Android 11; Scale/2.00)";
 const HANJUTV_UK_KEY = "f349wghhe784tqwh";
 const HANJUTV_UK_IV = "d3w8hf94fidk38lk";
 const HANJUTV_RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
-export const HANJUTV_LITE_VERSION = "a_22570";
-export const HANJUTV_LITE_VERSION_NAME = "1.7.2";
-export const HANJUTV_LITE_CHANNEL = "xiaomi";
-export const HANJUTV_LITE_APP_TYPE = "ztv";
-export const HANJUTV_LITE_UA = "ZTV/1.7.2 (23127PN0CC; Android 16; Scale/2.00)";
-export const HANJUTV_LITE_SAID = "fb3597b87601d5a7";
 const UID_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const HEX_CHARSET = "0123456789abcdef";
+
+// TV版本参数
+const UK_KEY = "f349wghhe784tqwh";
+const UK_IV = "d3w8hf94fidk38lk";
+const RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
+const SAID = "fb3597b87601d5a7";
 
 function utf8Encode(text) {
   if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(text);
@@ -38,16 +38,6 @@ function pkcs7Pad(bytes, blockSize = 16) {
   result.set(bytes, 0);
   result.fill(padSize, bytes.length);
   return result;
-}
-
-function pkcs7Unpad(bytes) {
-  if (bytes.length === 0) return bytes;
-  const padSize = bytes[bytes.length - 1];
-  if (padSize > 16 || padSize > bytes.length || padSize === 0) return bytes;
-  for (let i = bytes.length - padSize; i < bytes.length; i++) {
-    if (bytes[i] !== padSize) return bytes;
-  }
-  return bytes.slice(0, bytes.length - padSize);
 }
 
 function stripControlChars(text) {
@@ -194,8 +184,7 @@ async function aesCbcDecryptBase64NoPadding(cipherBase64, key, iv) {
   const keyBytes = utf8Encode(key);
   const ivBytes = utf8Encode(iv);
   const cipherBytes = base64ToBytes(cipherBase64);
-  const plainBytesWithPad = aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes);
-  const plainBytes = pkcs7Unpad(plainBytesWithPad);
+  const plainBytes = aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes);
   return utf8Decode(plainBytes);
 }
 
@@ -206,14 +195,6 @@ function randomInt(max) {
     return bytes[0] % max;
   }
   return Math.floor(Math.random() * max);
-}
-
-function randomChars(length, charset) {
-  let output = "";
-  for (let i = 0; i < length; i++) {
-    output += charset[randomInt(charset.length)];
-  }
-  return output;
 }
 
 function buildSearchSignPayload(uid, timestamp) {
@@ -251,44 +232,20 @@ function buildSearchSignPayload(uid, timestamp) {
   });
 }
 
-function buildLiteRpPayload(uid, timestamp, said, oa) {
-  return JSON.stringify({
-    emu: 0,
-    ou: 0,
-    it: timestamp,
-    iit: timestamp,
-    bs: 0,
-    uid,
-    isp: "",
-    pc: 0,
-    tm: 50,
-    d8m: "0,0,0,0,0,0,14,7",
-    md: "23127PN0CC",
-    dn: "",
-    osv: "16",
-    br: 50,
-    rpc: 0,
-    scc: 1,
-    plc: 1,
-    toc: 5,
-    tsc: 7,
-    ts: timestamp,
-    nw: 2,
-    px: "0",
-    ai: said,
-    oa,
-    dpc: 0,
-    dsc: 0,
-    qpc: 0,
-    apad: 0,
-  });
-}
-
 export function createHanjutvUid(length = 20) {
-  return randomChars(length, UID_CHARSET);
+  let uid = "";
+  for (let i = 0; i < length; i++) uid += UID_CHARSET[randomInt(UID_CHARSET.length)];
+  return uid;
 }
 
-export async function createHanjutvSearchHeaders(uid, timestamp = Date.now(), options = {}) {
+function randomFrom(chars, len) {
+  let s = "";
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+// 移动端headers
+export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
   const ts = Number(timestamp);
   const uidMd5 = md5(uid);
   const signPayload = buildSearchSignPayload(uid, ts);
@@ -296,56 +253,60 @@ export async function createHanjutvSearchHeaders(uid, timestamp = Date.now(), op
   const uk = await aesCbcEncryptToBase64(uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
 
   return {
-    app: options.app || "hj",
-    ch: options.ch || "qq",
+    app: "hj",
+    ch: "qq",
     uk,
     "auth-uid": "",
-    vn: options.version || HANJUTV_VERSION,
+    vn: HANJUTV_VERSION,
     sign,
-    "User-Agent": options.userAgent || HANJUTV_UA,
-    vc: options.vc || HANJUTV_VC,
+    "User-Agent": HANJUTV_UA,
+    vc: HANJUTV_VC,
     "auth-token": "",
     "Accept-Encoding": "gzip",
     Connection: "Keep-Alive",
   };
 }
 
-export async function createHanjutvLiteHeaders(uid, options = {}) {
-  const ts = Number(options.timestamp ?? Date.now());
-  const said = String(options.said || HANJUTV_LITE_SAID);
-  const oa = String(options.oa || randomChars(16, HEX_CHARSET));
-  const uidMd5 = md5(uid);
-  const rpPayload = buildLiteRpPayload(uid, ts, said, oa);
-  const di = await aesCbcEncryptToBase64(uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
-  const rp = await aesCbcEncryptToBase64(rpPayload, uidMd5.slice(0, 16), uidMd5.slice(16, 32));
+// TV端headers
+export async function buildLiteHeaders(sessionInitTs = Date.now()) {
+  const uid = randomFrom("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 20);
+  const oa = randomFrom("0123456789abcdef", 16);
 
-  return {
-    version: options.version || HANJUTV_LITE_VERSION,
-    "version-name": options.versionName || HANJUTV_LITE_VERSION_NAME,
-    channel: options.channel || HANJUTV_LITE_CHANNEL,
-    "app-type": options.appType || HANJUTV_LITE_APP_TYPE,
-    "User-Agent": options.userAgent || HANJUTV_LITE_UA,
-    said,
-    di,
-    token: "",
-    uid: "",
-    rp,
-    "Accept-Encoding": "gzip",
-    Connection: "Keep-Alive",
+  return async function makeHeaders(reqTs = Date.now()) {
+    const uidMd5 = md5(uid);
+    const rpPayload = JSON.stringify({
+      emu: 0, ou: 0, it: sessionInitTs, iit: sessionInitTs, bs: 0, uid,
+      isp: "", pc: 0, tm: 50, d8m: "0,0,0,0,0,0,14,7", md: "23127PN0CC",
+      dn: "", osv: "16", br: 50, rpc: 0, scc: 1, plc: 1, toc: 5, tsc: 7,
+      ts: reqTs, nw: 2, px: "0", ai: SAID, oa, dpc: 0, dsc: 0, qpc: 0, apad: 0,
+    });
+
+    const di = await aesCbcEncryptToBase64(uid, UK_KEY, UK_IV);
+    const rp = await aesCbcEncryptToBase64(rpPayload, uidMd5.slice(0, 16), uidMd5.slice(16, 32));
+
+    return {
+      uid,
+      headers: {
+        version: "a_22570",
+        "version-name": "1.7.2",
+        channel: "xiaomi",
+        "app-type": "ztv",
+        "User-Agent": "ZTV/1.7.2 (23127PN0CC; Android 16; Scale/2.00)",
+        said: SAID,
+        di,
+        token: "",
+        uid: "",
+        rp,
+        "Accept-Encoding": "gzip",
+        Connection: "Keep-Alive",
+      },
+    };
   };
 }
 
 export async function decodeHanjutvEncryptedPayload(payload, uid = "") {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   if (typeof payload.data !== "string" || payload.data.length === 0) return payload;
-
-  const rawText = payload.data.trim();
-  if ((rawText.startsWith("{") && rawText.endsWith("}")) || (rawText.startsWith("[") && rawText.endsWith("]"))) {
-    try {
-      return JSON.parse(rawText);
-    } catch {
-    }
-  }
 
   const ts = payload.ts ?? "";
   let key = typeof payload.key === "string" && payload.key ? payload.key : "";
