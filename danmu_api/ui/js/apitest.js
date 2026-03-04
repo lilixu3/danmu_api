@@ -1338,8 +1338,13 @@ function displayDanmuData(title, comments) {
 function calculateDanmuStats(comments) {
     const totalCount = comments.length;
     
-    // 找出最大时间
-    const maxTime = Math.max(...comments.map(c => c.p.split(',')[0]), 0);
+    // 用 P99 代替最大值，避免极少数异常时间戳拉高整体时长
+    const validTimes = comments
+        .map(c => parseFloat((c.p || '0').split(',')[0]))
+        .filter(t => Number.isFinite(t) && t >= 0)
+        .sort((a, b) => a - b);
+    const p99Index = validTimes.length > 0 ? Math.floor((validTimes.length - 1) * 0.99) : 0;
+    const maxTime = validTimes.length > 0 ? validTimes[p99Index] : 0;
     const duration = formatTime(maxTime);
     
     // 计算密度（每分钟）
@@ -1362,7 +1367,7 @@ function calculateDanmuStats(comments) {
    找出高能时刻
    ======================================== */
 function findPeakTime(comments, maxTime) {
-    if (comments.length === 0) return '--:--';
+    if (comments.length === 0 || !Number.isFinite(maxTime) || maxTime <= 0) return '--:--';
     
     // 将时间轴分成30秒的区间
     const interval = 30;
