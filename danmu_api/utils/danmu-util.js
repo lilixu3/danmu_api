@@ -308,11 +308,19 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
 
     time = timeNum.toFixed(2);
 
+    // 优先使用弹幕自带的 _sourceLabel（应对合并工具），其次是外部传入的宏观 platform
+    let currentPlatform = item._sourceLabel || platform;
+
+    // 如果存在实时拉取的副源标签，安全追加
+    if (item.realTimeSource && !currentPlatform.includes(item.realTimeSource)) {
+      currentPlatform = `＆`;
+    }
+
     attributes = [
       time,
       mode,
       color,
-      `[${platform}]`
+      `[]`
     ].join(",");
 
     danmus.push({ p: attributes, m, cid: cidCounter++, like: item?.like });

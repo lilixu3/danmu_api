@@ -199,6 +199,7 @@ node ./danmu_api/server.js
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis（可选，用于持久化与稳定性） |
 | `LOCAL_REDIS_URL` | 本地 Redis（可选，适用于 Docker/本地部署） |
 | `SOURCE_ORDER` | 弹幕源优先级顺序（按需调整） |
+| `REAL_TIME_PULL_DANDAN` | 弹弹第三方弹幕源实时拉取开关（默认 `false`），开启后会在 dandan 源请求时实时拉取其绑定的第三方弹幕源以覆盖旧缓存。 |
 | `ANIME_TITLE_FILTER` | 剧名过滤正则（需启用 `ENABLE_ANIME_EPISODE_FILTER`，为空则不过滤） |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时将繁体剧名自动转换为简体（默认 `false`） |
 | `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` | AI 自动匹配基础配置（可选） |
