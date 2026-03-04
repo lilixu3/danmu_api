@@ -1117,6 +1117,7 @@ function renderValueInput(item) {
     const container = document.getElementById('value-input-container');
     const type = item ? item.type : document.getElementById('value-type').value;
     const value = item ? item.value : '';
+    const currentKey = item ? item.key : (document.getElementById('env-key') ? document.getElementById('env-key').value : '');
 
     if (type === 'boolean') {
         let checked;
