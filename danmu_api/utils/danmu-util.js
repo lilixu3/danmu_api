@@ -313,14 +313,14 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
 
     // 如果存在实时拉取的副源标签，安全追加
     if (item.realTimeSource && !currentPlatform.includes(item.realTimeSource)) {
-      currentPlatform = `＆`;
+      currentPlatform = `${currentPlatform}＆${item.realTimeSource}`;
     }
 
     attributes = [
       time,
       mode,
       color,
-      `[]`
+      `[${currentPlatform}]`
     ].join(",");
 
     danmus.push({ p: attributes, m, cid: cidCounter++, like: item?.like });
