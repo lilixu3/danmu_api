@@ -21,15 +21,18 @@ export const statusCssContent = /* css */ `/* ==================================
 /* ========================================
    模式徽章样式
    ======================================== */
-.mode-preview .stat-icon-wrapper {
+.mode-preview .stat-icon-wrapper,
+.stat-icon-wrapper.mode-preview {
     background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
 }
 
-.mode-user .stat-icon-wrapper {
+.mode-user .stat-icon-wrapper,
+.stat-icon-wrapper.mode-user {
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }
 
-.mode-admin .stat-icon-wrapper {
+.mode-admin .stat-icon-wrapper,
+.stat-icon-wrapper.mode-admin {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 }
 `;

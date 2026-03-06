@@ -23,8 +23,8 @@ export const tokensCssContent = /* css */ `
     --primary-700: #1d4ed8;
     --primary-800: #1e40af;
     --primary-900: #1e3a8a;
-    --primary-light: #a78bfa; /* 更柔和的紫蓝色 */
-    --primary-glow: rgba(99, 102, 241, 0.4); /* 发光效果 */
+    --primary-light: #818cf8; /* 更柔和的浅靛蓝 */
+    --primary-glow: rgba(79, 70, 229, 0.18); /* 发光效果 */
 
     /* Success 绿色系 */
     --success-50: #ecfdf5;
@@ -126,23 +126,24 @@ export const tokensCssContent = /* css */ `
        语义 Token（主题 + 交互）
        ---------------------------------------- */
     /* 浅色模式颜色 - 引用色阶系统 */
-    --bg-primary: rgba(255, 255, 255, 0.95);
-    --bg-secondary: rgba(248, 250, 252, 0.9);
-    --bg-tertiary: rgba(241, 245, 249, 0.85);
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
-    --text-tertiary: #94a3b8;
-    --border-color: rgba(226, 232, 240, 0.8);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+    --bg-primary: rgba(255, 255, 255, 0.96);
+    --bg-secondary: rgba(246, 247, 250, 0.92);
+    --bg-tertiary: rgba(240, 243, 247, 0.9);
+    --text-primary: #1f2937;
+    --text-secondary: #5f6f82;
+    --text-tertiary: #8a97aa;
+    --border-color: rgba(203, 213, 225, 0.72);
+    --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.035);
+    --shadow-md: 0 12px 24px rgba(15, 23, 42, 0.055);
+    --shadow-lg: 0 20px 44px rgba(15, 23, 42, 0.09);
     --blur-sm: blur(8px);
     --blur-md: blur(12px);
     --blur-lg: blur(16px);
     
     /* 功能色 - 引用色阶 */
-    --primary-color: var(--primary-500);
-    --primary-hover: var(--primary-600);
+    --primary-color: var(--indigo-600);
+    --primary-rgb: 79, 70, 229;
+    --primary-hover: var(--indigo-700);
     --success-color: var(--success-500);
     --success-hover: var(--success-600);
     --warning-color: var(--warning-500);
@@ -151,7 +152,7 @@ export const tokensCssContent = /* css */ `
     --danger-hover: var(--danger-600);
     
     /* 渐变色 */
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-primary: linear-gradient(180deg, #5c65ee 0%, #4f46e5 100%);
     --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
     --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
@@ -169,50 +170,44 @@ export const tokensCssContent = /* css */ `
 }
 
 [data-theme="dark"] {
-    /* 背景色 - 更深邃的黑色调，带有微妙的蓝色底色 */
-    --bg-primary: rgba(10, 15, 30, 0.97);
-    --bg-secondary: rgba(17, 24, 39, 0.92);
-    --bg-tertiary: rgba(31, 41, 55, 0.88);
-    
-    /* 文本色 - 更柔和的白色，减少眼睛疲劳 */
-    --text-primary: #e2e8f0;
-    --text-secondary: #a0aec0;
-    --text-tertiary: #718096;
-    
-    /* 边框色 - 带有微妙的发光效果 */
-    --border-color: rgba(99, 102, 241, 0.15);
-    
-    /* 阴影 - 更深邃，带有微妙的彩色光晕 */
-    --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(99, 102, 241, 0.1);
-    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(99, 102, 241, 0.15);
-    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.7), 0 4px 16px rgba(99, 102, 241, 0.2);
-    
-    /* 模糊效果增强 */
-    --blur-sm: blur(12px);
-    --blur-md: blur(16px);
-    --blur-lg: blur(24px);
-    
-    /* 功能色 - 更亮，更有活力 */
-    --primary-color: #818cf8;
-    --primary-hover: #a78bfa;
+    /* 深色模式 - 统一为深墨黑 + 石板灰 + 冷蓝强调 */
+    --bg-primary: rgba(11, 17, 29, 0.96);
+    --bg-secondary: rgba(15, 23, 38, 0.92);
+    --bg-tertiary: rgba(20, 30, 49, 0.88);
+
+    --text-primary: #e8eefc;
+    --text-secondary: #9aa8c7;
+    --text-tertiary: #6f7d98;
+
+    --border-color: rgba(108, 128, 166, 0.22);
+
+    --shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.22);
+    --shadow-md: 0 16px 36px rgba(2, 6, 23, 0.3);
+    --shadow-lg: 0 24px 56px rgba(2, 6, 23, 0.38);
+
+    --blur-sm: blur(10px);
+    --blur-md: blur(14px);
+    --blur-lg: blur(18px);
+
+    --primary-color: #8ba3ff;
+    --primary-hover: #a2b5ff;
     --success-color: #34d399;
-    --success-hover: #6ee7b7;
-    --warning-color: #fbbf24;
-    --warning-hover: #fcd34d;
-    --danger-color: #f87171;
-    --danger-hover: #fca5a5;
-    
-    /* 渐变色 - 更鲜明的对比 */
-    --gradient-primary: linear-gradient(135deg, #818cf8 0%, #a78bfa 50%, #c084fc 100%);
-    --gradient-success: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-    --gradient-warning: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-    --gradient-danger: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
-    
-    /* 特殊效果 */
-    --glow-primary: 0 0 20px rgba(129, 140, 248, 0.3);
-    --glow-success: 0 0 20px rgba(52, 211, 153, 0.3);
-    --glow-warning: 0 0 20px rgba(251, 191, 36, 0.3);
-    --glow-danger: 0 0 20px rgba(248, 113, 113, 0.3);
+    --success-hover: #5eead4;
+    --warning-color: #f6c35b;
+    --warning-hover: #ffd487;
+    --danger-color: #fb7185;
+    --danger-hover: #fda4af;
+
+    --primary-rgb: 139, 163, 255;
+    --gradient-primary: linear-gradient(180deg, #90a7ff 0%, #7288f6 100%);
+    --gradient-success: linear-gradient(180deg, #34d399 0%, #10b981 100%);
+    --gradient-warning: linear-gradient(180deg, #f6c35b 0%, #f59e0b 100%);
+    --gradient-danger: linear-gradient(180deg, #fb7185 0%, #ef4444 100%);
+
+    --glow-primary: 0 0 0 rgba(0, 0, 0, 0);
+    --glow-success: 0 0 0 rgba(0, 0, 0, 0);
+    --glow-warning: 0 0 0 rgba(0, 0, 0, 0);
+    --glow-danger: 0 0 0 rgba(0, 0, 0, 0);
 }
 
 `;

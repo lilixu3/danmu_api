@@ -415,4 +415,127 @@ body {
     font-size: 0.875rem;
     color: var(--text-secondary);
 }
+
+
+/* ========================================
+   2026 工作区骨架重构
+   ======================================== */
+:root {
+    --shell-width: 320px;
+    --shell-gap: 24px;
+    --content-max-width: 1680px;
+    --surface-border-strong: rgba(148, 163, 184, 0.22);
+    --surface-shadow-soft: 0 18px 48px rgba(15, 23, 42, 0.08);
+    --surface-shadow-strong: 0 24px 60px rgba(15, 23, 42, 0.14);
+}
+
+html {
+    background: linear-gradient(180deg, #f7f8fb 0%, #f4f6f8 48%, #f7f8fb 100%);
+}
+
+body {
+    font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    min-height: 100vh;
+}
+
+h1,
+.command-title,
+.section-title,
+.preview-hero-title,
+.side-card-title,
+.logo-text {
+    font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+    letter-spacing: 0.02em;
+}
+
+.app-container {
+    width: min(var(--content-max-width), calc(100% - 32px));
+    margin: 0 auto;
+    padding: 20px 0 32px;
+    gap: var(--shell-gap);
+    align-items: flex-start;
+    overflow: visible;
+}
+
+.main-content {
+    margin-left: 0;
+    min-width: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.content-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+
+.footer {
+    width: min(var(--content-max-width), calc(100% - 32px));
+    margin: 0 auto 24px;
+    padding: 2rem;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: var(--surface-shadow-soft);
+    backdrop-filter: blur(16px);
+}
+
+.footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.footer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.footer-link:hover {
+    transform: translateY(-2px);
+    border-color: rgba(79, 70, 229, 0.18);
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.footer-note {
+    margin-top: 1rem;
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] html {
+    background:
+        radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 34%),
+        radial-gradient(circle at 85% 10%, rgba(192, 132, 252, 0.16), transparent 28%),
+        linear-gradient(180deg, #060816 0%, #0b1020 52%, #050814 100%);
+}
+
+[data-theme="dark"] body {
+    background: transparent;
+}
+
+[data-theme="dark"] .footer {
+    background: rgba(8, 12, 24, 0.78);
+    border-color: rgba(129, 140, 248, 0.16);
+    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .footer-link {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(129, 140, 248, 0.18);
+    color: var(--text-primary);
+}
+
 `;

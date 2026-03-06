@@ -1,6 +1,5 @@
 // language=JavaScript
-export const previewJsContent = /* javascript */ `
-/* ========================================
+export const previewJsContent = /* javascript */ `/* ========================================
    渲染配置预览
    ======================================== */
 function renderPreview() {
@@ -12,49 +11,41 @@ function renderPreview() {
     
     fetch(buildApiUrl('/api/config'))
         .then(response => {
-             const contentType = response.headers.get("content-type");
-             if (contentType && contentType.indexOf("application/json") === -1) {
-                  // 返回文本以便后续处理（例如显示HTML错误的前几个字符）
-                  return response.text().then(text => {
-                      throw new Error('Expected JSON, got ' + contentType + '. Content: ' + text.substring(0, 50) + '...');
-                  });
-             }
-             if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.indexOf('application/json') === -1) {
+                // 返回文本以便后续处理（例如显示HTML错误的前几个字符）
+                return response.text().then(text => {
+                    throw new Error('Expected JSON, got ' + contentType + '. Content: ' + text.substring(0, 50) + '...');
+                });
+            }
+            if (!response.ok) {
                 throw new Error('HTTP error! status: ' + response.status);
-             }
-             return response.json();
+            }
+            return response.json();
         })
         .then(config => {
             // 成功加载，隐藏反代配置框
-            if(proxyConfigContainer) {
+            if (proxyConfigContainer) {
                 proxyConfigContainer.style.display = 'none';
             }
 
-            const categorizedVars = config.categorizedEnvVars || {};            
+            const categorizedVars = config.categorizedEnvVars || {};
             let html = '';
             
             // 按类别顺序排列
             const categoryOrder = ['api', 'source', 'match', 'danmu', 'cache', 'system'];
             const sortedCategories = categoryOrder.filter(cat => categorizedVars[cat] && categorizedVars[cat].length > 0);
             
-            // 更新统计信息（在这里，数据已经获取到了）
+            // 更新统计信息
             const totalConfigs = sortedCategories.reduce((sum, cat) => sum + categorizedVars[cat].length, 0);
-            const totalCategories = sortedCategories.length;
-            
-            // 计算已手动配置的数量（originalEnvVars中值不为空字符串的项）
             const originalEnvVars = config.originalEnvVars || {};
-            const manualConfigs = Object.values(originalEnvVars).filter(value => value !== '' && value !== null && value !== undefined).length;
+            const manualConfigs = Object.values(originalEnvVars).filter(hasConfigValue).length;
             
             const totalConfigsEl = document.getElementById('total-configs');
-            const totalCategoriesEl = document.getElementById('total-categories');
             const manualConfigsEl = document.getElementById('manual-configs');
             
             if (totalConfigsEl) {
                 animateNumber('total-configs', 0, totalConfigs, 800);
-            }
-            
-            if (totalCategoriesEl) {
-                animateNumber('total-categories', 0, totalCategories, 600);
             }
             
             if (manualConfigsEl) {
@@ -80,32 +71,22 @@ function renderPreview() {
                             </h3>
                         </div>
                         <div class="preview-items">
-                            \${items.map((item, itemIndex) => \`
-                                <div class="preview-item" style="animation: fadeInUp 0.3s ease-out \${(index * 0.1) + (itemIndex * 0.05)}s backwards;">
-                                    <div class="preview-item-header">
-                                        <strong class="preview-key">
-                                            <span class="key-icon">🔑</span>
-                                            \${escapeHtml(item.key)}
-                                        </strong>
-                                        <span class="preview-type-badge">\${getTypeBadge(item.type || 'text')}</span>
-                                    </div>
-                                    <div class="preview-value-container">
-                                        <code class="preview-value">\${escapeHtml(formatValue(item.value))}</code>
-                                        <button class="preview-copy-btn" onclick="copyPreviewValue('\${escapeHtml(String(item.value)).replace(/'/g, "\\\\'")}', this)" title="复制值">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    \${item.description ? \`
-                                        <div class="preview-desc">
-                                            <span class="desc-icon">💡</span>
-                                            \${escapeHtml(item.description)}
+                            \${items.map((item, itemIndex) => {
+                                const hasValue = hasConfigValue(item.value);
+                                const rawValue = hasValue ? String(item.value) : '未设置';
+                                return \`
+                                    <div class="preview-item \${hasValue ? 'preview-item-filled' : 'preview-item-empty'}" style="animation: fadeInUp 0.3s ease-out \${(index * 0.1) + (itemIndex * 0.05)}s backwards;">
+                                        <div class="preview-item-header">
+                                            <strong class="preview-key">\${escapeHtml(item.key)}</strong>
+                                            <span class="preview-type-badge">\${getTypeBadge(item.type || 'text')}</span>
                                         </div>
-                                    \` : ''}
-                                </div>
-                            \`).join('')}
+                                        <div class="preview-value-container">
+                                            <code class="preview-value" title="\${escapeHtml(rawValue)}">\${escapeHtml(formatValue(item.value))}</code>
+                                        </div>
+                                        <div class="preview-desc \${item.description ? '' : 'preview-desc-empty'}">\${item.description ? escapeHtml(item.description) : '暂无说明'}</div>
+                                    </div>
+                                \`;
+                            }).join('')}
                         </div>
                     </div>
                 \`;
@@ -129,11 +110,11 @@ function renderPreview() {
             console.error('Failed to load config for preview:', error);
             
             // 显示反代配置框
-            if(proxyConfigContainer) {
+            if (proxyConfigContainer) {
                 proxyConfigContainer.style.display = 'block';
                 // 如果有已保存的URL，填充它
                 const savedUrl = localStorage.getItem('logvar_api_base_url');
-                if(savedUrl) {
+                if (savedUrl) {
                     document.getElementById('custom-base-url').value = savedUrl;
                 }
             }
@@ -156,47 +137,19 @@ function renderPreview() {
 }
 
 /* ========================================
-   复制预览值
+   判断配置是否有值
    ======================================== */
-function copyPreviewValue(value, button) {
-    // 确保value是字符串
-    const textToCopy = String(value);
-    
-    navigator.clipboard.writeText(textToCopy)
-        .then(() => {
-            const originalHTML = button.innerHTML;
-            button.innerHTML = \`
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            \`;
-            button.style.background = 'var(--success-color)';
-            button.style.borderColor = 'var(--success-color)';
-            button.style.animation = 'pulse 0.4s ease-out';
-            
-            setTimeout(() => {
-                button.innerHTML = originalHTML;
-                button.style.background = '';
-                button.style.borderColor = '';
-                button.style.animation = '';
-            }, 1500);
-            
-            addLog('📋 已复制配置值到剪贴板', 'success');
-        })
-        .catch(err => {
-            console.error('复制失败:', err);
-            addLog('❌ 复制失败: ' + err.message, 'error');
-        });
+function hasConfigValue(value) {
+    return value !== '' && value !== null && value !== undefined;
 }
 
 /* ========================================
    格式化值显示
    ======================================== */
 function formatValue(value) {
-    // 确保value是字符串
-    const stringValue = String(value);
-    if (stringValue.length > 200) {
-        return stringValue.substring(0, 200) + '...';
+    const stringValue = hasConfigValue(value) ? String(value) : '未设置';
+    if (stringValue.length > 160) {
+        return stringValue.substring(0, 160) + '...';
     }
     return stringValue;
 }
@@ -238,14 +191,14 @@ function getCategoryName(category) {
    ======================================== */
 function getCategoryIcon(category) {
     const icons = {
-        api: '🔗',
-        source: '📜',
-        match: '🔍',
-        danmu: '🔣',
-        cache: '💾',
-        system: '⚙️'
+        api: 'API',
+        source: '源',
+        match: '匹',
+        danmu: '弹',
+        cache: '缓',
+        system: '系'
     };
-    return icons[category] || '📋';
+    return icons[category] || '配';
 }
 
 /* ========================================
@@ -253,14 +206,14 @@ function getCategoryIcon(category) {
    ======================================== */
 function getCategoryColor(category) {
     const colors = {
-        api: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        source: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-        match: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-        danmu: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-        cache: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-        system: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)'
+        api: '#6366f1',
+        source: '#ec4899',
+        match: '#0ea5e9',
+        danmu: '#10b981',
+        cache: '#f59e0b',
+        system: '#64748b'
     };
-    return colors[category] || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+    return colors[category] || '#6366f1';
 }
 
 /* ========================================
@@ -282,8 +235,6 @@ function escapeHtml(text) {
    ======================================== */
 function checkSystemStatus() {
     const statusEl = document.getElementById('system-status');
-    const statusIconWrapper = document.getElementById('status-icon-wrapper');
-    const statusCard = document.getElementById('system-status-card');
     
     if (!statusEl) return;
     
@@ -327,9 +278,9 @@ function updateSystemStatusUI(status, text) {
         
         // 更新图标
         const icons = {
-            'running': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-            'warning': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-            'error': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+            running: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+            warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+            error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
         };
         
         if (icons[status]) {
@@ -338,14 +289,15 @@ function updateSystemStatusUI(status, text) {
     }
     
     if (statusCard) {
-        statusCard.className = 'preview-stat-card stat-card-compact status-' + status;
+        statusCard.classList.remove('status-running', 'status-warning', 'status-error');
+        statusCard.classList.add('status-' + status);
     }
     
     // 记录日志
     const logTypes = {
-        'running': 'success',
-        'warning': 'warning',
-        'error': 'error'
+        running: 'success',
+        warning: 'warning',
+        error: 'error'
     };
     
     addLog('🔍 系统状态: ' + text, logTypes[status] || 'info');
@@ -385,11 +337,13 @@ function updateCurrentModeDisplay() {
     modeEl.textContent = modeName;
     
     if (modeIconWrapper) {
-        modeIconWrapper.className = 'stat-icon-wrapper stat-icon-mode ' + modeClass;
+        modeIconWrapper.classList.remove('mode-preview', 'mode-user', 'mode-admin');
+        modeIconWrapper.classList.add(modeClass);
     }
     
     addLog('🔐 当前模式: ' + modeName, 'info');
 }
+
 /* ========================================
    更新移动端状态指示器
    ======================================== */
@@ -408,11 +362,12 @@ function updateMobileStatusIndicator(status) {
     
     // 更新提示文本
     const statusTexts = {
-        'running': '系统运行正常',
-        'warning': '系统部分异常',
-        'error': '系统连接失败'
+        running: '系统运行正常',
+        warning: '系统部分异常',
+        error: '系统连接失败'
     };
     
     mobileStatus.title = statusTexts[status] || '系统状态未知';
 }
+
 `;

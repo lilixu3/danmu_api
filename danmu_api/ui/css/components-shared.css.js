@@ -12,18 +12,24 @@ export const sharedComponentsCssContent = /* css */ `/* ========================
     gap: 0.5rem;
     padding: 0.625rem 1.25rem;
     border-radius: var(--radius-md);
-    font-weight: 500;
+    font-weight: 600;
     font-size: 0.9375rem;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
     border: 1px solid transparent;
     text-decoration: none;
     white-space: nowrap;
+    box-shadow: none;
 }
 
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.14);
 }
 
 .btn-icon {
@@ -33,14 +39,21 @@ export const sharedComponentsCssContent = /* css */ `/* ========================
 }
 
 .btn-primary {
-    background: var(--primary-color);
+    background: linear-gradient(180deg, #5c65ee 0%, #4f46e5 100%);
     color: white;
+    border-color: rgba(79, 70, 229, 0.16);
+    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    background: linear-gradient(180deg, #555de6 0%, #4338ca 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(79, 70, 229, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 6px 14px rgba(79, 70, 229, 0.16);
 }
 /* 深色模式按钮增强 */
 [data-theme="dark"] .btn-primary {
@@ -126,47 +139,86 @@ export const sharedComponentsCssContent = /* css */ `/* ========================
 }
 
 .btn-secondary {
-    background: var(--bg-secondary);
+    background: rgba(255, 255, 255, 0.84);
     color: var(--text-primary);
-    border-color: var(--border-color);
+    border-color: rgba(203, 213, 225, 0.78);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    transform: translateY(-2px);
+    background: rgba(248, 250, 252, 0.98);
+    border-color: rgba(79, 70, 229, 0.14);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.btn-secondary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+[data-theme="dark"] .btn-secondary {
+    background: rgba(15, 23, 42, 0.8);
+    color: var(--text-primary);
+    border-color: rgba(129, 140, 248, 0.18);
+    box-shadow: none;
+}
+
+[data-theme="dark"] .btn-secondary:hover:not(:disabled) {
+    background: rgba(30, 41, 59, 0.9);
+    border-color: rgba(139, 163, 255, 0.24);
+    box-shadow: 0 12px 20px rgba(2, 6, 23, 0.24);
 }
 
 .btn-success {
-    background: var(--success-color);
+    background: linear-gradient(180deg, #18b77a 0%, #0f9f68 100%);
     color: white;
+    border-color: rgba(16, 185, 129, 0.18);
+    box-shadow: 0 8px 18px rgba(16, 185, 129, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-success:hover:not(:disabled) {
-    background: var(--success-hover);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    background: linear-gradient(180deg, #15ab72 0%, #0d9461 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(16, 185, 129, 0.16);
+}
+
+.btn-success:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .btn-warning {
-    background: var(--warning-color);
+    background: linear-gradient(180deg, #f2b437 0%, #d98318 100%);
     color: white;
+    border-color: rgba(245, 158, 11, 0.18);
+    box-shadow: 0 8px 18px rgba(245, 158, 11, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .btn-warning:hover:not(:disabled) {
-    background: var(--warning-hover);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    background: linear-gradient(180deg, #eaab2d 0%, #c96f0f 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(245, 158, 11, 0.16);
+}
+
+.btn-warning:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .btn-danger {
-    background: var(--danger-color);
+    background: linear-gradient(180deg, #f26767 0%, #dc2626 100%);
     color: white;
+    border-color: rgba(239, 68, 68, 0.16);
+    box-shadow: 0 8px 18px rgba(239, 68, 68, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-danger:hover:not(:disabled) {
-    background: var(--danger-hover);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    background: linear-gradient(180deg, #eb5b5b 0%, #c81e1e 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(239, 68, 68, 0.16);
+}
+
+.btn-danger:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .btn-sm {
@@ -559,4 +611,53 @@ export const sharedComponentsCssContent = /* css */ `/* ========================
         min-width: unset;
     }
 }
+
+
+/* ========================================
+   2026 通用卡片与请求记录升级
+   ======================================== */
+.card-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.modal-container {
+    border-radius: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+
+.request-records-summary-card,
+.request-record-card {
+    border-radius: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 14px 26px rgba(15, 23, 42, 0.05);
+}
+
+.request-record-card {
+    padding: 1.1rem 1.2rem;
+}
+
+.request-record-method {
+    background: rgba(79, 70, 229, 0.06);
+    border-color: rgba(79, 70, 229, 0.14);
+}
+
+.request-record-path,
+.request-record-ip,
+.request-record-params {
+    background: rgba(255, 255, 255, 0.62);
+}
+
+[data-theme="dark"] .modal-container,
+[data-theme="dark"] .request-records-summary-card,
+[data-theme="dark"] .request-record-card,
+[data-theme="dark"] .request-record-path,
+[data-theme="dark"] .request-record-ip,
+[data-theme="dark"] .request-record-params {
+    background: rgba(8, 12, 24, 0.84);
+    border-color: rgba(129, 140, 248, 0.16);
+}
+
 `;

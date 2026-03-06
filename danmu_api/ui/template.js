@@ -24,7 +24,7 @@ export const HTML_TEMPLATE = /* html */ `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0A0F1E">
+    <meta name="theme-color" content="#f6f7fb">
     <title>LogVar弹幕API - 现代化管理平台</title>
     <link rel="icon" type="image/jpg" href="https://i.mji.rip/2025/09/27/eedc7b701c0fa5c1f7c175b22f441ad9.jpeg">
     <script>
@@ -32,9 +32,14 @@ export const HTML_TEMPLATE = /* html */ `
             const storedTheme = localStorage.getItem('theme');
             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
             const theme = storedTheme || (prefersDark ? 'dark' : 'light');
+            const themeColor = theme === 'dark' ? '#0A0F1E' : '#f6f7fb';
             document.documentElement.setAttribute('data-theme', theme);
-            document.documentElement.style.backgroundColor = theme === 'dark' ? '#0A0F1E' : '#ffffff';
+            document.documentElement.style.backgroundColor = themeColor;
             document.documentElement.style.colorScheme = theme;
+            const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+            if (themeColorMeta) {
+                themeColorMeta.setAttribute('content', themeColor);
+            }
         })();
     </script>
     <style>${tokensCssContent}</style>
@@ -59,108 +64,127 @@ export const HTML_TEMPLATE = /* html */ `
         <!-- 侧边栏 -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="logo-wrapper">
-                    <img src="https://i.mji.rip/2025/09/27/eedc7b701c0fa5c1f7c175b22f441ad9.jpeg" alt="Logo" class="logo-image">
-                    <h1 class="logo-text">LogVar API</h1>
+                <div class="brand-panel">
+                    <span class="brand-kicker">Danmu Ops Console</span>
+                    <div class="logo-wrapper">
+                        <img src="https://i.mji.rip/2025/09/27/eedc7b701c0fa5c1f7c175b22f441ad9.jpeg" alt="Logo" class="logo-image">
+                        <div class="brand-copy-group">
+                            <h1 class="logo-text">LogVar API</h1>
+                            <p class="brand-description">面向弹弹play 兼容播放器调用的 API 服务台</p>
+                        </div>
+                    </div>
                 </div>
-                <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">
+                <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" type="button" aria-label="切换导航">
                     <span class="toggle-icon"></span>
                 </button>
             </div>
 
-            <div class="version-card">
-                <div class="version-header">
-                    <div class="version-icon">📦</div>
-                    <div class="version-title">版本信息</div>
+            <div class="sidebar-brief">
+                <div class="sidebar-brief-head">
+                    <span class="sidebar-brief-label">今日工作流</span>
+                    <span class="sidebar-brief-chip">01 · 控制台</span>
                 </div>
-                <div class="version-content">
-                    <div class="version-item">
-                        <span class="version-label">当前版本</span>
-                        <span class="version-value" id="current-version">v${globals.version}</span>
-                    </div>
-                    <div class="version-item">
-                        <span class="version-label">最新版本</span>
-                        <span class="version-value version-latest" id="latest-version">检查中...</span>
-                    </div>
-                    <div class="version-update-notice" id="version-update-notice" style="display: none;">
-                        <div class="update-icon">🎉</div>
-                        <div class="update-text">
-                            <div class="update-title">发现新版本</div>
-                            <div class="update-desc" id="update-desc">有可用更新</div>
-                        </div>
-                        <button class="update-btn" onclick="showUpdateGuide()">查看</button>
-                    </div>
-                </div>
-                <div class="api-endpoint-card" onclick="copyApiEndpoint()">
-                    <span class="endpoint-label">API端点</span>
-                    <span class="endpoint-value" id="api-endpoint">加载中...</span>
-                    <span class="copy-hint">点击复制</span>
+                <p class="sidebar-brief-title">先确认兼容接口与运行状态，再进入匹配、日志和请求追踪。</p>
+                <div class="sidebar-brief-actions">
+                    <button class="brief-action" onclick="switchSection('api')" type="button">兼容接口</button>
+                    <button class="brief-action" onclick="switchSection('request-records')" type="button">请求追踪</button>
                 </div>
             </div>
+
             <nav class="nav-menu">
+                <div class="nav-group-label">Workspace</div>
                 <a href="#preview" class="nav-item active" data-section="preview" onclick="switchSection('preview'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
-                    <span class="nav-text">配置预览</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">配置预览</span>
+                        <span class="nav-meta">系统状态与关键参数</span>
+                    </span>
+                    <span class="nav-index">01</span>
                 </a>
                 <a href="#logs" class="nav-item" data-section="logs" onclick="switchSection('logs'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <span class="nav-text">日志查看</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">日志查看</span>
+                        <span class="nav-meta">实时事件与错误追踪</span>
+                    </span>
+                    <span class="nav-index">02</span>
                 </a>
                 <a href="#api" class="nav-item" data-section="api" onclick="switchSection('api'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
-                    <span class="nav-text">接口调试</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">接口调试</span>
+                        <span class="nav-meta">请求测试与结果验证</span>
+                    </span>
+                    <span class="nav-index">03</span>
                 </a>
                 <a href="#push" class="nav-item" data-section="push" onclick="switchSection('push'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                     </svg>
-                    <span class="nav-text">推送弹幕</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">推送弹幕</span>
+                        <span class="nav-meta">联动播放器刷新弹幕</span>
+                    </span>
+                    <span class="nav-index">04</span>
                 </a>
                 <a href="#request-records" class="nav-item" data-section="request-records" onclick="switchSection('request-records'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <circle cx="12" cy="12" r="9"/>
                         <path d="M12 7v5l3 2"/>
                     </svg>
-                    <span class="nav-text">请求记录</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">请求记录</span>
+                        <span class="nav-meta">访问轨迹与调用历史</span>
+                    </span>
+                    <span class="nav-index">05</span>
                 </a>
-         
                 <a href="#env" class="nav-item" data-section="env" id="env-nav-btn" onclick="switchSection('env'); return false;">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                         <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
-                    <span class="nav-text">系统配置</span>
+                    <span class="nav-copy">
+                        <span class="nav-text">系统配置</span>
+                        <span class="nav-meta">环境变量与部署操作</span>
+                    </span>
+                    <span class="nav-index">06</span>
                 </a>
             </nav>
+
+            <div class="sidebar-footer-card">
+                <span class="sidebar-footer-kicker">Adaptive Layout</span>
+                <p class="sidebar-footer-title">面向播放器直连调用的服务控制台。</p>
+                <p class="sidebar-footer-text">桌面端强调状态总览与深度配置，移动端改用底栏导航和轻量工具区。</p>
+            </div>
         </aside>
 
         <!-- 主内容区 -->
         <main class="main-content">
-            <!-- 移动端顶栏 -->
-            <div class="mobile-header">
-                <div class="mobile-header-left">
-                    <button class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="打开菜单">
-                        <span class="menu-line"></span>
-                        <span class="menu-line"></span>
-                        <span class="menu-line"></span>
-                    </button>
-                    <div class="mobile-logo-wrapper">
-                        <img src="https://i.mji.rip/2025/09/27/eedc7b701c0fa5c1f7c175b22f441ad9.jpeg" alt="Logo" class="mobile-logo-image">
-                        <div class="mobile-title-group">
-                            <h2 class="mobile-title" id="mobile-title">配置预览</h2>
-                            <span class="mobile-subtitle" id="mobile-subtitle">Configuration</span>
-                        </div>
+            <header class="desktop-command-bar">
+                <div class="command-bar-copy">
+                    <span class="command-kicker" id="desktop-active-kicker">LogVar Console</span>
+                    <h2 class="command-title" id="desktop-active-title">配置预览</h2>
+                    <p class="command-desc" id="desktop-active-desc">围绕服务可用性、兼容接口与请求命中情况的控制台视图。</p>
+                    <div class="command-shortcuts">
+                        <button class="command-chip" onclick="switchSection('api')" type="button">兼容接口</button>
+                        <button class="command-chip" onclick="switchSection('logs')" type="button">实时日志</button>
+                        <button class="command-chip" onclick="switchSection('request-records')" type="button">请求记录</button>
+                        <button class="command-chip" onclick="switchSection('env')" type="button">环境配置</button>
                     </div>
                 </div>
-                <div class="mobile-header-right">
-                    <button class="mobile-action-btn" onclick="toggleTheme()" title="切换主题">
-                        <svg class="mobile-action-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <div class="command-bar-actions">
+                    <button class="desktop-status-pill" id="desktop-status-pill" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button">
+                        <span class="status-dot status-running" id="desktop-deploy-status-dot"></span>
+                        <span class="desktop-status-text" id="desktop-status-text">部署状态</span>
+                    </button>
+                    <button class="theme-toggle theme-toggle-inline" id="theme-toggle" onclick="toggleTheme(this)" title="切换主题" type="button">
+                        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="5"/>
                             <line x1="12" y1="1" x2="12" y2="3"/>
                             <line x1="12" y1="21" x2="12" y2="23"/>
@@ -171,16 +195,77 @@ export const HTML_TEMPLATE = /* html */ `
                             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
                             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                         </svg>
-                        <svg class="mobile-action-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                         </svg>
                     </button>
-                    <button class="mobile-status-indicator" id="mobile-status" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button">
-                        <span class="status-dot status-running" id="deploy-env-status-dot"></span>
-                    </button>
+                    <div class="version-card version-card-inline">
+                        <div class="version-header">
+                            <div class="version-icon">📦</div>
+                            <div class="version-title">版本信息</div>
+                        </div>
+                        <div class="version-content version-content-inline">
+                            <div class="version-item">
+                                <span class="version-label">当前版本</span>
+                                <span class="version-value" id="current-version">v${globals.version}</span>
+                            </div>
+                            <div class="version-item">
+                                <span class="version-label">最新版本</span>
+                                <span class="version-value version-latest" id="latest-version">检查中...</span>
+                            </div>
+                            <div class="version-update-notice" id="version-update-notice" style="display: none;">
+                                <div class="update-icon">🎉</div>
+                                <div class="update-text">
+                                    <div class="update-title">发现新版本</div>
+                                    <div class="update-desc" id="update-desc">有可用更新</div>
+                                </div>
+                                <button class="update-btn" onclick="showUpdateGuide()" type="button">查看</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </header>
 
+
+            <header class="mobile-header" id="mobile-header">
+                <div class="mobile-header-inner">
+                    <div class="mobile-header-left">
+                        <div class="mobile-logo-wrapper">
+                            <span class="mobile-service-mark">LV</span>
+                            <div class="mobile-title-group">
+                                <span class="mobile-header-kicker">LogVar API</span>
+                                <div class="mobile-title-row">
+                                    <span class="mobile-title" id="mobile-title">配置预览</span>
+                                    <span class="mobile-subtitle" id="mobile-subtitle">Console Overview</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mobile-header-right">
+                        <button class="mobile-status-indicator" id="mobile-status" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button" aria-label="查看部署状态">
+                            <span class="status-dot status-running" id="deploy-env-status-dot"></span>
+                        </button>
+                        <button class="mobile-action-btn" onclick="toggleTheme(this)" title="切换主题" type="button" aria-label="切换主题">
+                            <svg class="mobile-action-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5"/>
+                                <line x1="12" y1="1" x2="12" y2="3"/>
+                                <line x1="12" y1="21" x2="12" y2="23"/>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                                <line x1="1" y1="12" x2="3" y2="12"/>
+                                <line x1="21" y1="12" x2="23" y2="12"/>
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                            </svg>
+                            <svg class="mobile-action-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-shell">
             <!-- 配置预览 -->
             <section class="content-section active" id="preview-section">
                 <div id="proxy-config-container" style="display: none; background: var(--warning-bg, #fff3cd); border: 1px solid var(--warning-border, #ffeeba); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
@@ -195,77 +280,106 @@ export const HTML_TEMPLATE = /* html */ `
                     <p style="color: var(--text-secondary); font-size: 12px; margin-top: 8px;">* 设置将保存在浏览器本地存储中，清除网页的'本地存储空间'或者输入框中留空并保存可恢复默认</p>
                 </div>
 
-                <div class="preview-hero-card">
-                    <div class="preview-hero-content">
-                        <div class="preview-hero-header">
-                            <div class="preview-hero-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                                    <path d="M9 12h6m-6 4h6"/>
-                                </svg>
-                            </div>
-                            <div class="preview-hero-titles">
-                                <h2 class="preview-hero-title">环境配置总览</h2>
-                                <p class="preview-hero-subtitle">实时生效的系统环境变量配置</p>
-                            </div>
-                        </div>
-                        <div class="preview-stats-grid" id="preview-stats-grid">
-                            <div class="preview-stat-card stat-card-compact">
-                                <div class="stat-icon-wrapper stat-icon-primary">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-                                    </svg>
+                <div class="preview-command-grid preview-command-grid-single">
+                    <div class="preview-hero-card api-service-hero api-service-hero-refined">
+                        <div class="preview-hero-content preview-hero-content-refined">
+                            <div class="hero-main-row">
+                                <div class="hero-brand-block">
+                                    <div class="hero-overview-topline">
+                                        <span class="preview-hero-eyebrow">服务总览</span>
+                                        <div class="hero-overview-actions" aria-label="服务总览操作">
+                                            <button class="hero-overview-action hero-overview-status" id="hero-status-pill" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button">
+                                                <span class="status-dot status-running" id="hero-deploy-status-dot"></span>
+                                                <span class="hero-overview-action-label" id="hero-status-text">状态</span>
+                                            </button>
+                                            <button class="hero-overview-action hero-overview-theme" onclick="toggleTheme(this)" title="切换主题" type="button">
+                                                <svg class="mobile-action-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <circle cx="12" cy="12" r="5"/>
+                                                    <line x1="12" y1="1" x2="12" y2="3"/>
+                                                    <line x1="12" y1="21" x2="12" y2="23"/>
+                                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                                                    <line x1="1" y1="12" x2="3" y2="12"/>
+                                                    <line x1="21" y1="12" x2="23" y2="12"/>
+                                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                                                </svg>
+                                                <svg class="mobile-action-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                                                </svg>
+                                                <span class="hero-overview-action-label">主题</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="preview-hero-header preview-hero-header-refined">
+                                        <div class="preview-hero-icon">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M4 7h16M4 12h16M4 17h10"/>
+                                                <path d="M18 17l2 2 4-4"/>
+                                            </svg>
+                                        </div>
+                                        <div class="preview-hero-titles">
+                                            <h2 class="preview-hero-title">LogVar API</h2>
+                                            <p class="preview-hero-subtitle">围绕服务可用性、配置正确性与播放器兼容请求命中情况设计的控制台首页。</p>
+                                        </div>
+                                    </div>
+                                    <div class="hero-status-rail">
+                                        <div class="hero-status-panel" id="system-status-card">
+                                            <span class="stat-icon-wrapper stat-icon-status" id="status-icon-wrapper">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                                                </svg>
+                                            </span>
+                                            <div class="hero-status-copy">
+                                                <span class="hero-status-label">系统状态</span>
+                                                <strong class="stat-value stat-value-status" id="system-status">检测中...</strong>
+                                            </div>
+                                        </div>
+                                        <div class="hero-mode-panel">
+                                            <span class="stat-icon-wrapper stat-icon-mode mode-preview" id="mode-icon-wrapper">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+                                                    <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                                </svg>
+                                            </span>
+                                            <div class="hero-status-copy">
+                                                <span class="hero-status-label">当前模式</span>
+                                                <strong class="hero-mode-value" id="current-mode">检测中...</strong>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="stat-content">
-                                    <div class="stat-value" id="total-configs">-</div>
-                                    <div class="stat-label">配置项</div>
+                                <div class="hero-service-panel">
+                                    <div class="hero-service-header">
+                                        <span class="hero-service-kicker">服务台</span>
+                                        <span class="hero-service-note">兼容入口与配置进度</span>
+                                    </div>
+                                    <div class="hero-service-body">
+                                        <button class="hero-endpoint-panel" onclick="copyApiEndpoint()" type="button">
+                                            <span class="hero-endpoint-label">兼容 API 端点</span>
+                                            <span class="hero-endpoint-value" id="api-endpoint">加载中...</span>
+                                            <span class="hero-endpoint-hint">点击复制调用地址</span>
+                                        </button>
+                                        <div class="preview-stats-strip service-panel-metrics" id="preview-stats-grid">
+                                            <div class="hero-metric-item hero-metric-item-total">
+                                                <span class="hero-metric-label">配置总量</span>
+                                                <div class="hero-metric-main">
+                                                    <strong class="stat-value" id="total-configs">-</strong>
+                                                    <span class="hero-metric-unit">项</span>
+                                                </div>
+                                                <span class="hero-metric-meta">已识别全部配置键</span>
+                                            </div>
+                                            <div class="hero-metric-item hero-metric-item-manual">
+                                                <span class="hero-metric-label">已配置项</span>
+                                                <div class="hero-metric-main">
+                                                    <strong class="stat-value" id="manual-configs">-</strong>
+                                                    <span class="hero-metric-unit">项</span>
+                                                </div>
+                                                <span class="hero-metric-meta">已有值并参与运行</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="preview-stat-card stat-card-compact">
-                                <div class="stat-icon-wrapper stat-icon-success">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-                                    </svg>
-                                </div>
-                                <div class="stat-content">
-                                    <div class="stat-value" id="total-categories">-</div>
-                                    <div class="stat-label">配置类别</div>
-                                </div>
-                            </div>
-                            <div class="preview-stat-card stat-card-compact">
-                                <div class="stat-icon-wrapper stat-icon-warning">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                    </svg>
-                                </div>
-                                <div class="stat-content">
-                                    <div class="stat-value" id="manual-configs">-</div>
-                                    <div class="stat-label">已配置</div>
-                                </div>
-                            </div>
-                            <div class="preview-stat-card stat-card-compact" id="system-status-card">
-                                <div class="stat-icon-wrapper stat-icon-status" id="status-icon-wrapper">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                                    </svg>
-                                </div>
-                                <div class="stat-content">
-                                    <div class="stat-value stat-value-status" id="system-status">检测中</div>
-                                    <div class="stat-label">系统状态</div>
-                                </div>
-                            </div>
-                            <div class="preview-stat-card stat-card-compact" id="mode-card">
-                                <div class="stat-icon-wrapper stat-icon-mode" id="mode-icon-wrapper">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
-                                        <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                    </svg>
-                                </div>
-                                <div class="stat-content">
-                                    <div class="stat-value stat-value-text" id="current-mode">检测中...</div>
-                                    <div class="stat-label">当前模式</div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -752,6 +866,36 @@ export const HTML_TEMPLATE = /* html */ `
 
                 <div class="env-grid" id="env-list"></div>
             </section>
+            </div>
+
+            <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="移动端导航">
+                <div class="mobile-bottom-nav-scroll">
+                    <button class="mobile-nav-item active" data-section="preview" onclick="switchSection('preview')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+                        <span>总览</span>
+                    </button>
+                    <button class="mobile-nav-item" data-section="logs" onclick="switchSection('logs')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <span>日志</span>
+                    </button>
+                    <button class="mobile-nav-item" data-section="api" onclick="switchSection('api')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        <span>接口</span>
+                    </button>
+                    <button class="mobile-nav-item" data-section="push" onclick="switchSection('push')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                        <span>推送</span>
+                    </button>
+                    <button class="mobile-nav-item" data-section="request-records" onclick="switchSection('request-records')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                        <span>记录</span>
+                    </button>
+                    <button class="mobile-nav-item" data-section="env" onclick="switchSection('env')" type="button">
+                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span>配置</span>
+                    </button>
+                </div>
+            </nav>
         </main>
     </div>
 

@@ -2227,4 +2227,43 @@ export const settingsCssContent = /* css */ `/* ================================
     font-size: 0.875rem;
     line-height: 1.6;
 }
+
+
+/* ========================================
+   2026 配置页与响应面板统一重构
+   ======================================== */
+.category-tabs {
+    padding: 0.45rem;
+    border-radius: 24px;
+    background: rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    box-shadow: none;
+}
+
+.tab-btn {
+    border-radius: 18px;
+    border-width: 1px;
+    background: rgba(255, 255, 255, 0.86);
+}
+
+.tab-btn.active {
+    box-shadow: 0 12px 22px rgba(79, 70, 229, 0.18);
+}
+
+.env-item,
+.response-card {
+    border-radius: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.84) 100%);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="dark"] .category-tabs,
+[data-theme="dark"] .tab-btn,
+[data-theme="dark"] .env-item,
+[data-theme="dark"] .response-card {
+    background: rgba(8, 12, 24, 0.84);
+    border-color: rgba(129, 140, 248, 0.16);
+}
+
 `;

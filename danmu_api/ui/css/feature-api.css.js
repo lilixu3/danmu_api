@@ -13,23 +13,45 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .api-info-card {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
-    backdrop-filter: var(--blur-sm);
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    border-radius: 24px;
+    padding: 1.35rem;
+    border: 1px solid rgba(203, 213, 225, 0.76);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
     margin-bottom: 1.5rem;
+}
+
+.api-info-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.3) 50%, transparent 100%);
+    pointer-events: none;
 }
 
 .api-info-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.95rem;
     margin-bottom: 1rem;
 }
 
 .api-icon {
-    font-size: 2rem;
+    width: 52px;
+    height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 16px;
+    background: rgba(79, 70, 229, 0.06);
+    border: 1px solid rgba(79, 70, 229, 0.12);
+    color: #4f46e5;
+    font-size: 1.35rem;
 }
 
 .api-info-content {
@@ -37,64 +59,79 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .api-name {
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: 1.18rem;
+    font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 0.25rem;
 }
 
 .api-description {
-    font-size: 0.9375rem;
+    max-width: 60ch;
+    font-size: 0.92rem;
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: 1.7;
 }
 
 .api-info-details {
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
 }
 
 .api-detail-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
+    min-height: 72px;
+    padding: 0.85rem 0.95rem;
+    border-radius: 18px;
+    border: 1px solid rgba(203, 213, 225, 0.68);
+    background: rgba(248, 250, 252, 0.88);
 }
 
 .detail-label {
-    font-size: 0.875rem;
+    font-size: 0.72rem;
     color: var(--text-tertiary);
-    font-weight: 500;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .method-badge {
-    padding: 0.375rem 0.875rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.8125rem;
+    padding: 0.42rem 0.82rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
+    border: 1px solid transparent;
 }
 
 .method-get {
-    background: var(--gradient-success);
-    color: white;
+    background: rgba(236, 253, 245, 0.94);
+    border-color: rgba(16, 185, 129, 0.18);
+    color: #047857;
 }
 
 .method-post {
-    background: var(--gradient-primary);
-    color: white;
+    background: rgba(238, 242, 255, 0.96);
+    border-color: rgba(79, 70, 229, 0.16);
+    color: #4338ca;
 }
 
 .api-path {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 40px;
     padding: 0.375rem 0.875rem;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.92);
     backdrop-filter: var(--blur-sm);
-    border-radius: var(--radius-sm);
+    border-radius: 14px;
     font-family: 'Courier New', monospace;
-    font-size: 0.875rem;
+    font-size: 0.84rem;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(203, 213, 225, 0.72);
 }
 
 .no-params-message {
@@ -135,10 +172,11 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 .lan-scan-section {
     margin-top: 1rem;
     padding: 1rem;
-    background: var(--bg-tertiary);
-    backdrop-filter: var(--blur-sm);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
+    background: rgba(248, 250, 252, 0.88);
+    backdrop-filter: blur(16px);
+    border-radius: 22px;
+    border: 1px solid rgba(203, 213, 225, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .presets-header,
@@ -799,7 +837,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     background: var(--bg-tertiary);
     border-color: var(--primary-color);
     color: var(--text-primary);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -807,7 +845,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     background: var(--gradient-primary);
     border-color: var(--primary-color);
     color: white;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 8px 16px rgba(var(--primary-rgb), 0.18);
 }
 
 .api-mode-tab .btn-icon {
@@ -861,7 +899,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     background: var(--bg-tertiary);
     border-color: var(--primary-color);
     color: var(--text-primary);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -869,7 +907,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     background: var(--gradient-primary);
     border-color: var(--primary-color);
     color: #fff;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+    box-shadow: 0 8px 16px rgba(var(--primary-rgb), 0.16);
 }
 
 .danmu-method-tab .tab-icon {
@@ -968,8 +1006,8 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
    弹幕信息卡片
    ======================================== */
 .danmu-info-card {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(139, 92, 246, 0.05));
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(203, 213, 225, 0.72);
 }
 
 .danmu-info-header {
@@ -1062,7 +1100,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
    ======================================== */
 .danmu-heatmap-card {
     position: relative;
-    border: 1px solid rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(203, 213, 225, 0.72);
 }
 
 .heatmap-legend {
@@ -1243,7 +1281,7 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     color: var(--primary-color);
     min-width: 60px;
     padding: 0.25rem 0.625rem;
-    background: rgba(59, 130, 246, 0.1);
+    background: rgba(var(--primary-rgb), 0.08);
     border-radius: var(--radius-sm);
     text-align: center;
 }
@@ -1312,4 +1350,86 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     color: var(--text-tertiary);
     font-size: 0.875rem;
 }
+
+
+/* ========================================
+   2026 接口页与搜索结果统一重构
+   ======================================== */
+.api-info-card,
+.danmu-info-card,
+.danmu-list-card,
+.push-presets-section,
+.lan-scan-section,
+.search-empty,
+.search-error,
+.loading-state,
+.anime-card,
+.episode-item {
+    border-radius: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.api-info-card,
+.danmu-info-card,
+.push-presets-section,
+.lan-scan-section,
+.search-empty,
+.search-error,
+.loading-state {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.api-mode-tabs,
+.danmu-method-tabs {
+    display: flex;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    padding: 0.45rem;
+    border-radius: 22px;
+    background: rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.api-mode-tab,
+.danmu-method-tab {
+    border-radius: 16px;
+    border-width: 1px;
+    min-height: 48px;
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.api-mode-tab.active,
+.danmu-method-tab.active {
+    box-shadow: 0 12px 22px rgba(79, 70, 229, 0.18);
+}
+
+.anime-card,
+.episode-item {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.danmu-list-card,
+.danmu-info-card {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+[data-theme="dark"] .api-info-card,
+[data-theme="dark"] .danmu-info-card,
+[data-theme="dark"] .danmu-list-card,
+[data-theme="dark"] .push-presets-section,
+[data-theme="dark"] .lan-scan-section,
+[data-theme="dark"] .search-empty,
+[data-theme="dark"] .search-error,
+[data-theme="dark"] .loading-state,
+[data-theme="dark"] .anime-card,
+[data-theme="dark"] .episode-item,
+[data-theme="dark"] .api-mode-tabs,
+[data-theme="dark"] .danmu-method-tabs,
+[data-theme="dark"] .api-mode-tab,
+[data-theme="dark"] .danmu-method-tab {
+    background: rgba(8, 12, 24, 0.84);
+    border-color: rgba(129, 140, 248, 0.16);
+}
+
 `;

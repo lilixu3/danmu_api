@@ -34,7 +34,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 0.9375rem;
-    transition: all var(--transition-fast);
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
     font-family: inherit;
 }
 
@@ -44,13 +44,13 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     outline: none;
     border-color: var(--primary-color);
     background: var(--bg-primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.12);
 }
 
 .form-input:hover,
 .form-select:hover,
 .form-textarea:hover {
-    border-color: var(--primary-color);
+    border-color: rgba(var(--primary-rgb), 0.42);
 }
 /* 深色模式表单增强 */
 [data-theme="dark"] .form-input,
@@ -207,7 +207,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 }
 
 .switch input:focus + .slider {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.12);
 }
 
 .switch-label {
@@ -240,8 +240,8 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 .number-btn {
     width: 32px;
     height: 32px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(203, 213, 225, 0.78);
     border-radius: var(--radius-sm);
     cursor: pointer;
     display: flex;
@@ -249,18 +249,21 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     justify-content: center;
     color: var(--text-primary);
     font-size: 0.875rem;
-    transition: all var(--transition-fast);
+    transition: transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .number-btn:hover {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    transform: scale(1.1);
+    background: rgba(238, 242, 255, 0.96);
+    color: #4338ca;
+    border-color: rgba(79, 70, 229, 0.16);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 14px rgba(15, 23, 42, 0.05);
 }
 
 .number-btn:active {
-    transform: scale(0.95);
+    transform: translateY(0);
+    box-shadow: none;
 }
 
 .number-display {
@@ -290,32 +293,33 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     appearance: none;
     width: 20px;
     height: 20px;
-    background: var(--gradient-primary);
+    background: linear-gradient(180deg, #5c65ee 0%, #4f46e5 100%);
     cursor: pointer;
     border-radius: 50%;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-    transition: all var(--transition-fast);
+    border: 3px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.18);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .number-range input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+    transform: scale(1.08);
+    box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.22);
 }
 
 .number-range input[type="range"]::-moz-range-thumb {
     width: 20px;
     height: 20px;
-    background: var(--gradient-primary);
+    background: linear-gradient(180deg, #5c65ee 0%, #4f46e5 100%);
     cursor: pointer;
     border-radius: 50%;
-    border: none;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-    transition: all var(--transition-fast);
+    border: 3px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.18);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .number-range input[type="range"]::-moz-range-thumb:hover {
-    transform: scale(1.2);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+    transform: scale(1.08);
+    box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.22);
 }
 
 /* ========================================
@@ -350,7 +354,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 .tag-option:hover {
     background: var(--bg-tertiary);
     border-color: var(--primary-color);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -358,7 +362,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     background: var(--gradient-primary);
     color: white;
     border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 6px 14px rgba(var(--primary-rgb), 0.18);
 }
 
 /* ========================================
@@ -394,7 +398,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 
 .selected-tags.drag-over {
     border-color: var(--primary-color);
-    background: rgba(59, 130, 246, 0.05);
+    background: rgba(var(--primary-rgb), 0.05);
 }
 
 .selected-tag {
@@ -408,13 +412,13 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     font-size: 0.875rem;
     font-weight: 500;
     cursor: move;
-    transition: all var(--transition-fast);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+    box-shadow: 0 4px 10px rgba(var(--primary-rgb), 0.16);
 }
 
 .selected-tag:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 16px rgba(var(--primary-rgb), 0.18);
 }
 
 .selected-tag.dragging {
@@ -447,8 +451,8 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 }
 
 .remove-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: scale(1.2);
+    background: rgba(255, 255, 255, 0.28);
+    transform: scale(1.08);
 }
 
 .available-tags {
@@ -479,7 +483,7 @@ export const formsControlsCssContent = /* css */ `/* ===========================
 .available-tag:hover:not(.disabled) {
     background: var(--bg-tertiary);
     border-color: var(--primary-color);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -737,4 +741,33 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     height: 18px;
     flex-shrink: 0;
 }
+
+
+/* ========================================
+   2026 表单卡片统一服务台风格
+   ======================================== */
+.form-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 26px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 250, 252, 0.82) 100%);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.form-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.3) 50%, transparent 100%);
+}
+
+[data-theme="dark"] .form-card {
+    background: linear-gradient(180deg, rgba(8, 12, 24, 0.84) 0%, rgba(15, 23, 42, 0.8) 100%);
+    border-color: rgba(129, 140, 248, 0.16);
+}
+
 `;

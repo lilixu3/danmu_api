@@ -116,16 +116,73 @@ function initMobileViewportFixes() {
     }, true);
 }
 
+let lastMobileChromeScrollY = 0;
+let mobileChromeTicking = false;
+
+function syncMobileNavigationChrome(forceShow = false) {
+    const isMobile = window.innerWidth <= 860;
+    document.body.classList.toggle('mobile-nav-enabled', isMobile);
+
+    if (!isMobile) {
+        document.body.classList.remove('mobile-nav-hidden');
+        return;
+    }
+
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    if (forceShow || currentScrollY < 24) {
+        document.body.classList.remove('mobile-nav-hidden');
+        lastMobileChromeScrollY = currentScrollY;
+        return;
+    }
+
+    const delta = currentScrollY - lastMobileChromeScrollY;
+    if (delta > 14) {
+        document.body.classList.add('mobile-nav-hidden');
+    } else if (delta < -10) {
+        document.body.classList.remove('mobile-nav-hidden');
+    }
+
+    lastMobileChromeScrollY = currentScrollY;
+}
+
+function initMobileNavigationChrome() {
+    lastMobileChromeScrollY = window.scrollY || window.pageYOffset || 0;
+    syncMobileNavigationChrome(true);
+
+    window.addEventListener('scroll', function() {
+        if (mobileChromeTicking) return;
+        mobileChromeTicking = true;
+        requestAnimationFrame(() => {
+            syncMobileNavigationChrome(false);
+            mobileChromeTicking = false;
+        });
+    }, { passive: true });
+
+    window.addEventListener('resize', function() {
+        lastMobileChromeScrollY = window.scrollY || window.pageYOffset || 0;
+        syncMobileNavigationChrome(true);
+    });
+}
+
 
 /* ========================================
    主题切换功能
    ======================================== */
+function updateThemeChrome(theme) {
+    const themeColor = theme === 'dark' ? '#0A0F1E' : '#f6f7fb';
+    document.documentElement.style.backgroundColor = themeColor;
+    document.documentElement.style.colorScheme = theme;
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) {
+        themeColorMeta.setAttribute('content', themeColor);
+    }
+}
+
 function initTheme() {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const savedTheme = localStorage.getItem('theme') || document.documentElement.getAttribute('data-theme') || (prefersDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', savedTheme);
-    document.documentElement.style.backgroundColor = savedTheme === 'dark' ? '#0A0F1E' : '#ffffff';
-    document.documentElement.style.colorScheme = savedTheme;
+    updateThemeChrome(savedTheme);
     
     // 添加主题切换动画
     const themeToggle = document.getElementById('theme-toggle');
@@ -141,7 +198,7 @@ function initTheme() {
     addLog(\`已加载\${savedTheme === 'dark' ? '深色' : '浅色'}主题 ✨\`, 'info');
 }
 
-function toggleTheme() {
+function toggleTheme(triggerElement) {
     const currentTheme = document.documentElement.getAttribute('data-theme');
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
     
@@ -150,9 +207,12 @@ function toggleTheme() {
     
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('theme', newTheme);
+    updateThemeChrome(newTheme);
     
-    const themeButton = document.getElementById('theme-toggle');
-    themeButton.style.transform = 'scale(0.8) rotate(360deg)';
+    const themeButton = triggerElement || document.getElementById('theme-toggle');
+    if (themeButton) {
+        themeButton.style.transform = 'scale(0.8) rotate(360deg)';
+    }
     
     // 创建主题切换涟漪效果
     const ripple = document.createElement('div');
@@ -184,14 +244,15 @@ function toggleTheme() {
     document.body.appendChild(ripple);
     
     setTimeout(() => {
-        themeButton.style.transform = '';
+        if (themeButton) {
+            themeButton.style.transform = '';
+        }
         ripple.remove();
         style.remove();
     }, 600);
     
     addLog(\`已切换到\${newTheme === 'dark' ? '深色' : '浅色'}主题 🎨\`, 'success');
 }
-
 
 /* ========================================
    部署平台环境变量状态指示器
@@ -260,20 +321,44 @@ function computeDeployEnvStatus(config) {
 }
 
 function applyDeployEnvStatusToBadge(status) {
-    const badge = document.getElementById('mobile-status');
-    const dot = document.getElementById('deploy-env-status-dot') || (badge ? badge.querySelector('.status-dot') : null);
-    if (!badge || !dot) return;
-
     const ok = !status.missingVars || status.missingVars.length === 0;
-
-    dot.classList.remove('status-running', 'status-warning', 'status-error');
-    dot.classList.add(ok ? 'status-running' : 'status-error');
-
     const titleOk = '部署平台 ' + status.platformLabel + '：所需环境变量已配置';
     const titleBad = '部署平台 ' + status.platformLabel + '：缺少 ' + (status.missingVars ? status.missingVars.length : 0) + ' 项必需环境变量';
-    badge.title = ok ? titleOk : titleBad;
 
-    badge.setAttribute('data-deploy-ok', ok ? '1' : '0');
+    const mobileBadge = document.getElementById('mobile-status');
+    const mobileDot = document.getElementById('deploy-env-status-dot') || (mobileBadge ? mobileBadge.querySelector('.status-dot') : null);
+    if (mobileBadge && mobileDot) {
+        mobileDot.classList.remove('status-running', 'status-warning', 'status-error');
+        mobileDot.classList.add(ok ? 'status-running' : 'status-error');
+        mobileBadge.title = ok ? titleOk : titleBad;
+        mobileBadge.setAttribute('data-deploy-ok', ok ? '1' : '0');
+    }
+
+    const desktopBadge = document.getElementById('desktop-status-pill');
+    const desktopDot = document.getElementById('desktop-deploy-status-dot') || (desktopBadge ? desktopBadge.querySelector('.status-dot') : null);
+    const desktopText = document.getElementById('desktop-status-text');
+    if (desktopBadge && desktopDot) {
+        desktopDot.classList.remove('status-running', 'status-warning', 'status-error');
+        desktopDot.classList.add(ok ? 'status-running' : 'status-error');
+        desktopBadge.title = ok ? titleOk : titleBad;
+        desktopBadge.setAttribute('data-deploy-ok', ok ? '1' : '0');
+        if (desktopText) {
+            desktopText.textContent = ok ? (status.platformLabel + ' 已就绪') : (status.platformLabel + ' 缺少配置');
+        }
+    }
+
+    const heroBadge = document.getElementById('hero-status-pill');
+    const heroDot = document.getElementById('hero-deploy-status-dot') || (heroBadge ? heroBadge.querySelector('.status-dot') : null);
+    const heroText = document.getElementById('hero-status-text');
+    if (heroBadge && heroDot) {
+        heroDot.classList.remove('status-running', 'status-warning', 'status-error');
+        heroDot.classList.add(ok ? 'status-running' : 'status-error');
+        heroBadge.title = ok ? titleOk : titleBad;
+        heroBadge.setAttribute('data-deploy-ok', ok ? '1' : '0');
+        if (heroText) {
+            heroText.textContent = ok ? '状态' : '状态';
+        }
+    }
 }
 
 function updateDeployEnvStatusBadgeFromConfig(config) {
@@ -535,29 +620,82 @@ function performSectionSwitch(section, isInitialLoad = false) {
     
     const activeNav = document.querySelector(\`[data-section="\${section}"]\`);
     if (activeNav) activeNav.classList.add('active');
+    document.querySelectorAll('.mobile-nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.section === section);
+    });
     
     // 更新移动端标题
     const titles = {
-        preview: { main: '配置预览', sub: 'Configuration' },
-        logs: { main: '日志查看', sub: 'System Logs' },
-        api: { main: '接口调试', sub: 'API Testing' },
-        push: { main: '推送弹幕', sub: 'Push Danmu' },
-        'request-records': { main: '请求记录', sub: 'Request Records' },
-        env: { main: '系统配置', sub: 'Settings' }
+        preview: {
+            main: '配置预览',
+            sub: 'Service Overview',
+            kicker: 'API Service Deck',
+            desc: '总览服务状态、关键配置与兼容接口。'
+        },
+        logs: {
+            main: '日志查看',
+            sub: 'System Logs',
+            kicker: 'Live Observability',
+            desc: '查看运行日志与错误信息。'
+        },
+        api: {
+            main: '接口调试',
+            sub: 'Compatibility API',
+            kicker: 'Compatibility Playground',
+            desc: '调试兼容接口与返回结果。'
+        },
+        push: {
+            main: '推送弹幕',
+            sub: 'Manual Push',
+            kicker: 'Manual Bridge',
+            desc: '辅助推送与手动触发。'
+        },
+        'request-records': {
+            main: '请求记录',
+            sub: 'Request Timeline',
+            kicker: 'Traffic Timeline',
+            desc: '查看播放器请求记录。'
+        },
+        env: {
+            main: '系统配置',
+            sub: 'Environment Settings',
+            kicker: 'System Controls',
+            desc: '管理环境变量、缓存与部署控制。'
+        }
+    };
+    const currentMeta = titles[section] || {
+        main: section,
+        sub: '',
+        kicker: 'Workspace',
+        desc: 'LogVar 弹幕 API 工作台。'
     };
     const mobileTitle = document.getElementById('mobile-title');
     const mobileSubtitle = document.getElementById('mobile-subtitle');
-    if (mobileTitle && titles[section]) {
-        mobileTitle.textContent = titles[section].main;
+    if (mobileTitle) {
+        mobileTitle.textContent = currentMeta.main;
         if (mobileSubtitle) {
-            mobileSubtitle.textContent = titles[section].sub;
+            mobileSubtitle.textContent = currentMeta.sub;
         }
     }
+
+    const desktopKicker = document.getElementById('desktop-active-kicker');
+    const desktopTitle = document.getElementById('desktop-active-title');
+    const desktopDesc = document.getElementById('desktop-active-desc');
+    if (desktopKicker) desktopKicker.textContent = currentMeta.kicker;
+    if (desktopTitle) desktopTitle.textContent = currentMeta.main;
+    if (desktopDesc) desktopDesc.textContent = currentMeta.desc;
+
+    document.title = currentMeta.main + ' · LogVar弹幕API';
     
-    // 只有在非初始化加载且是移动端时才触发侧边栏切换
-    if (!isInitialLoad && window.innerWidth <= 768) {
-        toggleSidebar();
+    // 仅在移动端且侧边栏已打开时才关闭，避免误触发打开抽屉
+    if (!isInitialLoad && window.innerWidth <= 860) {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && sidebar.classList.contains('active')) {
+            toggleSidebar();
+        }
     }
+
+    syncMobileNavigationChrome(true);
     
     // 滚动到顶部
     if (!isInitialLoad) {
@@ -885,10 +1023,7 @@ function updateApiEndpoint() {
       }
       const apiEndpoint = cleanBaseUrl + '/' + apiToken;
       
-      const apiEndpointElement = document.getElementById('api-endpoint');
-      if (apiEndpointElement) {
-        apiEndpointElement.textContent = apiEndpoint;
-      }
+      setApiEndpointDisplay(apiEndpoint);
       return config; // 返回配置信息，以便链式调用
     })
     .catch(error => {
@@ -914,10 +1049,7 @@ function updateApiEndpoint() {
       }
       const apiEndpoint = cleanBaseUrl + '/********';
       
-      const apiEndpointElement = document.getElementById('api-endpoint');
-      if (apiEndpointElement) {
-        apiEndpointElement.textContent = apiEndpoint;
-      }
+      setApiEndpointDisplay(apiEndpoint);
       
       // 如果是因为反代导致的问题，显示输入框
       const proxyContainer = document.getElementById('proxy-config-container');
@@ -1055,38 +1187,84 @@ function showUpdateGuide() {
 /* ========================================
    复制API端点
    ======================================== */
+function getApiEndpointElements() {
+    return ['mobile-api-endpoint', 'api-endpoint']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+}
+
+let apiEndpointFeedbackTimer = null;
+
+function setApiEndpointDisplay(value) {
+    getApiEndpointElements().forEach(element => {
+        element.textContent = value;
+        element.dataset.endpointValue = value;
+        element.title = value;
+    });
+}
+
 function copyApiEndpoint() {
-    const apiEndpointElement = document.getElementById('api-endpoint');
-    if (apiEndpointElement) {
-        const apiEndpoint = apiEndpointElement.textContent;
-        navigator.clipboard.writeText(apiEndpoint)
-            .then(() => {
-                const originalText = apiEndpointElement.textContent;
-                apiEndpointElement.textContent = '✓ 已复制!';
-                apiEndpointElement.style.color = '#10b981';
-                
-                // 添加复制成功动画
-                const card = apiEndpointElement.closest('.api-endpoint-card');
-                if (card) {
-                    card.style.transform = 'scale(1.05)';
-                    setTimeout(() => {
-                        card.style.transform = '';
-                    }, 300);
-                }
-                
-                setTimeout(() => {
-                    apiEndpointElement.textContent = originalText;
-                    apiEndpointElement.style.color = '';
-                }, 2000);
-                
-                addLog('API端点已复制到剪贴板 📋: ' + apiEndpoint, 'success');
-            })
-            .catch(err => {
-                console.error('复制失败:', err);
-                customAlert('复制失败: ' + err, '❌ 复制失败');
-                addLog('复制API端点失败: ' + err, 'error');
-            });
+    const endpointElements = getApiEndpointElements();
+    const visibleElement = endpointElements.find(element => element.offsetParent !== null) || endpointElements[0];
+    if (!visibleElement) {
+        return;
     }
+
+    const apiEndpoint = (visibleElement.dataset.endpointValue || visibleElement.textContent || '').trim();
+    if (!apiEndpoint) {
+        return;
+    }
+
+    navigator.clipboard.writeText(apiEndpoint)
+        .then(() => {
+            if (apiEndpointFeedbackTimer) {
+                clearTimeout(apiEndpointFeedbackTimer);
+                apiEndpointFeedbackTimer = null;
+            }
+
+            endpointElements.forEach(element => {
+                if (!element.dataset.endpointValue) {
+                    element.dataset.endpointValue = apiEndpoint;
+                }
+                element.textContent = '✓ 已复制!';
+                element.style.color = '#10b981';
+            });
+
+            const feedbackCards = new Set();
+            endpointElements.forEach(element => {
+                const card = element.closest('.api-endpoint-card, .hero-endpoint-panel');
+                if (card) {
+                    feedbackCards.add(card);
+                }
+            });
+
+            feedbackCards.forEach(card => {
+                card.style.transform = 'translateY(-1px) scale(1.01)';
+                card.style.boxShadow = '0 16px 34px rgba(16, 185, 129, 0.18)';
+            });
+
+            setTimeout(() => {
+                feedbackCards.forEach(card => {
+                    card.style.transform = '';
+                    card.style.boxShadow = '';
+                });
+            }, 320);
+
+            apiEndpointFeedbackTimer = setTimeout(() => {
+                endpointElements.forEach(element => {
+                    element.textContent = element.dataset.endpointValue || apiEndpoint;
+                    element.style.color = '';
+                });
+                apiEndpointFeedbackTimer = null;
+            }, 1800);
+
+            addLog('API端点已复制到剪贴板 📋: ' + apiEndpoint, 'success');
+        })
+        .catch(err => {
+            console.error('复制失败:', err);
+            customAlert('复制失败: ' + err, '❌ 复制失败');
+            addLog('复制API端点失败: ' + err, 'error');
+        });
 }
 
 /* ========================================
@@ -1143,9 +1321,11 @@ async function init() {
 document.addEventListener('DOMContentLoaded', function() {
     createCustomAlert();
     initMobileViewportFixes();
+    initMobileNavigationChrome();
     
     // 1. 优先初始化主题 (防止颜色闪烁)
     initTheme();
+
 
     // 2. 无闪烁页面恢复逻辑 (核心优化)
     let savedSection = sessionStorage.getItem('activeSection') || localStorage.getItem('activeSection');
