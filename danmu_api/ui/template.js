@@ -65,12 +65,12 @@ export const HTML_TEMPLATE = /* html */ `
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="brand-panel">
-                    <span class="brand-kicker">Danmu Ops Console</span>
+                    <span class="brand-kicker">Danmu Service Hub</span>
                     <div class="logo-wrapper">
                         <img src="https://i.mji.rip/2025/09/27/eedc7b701c0fa5c1f7c175b22f441ad9.jpeg" alt="Logo" class="logo-image">
                         <div class="brand-copy-group">
                             <h1 class="logo-text">LogVar API</h1>
-                            <p class="brand-description">面向弹弹play 兼容播放器调用的 API 服务台</p>
+                            <p class="brand-description">弹幕服务接入与管理页面</p>
                         </div>
                     </div>
                 </div>
@@ -81,13 +81,13 @@ export const HTML_TEMPLATE = /* html */ `
 
             <div class="sidebar-brief">
                 <div class="sidebar-brief-head">
-                    <span class="sidebar-brief-label">今日工作流</span>
-                    <span class="sidebar-brief-chip">01 · 控制台</span>
+                    <span class="sidebar-brief-label">快速开始</span>
+                    <span class="sidebar-brief-chip">01 · 首页</span>
                 </div>
-                <p class="sidebar-brief-title">先确认兼容接口与运行状态，再进入匹配、日志和请求追踪。</p>
+                <p class="sidebar-brief-title">先查看接入地址和当前状态，再进入测试、日志或访问记录。</p>
                 <div class="sidebar-brief-actions">
-                    <button class="brief-action" onclick="switchSection('api')" type="button">兼容接口</button>
-                    <button class="brief-action" onclick="switchSection('request-records')" type="button">请求追踪</button>
+                    <button class="brief-action" onclick="switchSection('api')" type="button">接口测试</button>
+                    <button class="brief-action" onclick="switchSection('request-records')" type="button">访问记录</button>
                 </div>
             </div>
 
@@ -98,8 +98,8 @@ export const HTML_TEMPLATE = /* html */ `
                         <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                     <span class="nav-copy">
-                        <span class="nav-text">配置预览</span>
-                        <span class="nav-meta">系统状态与关键参数</span>
+                        <span class="nav-text">服务概览</span>
+                        <span class="nav-meta">接入地址、状态与基础设置</span>
                     </span>
                     <span class="nav-index">01</span>
                 </a>
@@ -108,8 +108,8 @@ export const HTML_TEMPLATE = /* html */ `
                         <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
                     <span class="nav-copy">
-                        <span class="nav-text">日志查看</span>
-                        <span class="nav-meta">实时事件与错误追踪</span>
+                        <span class="nav-text">运行日志</span>
+                        <span class="nav-meta">最近动态与异常提醒</span>
                     </span>
                     <span class="nav-index">02</span>
                 </a>
@@ -118,8 +118,8 @@ export const HTML_TEMPLATE = /* html */ `
                         <path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
                     <span class="nav-copy">
-                        <span class="nav-text">接口调试</span>
-                        <span class="nav-meta">请求测试与结果验证</span>
+                        <span class="nav-text">接口测试</span>
+                        <span class="nav-meta">测试接口与返回结果</span>
                     </span>
                     <span class="nav-index">03</span>
                 </a>
@@ -139,8 +139,8 @@ export const HTML_TEMPLATE = /* html */ `
                         <path d="M12 7v5l3 2"/>
                     </svg>
                     <span class="nav-copy">
-                        <span class="nav-text">请求记录</span>
-                        <span class="nav-meta">访问轨迹与调用历史</span>
+                        <span class="nav-text">访问记录</span>
+                        <span class="nav-meta">最近访问与调用情况</span>
                     </span>
                     <span class="nav-index">05</span>
                 </a>
@@ -150,8 +150,8 @@ export const HTML_TEMPLATE = /* html */ `
                         <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
                     <span class="nav-copy">
-                        <span class="nav-text">系统配置</span>
-                        <span class="nav-meta">环境变量与部署操作</span>
+                        <span class="nav-text">系统设置</span>
+                        <span class="nav-meta">服务设置与部署操作</span>
                     </span>
                     <span class="nav-index">06</span>
                 </a>
@@ -159,8 +159,8 @@ export const HTML_TEMPLATE = /* html */ `
 
             <div class="sidebar-footer-card">
                 <span class="sidebar-footer-kicker">Adaptive Layout</span>
-                <p class="sidebar-footer-title">面向播放器直连调用的服务控制台。</p>
-                <p class="sidebar-footer-text">桌面端强调状态总览与深度配置，移动端改用底栏导航和轻量工具区。</p>
+                <p class="sidebar-footer-title">适合播放器接入与日常维护的统一工作台。</p>
+                <p class="sidebar-footer-text">桌面端突出概览与设置，移动端保留常用入口与轻量操作。</p>
             </div>
         </aside>
 
@@ -168,20 +168,20 @@ export const HTML_TEMPLATE = /* html */ `
         <main class="main-content">
             <header class="desktop-command-bar">
                 <div class="command-bar-copy">
-                    <span class="command-kicker" id="desktop-active-kicker">LogVar Console</span>
-                    <h2 class="command-title" id="desktop-active-title">配置预览</h2>
-                    <p class="command-desc" id="desktop-active-desc">围绕服务可用性、兼容接口与请求命中情况的控制台视图。</p>
+                    <span class="command-kicker" id="desktop-active-kicker">LogVar Service Hub</span>
+                    <h2 class="command-title" id="desktop-active-title">服务概览</h2>
+                    <p class="command-desc" id="desktop-active-desc">快速查看接入地址、当前状态和基础设置。</p>
                     <div class="command-shortcuts">
-                        <button class="command-chip" onclick="switchSection('api')" type="button">兼容接口</button>
-                        <button class="command-chip" onclick="switchSection('logs')" type="button">实时日志</button>
-                        <button class="command-chip" onclick="switchSection('request-records')" type="button">请求记录</button>
-                        <button class="command-chip" onclick="switchSection('env')" type="button">环境配置</button>
+                        <button class="command-chip" onclick="switchSection('api')" type="button">接口测试</button>
+                        <button class="command-chip" onclick="switchSection('logs')" type="button">运行日志</button>
+                        <button class="command-chip" onclick="switchSection('request-records')" type="button">访问记录</button>
+                        <button class="command-chip" onclick="switchSection('env')" type="button">系统设置</button>
                     </div>
                 </div>
                 <div class="command-bar-actions">
-                    <button class="desktop-status-pill" id="desktop-status-pill" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button">
+                    <button class="desktop-status-pill" id="desktop-status-pill" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button">
                         <span class="status-dot status-running" id="desktop-deploy-status-dot"></span>
-                        <span class="desktop-status-text" id="desktop-status-text">部署状态</span>
+                        <span class="desktop-status-text" id="desktop-status-text">配置状态</span>
                     </button>
                     <button class="theme-toggle theme-toggle-inline" id="theme-toggle" onclick="toggleTheme(this)" title="切换主题" type="button">
                         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -235,14 +235,14 @@ export const HTML_TEMPLATE = /* html */ `
                             <div class="mobile-title-group">
                                 <span class="mobile-header-kicker">LogVar API</span>
                                 <div class="mobile-title-row">
-                                    <span class="mobile-title" id="mobile-title">配置预览</span>
-                                    <span class="mobile-subtitle" id="mobile-subtitle">Console Overview</span>
+                                    <span class="mobile-title" id="mobile-title">服务概览</span>
+                                    <span class="mobile-subtitle" id="mobile-subtitle">Service Home</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="mobile-header-right">
-                        <button class="mobile-status-indicator" id="mobile-status" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button" aria-label="查看部署状态">
+                        <button class="mobile-status-indicator" id="mobile-status" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button" aria-label="查看部署配置">
                             <span class="status-dot status-running" id="deploy-env-status-dot"></span>
                         </button>
                         <button class="mobile-action-btn" onclick="toggleTheme(this)" title="切换主题" type="button" aria-label="切换主题">
@@ -286,9 +286,9 @@ export const HTML_TEMPLATE = /* html */ `
                             <div class="hero-main-row">
                                 <div class="hero-brand-block">
                                     <div class="hero-overview-topline">
-                                        <span class="preview-hero-eyebrow">服务总览</span>
-                                        <div class="hero-overview-actions" aria-label="服务总览操作">
-                                            <button class="hero-overview-action hero-overview-status" id="hero-status-pill" title="部署平台环境变量状态" onclick="openDeployEnvStatusModal()" type="button">
+                                        <span class="preview-hero-eyebrow">首页概览</span>
+                                        <div class="hero-overview-actions" aria-label="首页概览操作">
+                                            <button class="hero-overview-action hero-overview-status" id="hero-status-pill" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button">
                                                 <span class="status-dot status-running" id="hero-deploy-status-dot"></span>
                                                 <span class="hero-overview-action-label" id="hero-status-text">状态</span>
                                             </button>
@@ -320,7 +320,7 @@ export const HTML_TEMPLATE = /* html */ `
                                         </div>
                                         <div class="preview-hero-titles">
                                             <h2 class="preview-hero-title">LogVar API</h2>
-                                            <p class="preview-hero-subtitle">围绕服务可用性、配置正确性与播放器兼容请求命中情况设计的控制台首页。</p>
+                                            <p class="preview-hero-subtitle">在这里快速查看接入地址、当前状态和已完成设置。</p>
                                         </div>
                                     </div>
                                     <div class="hero-status-rail">
@@ -331,7 +331,7 @@ export const HTML_TEMPLATE = /* html */ `
                                                 </svg>
                                             </span>
                                             <div class="hero-status-copy">
-                                                <span class="hero-status-label">系统状态</span>
+                                                <span class="hero-status-label">服务状态</span>
                                                 <strong class="stat-value stat-value-status" id="system-status">检测中...</strong>
                                             </div>
                                         </div>
@@ -343,7 +343,7 @@ export const HTML_TEMPLATE = /* html */ `
                                                 </svg>
                                             </span>
                                             <div class="hero-status-copy">
-                                                <span class="hero-status-label">当前模式</span>
+                                                <span class="hero-status-label">当前访问</span>
                                                 <strong class="hero-mode-value" id="current-mode">检测中...</strong>
                                             </div>
                                         </div>
@@ -351,31 +351,31 @@ export const HTML_TEMPLATE = /* html */ `
                                 </div>
                                 <div class="hero-service-panel">
                                     <div class="hero-service-header">
-                                        <span class="hero-service-kicker">服务台</span>
-                                        <span class="hero-service-note">兼容入口与配置进度</span>
+                                        <span class="hero-service-kicker">快速开始</span>
+                                        <span class="hero-service-note">复制地址后即可接入播放器</span>
                                     </div>
                                     <div class="hero-service-body">
                                         <button class="hero-endpoint-panel" onclick="copyApiEndpoint()" type="button">
-                                            <span class="hero-endpoint-label">兼容 API 端点</span>
+                                            <span class="hero-endpoint-label">播放器接入地址</span>
                                             <span class="hero-endpoint-value" id="api-endpoint">加载中...</span>
-                                            <span class="hero-endpoint-hint">点击复制调用地址</span>
+                                            <span class="hero-endpoint-hint">点击复制接入地址</span>
                                         </button>
                                         <div class="preview-stats-strip service-panel-metrics" id="preview-stats-grid">
                                             <div class="hero-metric-item hero-metric-item-total">
-                                                <span class="hero-metric-label">配置总量</span>
+                                                <span class="hero-metric-label">可用设置</span>
                                                 <div class="hero-metric-main">
                                                     <strong class="stat-value" id="total-configs">-</strong>
                                                     <span class="hero-metric-unit">项</span>
                                                 </div>
-                                                <span class="hero-metric-meta">已识别全部配置键</span>
+                                                <span class="hero-metric-meta">已识别的设置项</span>
                                             </div>
                                             <div class="hero-metric-item hero-metric-item-manual">
-                                                <span class="hero-metric-label">已配置项</span>
+                                                <span class="hero-metric-label">已完成设置</span>
                                                 <div class="hero-metric-main">
                                                     <strong class="stat-value" id="manual-configs">-</strong>
                                                     <span class="hero-metric-unit">项</span>
                                                 </div>
-                                                <span class="hero-metric-meta">已有值并参与运行</span>
+                                                <span class="hero-metric-meta">已填写并生效</span>
                                             </div>
                                         </div>
                                     </div>
@@ -459,14 +459,14 @@ export const HTML_TEMPLATE = /* html */ `
                 <div class="section-header">
                     <div>
                         <h2 class="section-title">API 测试平台</h2>
-                        <p class="section-desc">支持接口调试和弹幕测试，可视化展示弹幕数据</p>
+                        <p class="section-desc">可快速测试接口与弹幕效果，并查看返回结果</p>
                     </div>
                     <div class="api-mode-tabs">
                         <button class="api-mode-tab active" data-mode="api-test" onclick="switchApiMode('api-test')">
                             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                 <path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                             </svg>
-                            <span>接口调试</span>
+                            <span>接口测试</span>
                         </button>
                         <button class="api-mode-tab" data-mode="danmu-test" onclick="switchApiMode('danmu-test')">
                             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -806,8 +806,8 @@ export const HTML_TEMPLATE = /* html */ `
             <section class="content-section" id="request-records-section">
                 <div class="section-header">
                     <div>
-                        <h2 class="section-title">请求记录</h2>
-                        <p class="section-desc">展示最近的 API 请求历史（云端部署建议开启 Redis 持久化）。</p>
+                        <h2 class="section-title">访问记录</h2>
+                        <p class="section-desc">展示最近的访问与调用记录（云端部署建议开启 Redis 持久化）。</p>
                     </div>
                     <div class="header-actions">
                         <button class="btn btn-secondary" id="btnRequestRecordsRefresh">
@@ -821,11 +821,11 @@ export const HTML_TEMPLATE = /* html */ `
                 </div>
                 <div class="request-records-summary">
                     <div class="request-records-summary-card">
-                        <div class="summary-label">今日请求</div>
+                        <div class="summary-label">今日访问</div>
                         <div class="summary-value" id="request-records-today">0</div>
                     </div>
                     <div class="request-records-summary-card">
-                        <div class="summary-label">记录数量</div>
+                        <div class="summary-label">累计记录</div>
                         <div class="summary-value" id="request-records-total">0</div>
                     </div>
                 </div>
@@ -836,8 +836,8 @@ export const HTML_TEMPLATE = /* html */ `
             <section class="content-section" id="env-section">
                 <div class="section-header">
                     <div>
-                        <h2 class="section-title">环境变量配置</h2>
-                        <p class="section-desc">vercel/netlify/edgeone平台修改变量后需要重新部署</p>
+                        <h2 class="section-title">系统设置</h2>
+                        <p class="section-desc">修改平台配置后，部分部署方式需要重新部署。</p>
                     </div>
                     <div class="header-actions">
                         <button class="btn btn-danger" onclick="showClearCacheModal()">
@@ -880,7 +880,7 @@ export const HTML_TEMPLATE = /* html */ `
                     </button>
                     <button class="mobile-nav-item" data-section="api" onclick="switchSection('api')" type="button">
                         <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        <span>接口</span>
+                        <span>测试</span>
                     </button>
                     <button class="mobile-nav-item" data-section="push" onclick="switchSection('push')" type="button">
                         <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
@@ -888,11 +888,11 @@ export const HTML_TEMPLATE = /* html */ `
                     </button>
                     <button class="mobile-nav-item" data-section="request-records" onclick="switchSection('request-records')" type="button">
                         <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                        <span>记录</span>
+                        <span>访问</span>
                     </button>
                     <button class="mobile-nav-item" data-section="env" onclick="switchSection('env')" type="button">
                         <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <span>配置</span>
+                        <span>设置</span>
                     </button>
                 </div>
             </nav>
@@ -977,7 +977,7 @@ export const HTML_TEMPLATE = /* html */ `
     <div class="modal-overlay" id="deploy-env-status-modal">
         <div class="modal-container modal-lg deploy-env-status-modal">
             <div class="modal-header">
-                <h3 class="modal-title">部署平台环境变量</h3>
+                <h3 class="modal-title">部署配置检查</h3>
                 <button class="modal-close" onclick="closeDeployEnvStatusModal()">×</button>
             </div>
             <div class="modal-body" id="deploy-env-status-body">
@@ -1094,7 +1094,7 @@ export const HTML_TEMPLATE = /* html */ `
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-description">
-            <p class="footer-text">一个人人都能部署的基于 js 的弹幕 API 服务器，支持爱优腾芒哔人韩巴弹幕直接获取，兼容弹弹play的搜索、详情查询和弹幕获取接口规范。</p>
+            <p class="footer-text">轻量弹幕 API 服务，支持常见平台弹幕获取，并兼容弹弹play的搜索、详情与弹幕接口。</p>
             <p class="footer-text">本项目仅为个人爱好开发，代码开源。如有任何侵权行为，请联系本人删除。</p>
         </div>
         <div class="footer-links">

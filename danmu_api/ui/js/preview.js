@@ -96,8 +96,8 @@ function renderPreview() {
                 html = \`
                     <div class="preview-empty">
                         <div class="empty-icon">📭</div>
-                        <h3>暂无配置</h3>
-                        <p>还没有配置任何环境变量</p>
+                        <h3>暂无设置</h3>
+                        <p>暂未发现可展示的配置项</p>
                     </div>
                 \`;
             }
@@ -246,13 +246,13 @@ function checkSystemStatus() {
     fetch('/api/config', { method: 'GET' })
         .then(response => {
             if (response.ok) {
-                updateSystemStatusUI('running', '运行正常');
+                updateSystemStatusUI('running', '可正常使用');
             } else {
-                updateSystemStatusUI('warning', '部分异常');
+                updateSystemStatusUI('warning', '需要留意');
             }
         })
         .catch(error => {
-            updateSystemStatusUI('error', '连接失败');
+            updateSystemStatusUI('error', '暂时不可用');
             console.error('System status check failed:', error);
         });
 }
@@ -300,7 +300,7 @@ function updateSystemStatusUI(status, text) {
         error: 'error'
     };
     
-    addLog('🔍 系统状态: ' + text, logTypes[status] || 'info');
+    addLog('🔍 服务状态: ' + text, logTypes[status] || 'info');
     // 同步更新移动端状态指示器
     updateMobileStatusIndicator(status);
 }
@@ -318,18 +318,18 @@ function updateCurrentModeDisplay() {
     const pathParts = urlPath.split('/').filter(part => part !== '');
     const urlToken = pathParts.length > 0 ? pathParts[0] : '';
     
-    let modeName = '预览模式';
+    let modeName = '公开访问';
     let modeClass = 'mode-preview';
     
     if (urlToken) {
         if (currentAdminToken && currentAdminToken.trim() !== '' && urlToken === currentAdminToken) {
-            modeName = '管理员模式';
+            modeName = '管理访问';
             modeClass = 'mode-admin';
         } else if (originalToken && originalToken !== '87654321') {
-            modeName = '用户模式';
+            modeName = '用户访问';
             modeClass = 'mode-user';
         } else if (urlToken) {
-            modeName = '用户模式';
+            modeName = '用户访问';
             modeClass = 'mode-user';
         }
     }
@@ -341,7 +341,7 @@ function updateCurrentModeDisplay() {
         modeIconWrapper.classList.add(modeClass);
     }
     
-    addLog('🔐 当前模式: ' + modeName, 'info');
+    addLog('🔐 当前访问: ' + modeName, 'info');
 }
 
 /* ========================================
@@ -362,12 +362,12 @@ function updateMobileStatusIndicator(status) {
     
     // 更新提示文本
     const statusTexts = {
-        running: '系统运行正常',
-        warning: '系统部分异常',
-        error: '系统连接失败'
+        running: '服务可正常使用',
+        warning: '服务状态需留意',
+        error: '当前无法连接服务'
     };
     
-    mobileStatus.title = statusTexts[status] || '系统状态未知';
+    mobileStatus.title = statusTexts[status] || '服务状态未知';
 }
 
 `;

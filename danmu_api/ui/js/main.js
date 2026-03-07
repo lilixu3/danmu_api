@@ -322,8 +322,8 @@ function computeDeployEnvStatus(config) {
 
 function applyDeployEnvStatusToBadge(status) {
     const ok = !status.missingVars || status.missingVars.length === 0;
-    const titleOk = '部署平台 ' + status.platformLabel + '：所需环境变量已配置';
-    const titleBad = '部署平台 ' + status.platformLabel + '：缺少 ' + (status.missingVars ? status.missingVars.length : 0) + ' 项必需环境变量';
+    const titleOk = '部署平台 ' + status.platformLabel + '：配置已就绪';
+    const titleBad = '部署平台 ' + status.platformLabel + '：还有 ' + (status.missingVars ? status.missingVars.length : 0) + ' 项设置待完成';
 
     const mobileBadge = document.getElementById('mobile-status');
     const mobileDot = document.getElementById('deploy-env-status-dot') || (mobileBadge ? mobileBadge.querySelector('.status-dot') : null);
@@ -343,7 +343,7 @@ function applyDeployEnvStatusToBadge(status) {
         desktopBadge.title = ok ? titleOk : titleBad;
         desktopBadge.setAttribute('data-deploy-ok', ok ? '1' : '0');
         if (desktopText) {
-            desktopText.textContent = ok ? (status.platformLabel + ' 已就绪') : (status.platformLabel + ' 缺少配置');
+            desktopText.textContent = ok ? (status.platformLabel + ' 已就绪') : (status.platformLabel + ' 待补充');
         }
     }
 
@@ -415,14 +415,14 @@ async function openDeployEnvStatusModal() {
     '</svg>';
 
     const heroClass = ok ? 'deploy-env-status-hero success' : 'deploy-env-status-hero error';
-    const heroTitle = ok ? '所需环境变量已配置' : '存在未配置的必需环境变量';
+    const heroTitle = ok ? '部署所需设置已完成' : '还有部署设置待补充';
     const heroSubtitle = ok
-        ? ('当前部署平台为 ' + status.platformLabel + '，按钮显示绿色表示部署平台所需变量已满足。')
-        : ('当前部署平台为 ' + status.platformLabel + '，请补全以下必需变量后再尝试重新部署或相关管理操作。');
+        ? ('当前部署平台为 ' + status.platformLabel + '，基础配置已满足，可继续正常使用。')
+        : ('当前部署平台为 ' + status.platformLabel + '，请先补全下列设置，再进行重新部署或相关管理操作。');
 
     let varsHtml = '';
     if (!status.requiredVars || status.requiredVars.length === 0) {
-        varsHtml = '<div class="deploy-env-status-hint">该部署平台无需额外配置 <span class="deploy-env-code">DEPLOY_PLATFROM_*</span> 相关变量。</div>';
+        varsHtml = '<div class="deploy-env-status-hint">当前部署平台无需额外补充 <span class="deploy-env-code">DEPLOY_PLATFROM_*</span> 相关设置。</div>';
     } else {
         varsHtml = '<div class="deploy-env-status-grid">' +
             status.requiredVars.map(function(k) {
@@ -445,7 +445,7 @@ async function openDeployEnvStatusModal() {
     }
 
     if (!ok && status.missingVars && status.missingVars.length > 0 && status.missingVars[0] === 'UNKNOWN') {
-        missingHint = '<div class="deploy-env-status-hint">当前无法获取配置状态，请检查网络或 API 端点是否可访问。</div>';
+        missingHint = '<div class="deploy-env-status-hint">当前暂时无法获取配置状态，请检查网络或 API 地址是否可访问。</div>';
     }
 
     body.innerHTML =
@@ -457,7 +457,7 @@ async function openDeployEnvStatusModal() {
                     '<div class="deploy-env-status-hero-subtitle">' + heroSubtitle + '</div>' +
                     '<div class="deploy-env-status-chip">' +
                         '<span>平台：</span><strong>' + status.platformLabel + '</strong>' +
-                        '<span style="margin-left: 8px;">状态：</span><strong>' + (ok ? '✅ 正常' : '❌ 异常') + '</strong>' +
+                        '<span style="margin-left: 8px;">状态：</span><strong>' + (ok ? '✅ 已就绪' : '⚠️ 待补充') + '</strong>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -627,47 +627,47 @@ function performSectionSwitch(section, isInitialLoad = false) {
     // 更新移动端标题
     const titles = {
         preview: {
-            main: '配置预览',
-            sub: 'Service Overview',
-            kicker: 'API Service Deck',
-            desc: '总览服务状态、关键配置与兼容接口。'
+            main: '服务概览',
+            sub: 'Service Home',
+            kicker: 'Quick Start',
+            desc: '快速查看接入地址、当前状态和基础设置。'
         },
         logs: {
-            main: '日志查看',
-            sub: 'System Logs',
-            kicker: 'Live Observability',
-            desc: '查看运行日志与错误信息。'
+            main: '运行日志',
+            sub: 'Activity Logs',
+            kicker: 'Recent Activity',
+            desc: '查看最近运行记录与异常提醒。'
         },
         api: {
-            main: '接口调试',
-            sub: 'Compatibility API',
-            kicker: 'Compatibility Playground',
-            desc: '调试兼容接口与返回结果。'
+            main: '接口测试',
+            sub: 'API Tester',
+            kicker: 'Access Test',
+            desc: '快速测试接口与返回结果。'
         },
         push: {
             main: '推送弹幕',
             sub: 'Manual Push',
-            kicker: 'Manual Bridge',
-            desc: '辅助推送与手动触发。'
+            kicker: 'Danmu Push',
+            desc: '手动推送弹幕并联动播放器刷新。'
         },
         'request-records': {
-            main: '请求记录',
-            sub: 'Request Timeline',
-            kicker: 'Traffic Timeline',
-            desc: '查看播放器请求记录。'
+            main: '访问记录',
+            sub: 'Access History',
+            kicker: 'Recent Requests',
+            desc: '查看最近访问与调用情况。'
         },
         env: {
-            main: '系统配置',
-            sub: 'Environment Settings',
-            kicker: 'System Controls',
-            desc: '管理环境变量、缓存与部署控制。'
+            main: '系统设置',
+            sub: 'Settings',
+            kicker: 'Configuration',
+            desc: '管理服务设置、缓存与部署操作。'
         }
     };
     const currentMeta = titles[section] || {
         main: section,
         sub: '',
         kicker: 'Workspace',
-        desc: 'LogVar 弹幕 API 工作台。'
+        desc: 'LogVar 弹幕 API 页面。'
     };
     const mobileTitle = document.getElementById('mobile-title');
     const mobileSubtitle = document.getElementById('mobile-subtitle');
