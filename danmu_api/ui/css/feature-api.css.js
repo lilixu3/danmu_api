@@ -156,7 +156,18 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .form-help .help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
     color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.form-help .help-icon svg {
+    width: 1rem;
+    height: 1rem;
 }
 
 /* ========================================
@@ -911,8 +922,18 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .danmu-method-tab .tab-icon {
-    font-size: 1.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
     line-height: 1;
+    flex-shrink: 0;
+}
+
+.danmu-method-tab .tab-icon svg {
+    width: 1.15rem;
+    height: 1.15rem;
 }
 
 .danmu-method-empty {
@@ -924,8 +945,20 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .danmu-method-empty .empty-icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 0.65rem;
+    border-radius: 1rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+}
+
+.danmu-method-empty .empty-icon svg {
+    width: 1.35rem;
+    height: 1.35rem;
 }
 
 .danmu-method-empty .empty-title {
@@ -1073,8 +1106,20 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .danmu-stat-item .stat-icon {
-    font-size: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
     flex-shrink: 0;
+}
+
+.danmu-stat-item .stat-icon svg {
+    width: 1.35rem;
+    height: 1.35rem;
 }
 
 .danmu-stat-item .stat-content {
@@ -1250,9 +1295,20 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 }
 
 .danmu-list-empty .empty-icon {
-    font-size: 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
     margin-bottom: 1rem;
-    display: block;
+    border-radius: 1.15rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+}
+
+.danmu-list-empty .empty-icon svg {
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .danmu-item {
@@ -1430,6 +1486,13 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
 [data-theme="dark"] .danmu-method-tab {
     background: rgba(8, 12, 24, 0.84);
     border-color: rgba(129, 140, 248, 0.16);
+}
+
+[data-theme="dark"] .danmu-method-empty .empty-icon,
+[data-theme="dark"] .danmu-stat-item .stat-icon,
+[data-theme="dark"] .danmu-list-empty .empty-icon {
+    background: rgba(129, 140, 248, 0.14);
+    color: #c7d2fe;
 }
 
 `;

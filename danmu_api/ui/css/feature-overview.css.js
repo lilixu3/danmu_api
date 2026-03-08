@@ -326,9 +326,27 @@ export const overviewCssContent = /* css */ `/* ================================
 
 .empty-icon,
 .error-icon {
-    font-size: 4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 4.5rem;
+    height: 4.5rem;
     margin-bottom: 1rem;
-    opacity: 0.5;
+    border-radius: 1.5rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+    opacity: 1;
+}
+
+.empty-icon svg,
+.error-icon svg {
+    width: 2rem;
+    height: 2rem;
+}
+
+.preview-error .error-icon {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
 }
 
 .preview-empty h3,
@@ -842,11 +860,90 @@ export const overviewCssContent = /* css */ `/* ================================
     line-height: 1.75;
 }
 
-#proxy-config-container {
-    border-radius: 24px !important;
-    border: 1px solid rgba(245, 158, 11, 0.24) !important;
-    background: linear-gradient(135deg, rgba(255, 251, 235, 0.94) 0%, rgba(255, 247, 237, 0.96) 100%) !important;
-    box-shadow: 0 12px 32px rgba(245, 158, 11, 0.08);
+#proxy-config-container,
+.proxy-config-card {
+    border-radius: 26px !important;
+    border: 1px solid rgba(245, 158, 11, 0.22) !important;
+    background: linear-gradient(135deg, rgba(255, 251, 235, 0.95) 0%, rgba(255, 247, 237, 0.98) 100%) !important;
+    box-shadow: 0 14px 34px rgba(245, 158, 11, 0.08);
+}
+
+.proxy-config-card {
+    padding: 1.15rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.proxy-config-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+}
+
+.proxy-alert-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.95rem;
+    background: rgba(245, 158, 11, 0.14);
+    color: #b45309;
+    flex-shrink: 0;
+}
+
+.proxy-alert-icon svg {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.proxy-alert-title {
+    margin: 0 0 0.3rem;
+    color: #92400e;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.proxy-alert-body {
+    margin: 0;
+    color: #9a6700;
+    font-size: 0.92rem;
+    line-height: 1.7;
+}
+
+.proxy-config-form {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.proxy-config-form .form-input {
+    flex: 1 1 320px;
+}
+
+.proxy-config-note {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.6;
+}
+
+[data-theme="dark"] .proxy-config-card {
+    background: linear-gradient(135deg, rgba(56, 36, 10, 0.5) 0%, rgba(35, 23, 8, 0.62) 100%) !important;
+    border-color: rgba(245, 158, 11, 0.22) !important;
+}
+
+[data-theme="dark"] .proxy-alert-icon {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+}
+
+[data-theme="dark"] .proxy-alert-title {
+    color: #fde68a;
+}
+
+[data-theme="dark"] .proxy-alert-body {
+    color: #fcd34d;
 }
 
 
@@ -1471,6 +1568,16 @@ export const overviewCssContent = /* css */ `/* ================================
 
 [data-theme="dark"] .hero-metric-item-manual .stat-value {
     color: #5eead4;
+}
+
+[data-theme="dark"] .empty-icon {
+    background: rgba(129, 140, 248, 0.12);
+    color: #c7d2fe;
+}
+
+[data-theme="dark"] .preview-error .error-icon {
+    background: rgba(251, 113, 133, 0.14);
+    color: #fecdd3;
 }
 
 [data-theme="dark"] .hero-metric-item + .hero-metric-item {

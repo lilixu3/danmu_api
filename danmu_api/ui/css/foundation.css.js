@@ -246,12 +246,21 @@ body {
 }
 
 .footer-link-icon {
-    font-size: 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.75rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+    flex-shrink: 0;
 }
 
+.footer-link-icon svg,
 .footer-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
 }
 
 .footer-note {
@@ -430,11 +439,13 @@ body {
 }
 
 html {
-    background: linear-gradient(180deg, #f7f8fb 0%, #f4f6f8 48%, #f7f8fb 100%);
+    background:
+        radial-gradient(circle at top, rgba(79, 70, 229, 0.06), transparent 30%),
+        linear-gradient(180deg, #f8fafc 0%, #f3f6fb 48%, #f8fafc 100%);
 }
 
 body {
-    font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    font-family: "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
     background: transparent;
     min-height: 100vh;
 }
@@ -445,8 +456,8 @@ h1,
 .preview-hero-title,
 .side-card-title,
 .logo-text {
-    font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
-    letter-spacing: 0.02em;
+    font-family: "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    letter-spacing: -0.02em;
 }
 
 .app-container {
@@ -517,13 +528,17 @@ h1,
 
 [data-theme="dark"] html {
     background:
-        radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 34%),
-        radial-gradient(circle at 85% 10%, rgba(192, 132, 252, 0.16), transparent 28%),
-        linear-gradient(180deg, #060816 0%, #0b1020 52%, #050814 100%);
+        radial-gradient(circle at top, rgba(99, 102, 241, 0.14), transparent 26%),
+        linear-gradient(180deg, #08101f 0%, #0b1220 54%, #070d19 100%);
 }
 
 [data-theme="dark"] body {
     background: transparent;
+}
+
+[data-theme="dark"] body::before,
+[data-theme="dark"] body::after {
+    display: none;
 }
 
 [data-theme="dark"] .footer {
@@ -536,6 +551,11 @@ h1,
     background: rgba(15, 23, 42, 0.82);
     border-color: rgba(129, 140, 248, 0.18);
     color: var(--text-primary);
+}
+
+[data-theme="dark"] .footer-link-icon {
+    background: rgba(129, 140, 248, 0.14);
+    color: #c7d2fe;
 }
 
 `;

@@ -201,7 +201,13 @@ export const HTML_TEMPLATE = /* html */ `
                     </button>
                     <div class="version-card version-card-inline">
                         <div class="version-header">
-                            <div class="version-icon">📦</div>
+                            <div class="version-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 3l7 4-7 4-7-4 7-4z"/>
+                                    <path d="M5 7v8l7 4 7-4V7"/>
+                                    <path d="M12 11v8"/>
+                                </svg>
+                            </div>
                             <div class="version-title">版本信息</div>
                         </div>
                         <div class="version-content version-content-inline">
@@ -214,7 +220,12 @@ export const HTML_TEMPLATE = /* html */ `
                                 <span class="version-value version-latest" id="latest-version">检查中...</span>
                             </div>
                             <div class="version-update-notice" id="version-update-notice" style="display: none;">
-                                <div class="update-icon">🎉</div>
+                                <div class="update-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M4 12l4 4L20 4"/>
+                                        <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/>
+                                    </svg>
+                                </div>
                                 <div class="update-text">
                                     <div class="update-title">发现新版本</div>
                                     <div class="update-desc" id="update-desc">有可用更新</div>
@@ -268,16 +279,25 @@ export const HTML_TEMPLATE = /* html */ `
             <div class="content-shell">
             <!-- 配置预览 -->
             <section class="content-section active" id="preview-section">
-                <div id="proxy-config-container" style="display: none; background: var(--warning-bg, #fff3cd); border: 1px solid var(--warning-border, #ffeeba); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3 style="color: var(--warning-text, #856404); margin-top: 0; font-size: 16px;">⚠️ 获取配置失败</h3>
-                    <p style="color: var(--warning-text, #856404); margin-bottom: 10px; font-size: 14px;">
-                        检测到无法获取配置。如果您使用了复杂的反向代理：例如将 <code>http://{ip}:9321/</code> 代理到了 <code>http://{ip}:9321/danmu_api/</code>，请在此处手动输入完整的反代后链接（不包含TOKEN和ADMIN_TOKEN的）
-                    </p>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <input type="text" id="custom-base-url" class="form-input" placeholder="例如: http://192.168.8.1:2333/danmu_api/ (留空保存即恢复默认)" style="flex: 1; min-width: 200px;">
+                <div id="proxy-config-container" class="proxy-config-card" style="display: none;">
+                    <div class="proxy-config-header">
+                        <span class="proxy-alert-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 9v4"/>
+                                <path d="M12 17h.01"/>
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            </svg>
+                        </span>
+                        <div>
+                            <h3 class="proxy-alert-title">获取配置失败</h3>
+                            <p class="proxy-alert-body">检测到无法获取配置。如果您使用了复杂的反向代理：例如将 <code>http://{ip}:9321/</code> 代理到了 <code>http://{ip}:9321/danmu_api/</code>，请在此处手动输入完整的反代后链接（不包含TOKEN和ADMIN_TOKEN的）</p>
+                        </div>
+                    </div>
+                    <div class="proxy-config-form">
+                        <input type="text" id="custom-base-url" class="form-input" placeholder="例如: http://192.168.8.1:2333/danmu_api/ (留空保存即恢复默认)">
                         <button class="btn btn-primary" onclick="saveBaseUrl()">保存并刷新</button>
                     </div>
-                    <p style="color: var(--text-secondary); font-size: 12px; margin-top: 8px;">* 设置将保存在浏览器本地存储中，清除网页的'本地存储空间'或者输入框中留空并保存可恢复默认</p>
+                    <p class="proxy-config-note">设置会保存在浏览器本地存储中，清除网页本地存储或留空后保存即可恢复默认。</p>
                 </div>
 
                 <div class="preview-command-grid preview-command-grid-single">
@@ -520,18 +540,35 @@ export const HTML_TEMPLATE = /* html */ `
                         </div>
                         <div class="danmu-method-tabs" role="tablist" aria-label="弹幕测试方式">
                             <button class="danmu-method-tab" data-method="auto" onclick="switchDanmuTestMethod('auto')" aria-label="自动匹配">
-                                <span class="tab-icon">🎯</span>
+                                <span class="tab-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="8"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                        <path d="M12 2v2m0 16v2m10-10h-2M4 12H2"/>
+                                    </svg>
+                                </span>
                                 <span>自动匹配</span>
                             </button>
                             <button class="danmu-method-tab" data-method="manual" onclick="switchDanmuTestMethod('manual')" aria-label="手动搜索">
-                                <span class="tab-icon">🔍</span>
+                                <span class="tab-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="11" cy="11" r="7"/>
+                                        <path d="m20 20-3.5-3.5"/>
+                                    </svg>
+                                </span>
                                 <span>手动搜索</span>
                             </button>
                         </div>
 
                         <!-- 未选择方式时的占位提示 -->
                         <div id="danmu-method-empty" class="danmu-method-empty">
-                            <div class="empty-icon">💡</div>
+                            <div class="empty-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18h6"/>
+                                    <path d="M10 22h4"/>
+                                    <path d="M12 2a7 7 0 0 0-4 12.74c.63.44 1 1.15 1 1.92V18h6v-1.34c0-.77.37-1.48 1-1.92A7 7 0 0 0 12 2z"/>
+                                </svg>
+                            </div>
                             <div class="empty-title">先选择一种方式</div>
                             <div class="empty-desc">自动匹配适合直接输入文件名；手动搜索适合精确选择剧集</div>
                         </div>
@@ -545,7 +582,7 @@ export const HTML_TEMPLATE = /* html */ `
                                     </svg>
                                 </div>
                                 <div class="method-info">
-                                    <h3 class="method-title">🎯 自动匹配测试</h3>
+                                    <h3 class="method-title">自动匹配测试</h3>
                                     <p class="method-desc">通过文件名自动匹配弹幕</p>
                                 </div>
                             </div>
@@ -554,7 +591,13 @@ export const HTML_TEMPLATE = /* html */ `
                                 <input type="text" class="form-input" id="auto-match-filename" 
                                        placeholder="例如: 生万物 S02E08 或 无忧渡.S01E01.2160p.WEB-DL.H265.DDP.5.1">
                                 <small class="form-help">
-                                    <span class="help-icon">💡</span>
+                                    <span class="help-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M9 18h6"/>
+                                            <path d="M10 22h4"/>
+                                            <path d="M12 2a7 7 0 0 0-4 12.74c.63.44 1 1.15 1 1.92V18h6v-1.34c0-.77.37-1.48 1-1.92A7 7 0 0 0 12 2z"/>
+                                        </svg>
+                                    </span>
                                     支持多种格式：季集格式、网盘命名、外语标题等
                                 </small>
                             </div>
@@ -576,7 +619,7 @@ export const HTML_TEMPLATE = /* html */ `
                                     </svg>
                                 </div>
                                 <div class="method-info">
-                                    <h3 class="method-title">🔍 手动搜索测试</h3>
+                                    <h3 class="method-title">手动搜索测试</h3>
                                     <p class="method-desc">搜索动漫并选择集数</p>
                                 </div>
                             </div>
@@ -586,7 +629,13 @@ export const HTML_TEMPLATE = /* html */ `
                                        placeholder="例如: 生万物"
                                        onkeypress="if(event.key==='Enter') manualSearchDanmu()">
                                 <small class="form-help">
-                                    <span class="help-icon">💡</span>
+                                    <span class="help-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M9 18h6"/>
+                                            <path d="M10 22h4"/>
+                                            <path d="M12 2a7 7 0 0 0-4 12.74c.63.44 1 1.15 1 1.92V18h6v-1.34c0-.77.37-1.48 1-1.92A7 7 0 0 0 12 2z"/>
+                                        </svg>
+                                    </span>
                                     输入动漫名称进行精确搜索
                                 </small>
                             </div>
@@ -631,28 +680,50 @@ export const HTML_TEMPLATE = /* html */ `
                             <!-- 统计信息 -->
                             <div class="danmu-stats-grid">
                                 <div class="danmu-stat-item">
-                                    <span class="stat-icon">💬</span>
+                                    <span class="stat-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                        </svg>
+                                    </span>
                                     <div class="stat-content">
                                         <div class="stat-value" id="danmu-total-count">0</div>
                                         <div class="stat-label">弹幕总数</div>
                                     </div>
                                 </div>
                                 <div class="danmu-stat-item">
-                                    <span class="stat-icon">⏱️</span>
+                                    <span class="stat-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="13" r="8"/>
+                                            <path d="M12 9v4l2.5 1.5"/>
+                                            <path d="M9 2h6"/>
+                                        </svg>
+                                    </span>
                                     <div class="stat-content">
                                         <div class="stat-value" id="danmu-duration">0:00</div>
                                         <div class="stat-label">视频时长</div>
                                     </div>
                                 </div>
                                 <div class="danmu-stat-item">
-                                    <span class="stat-icon">📊</span>
+                                    <span class="stat-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M4 20V10"/>
+                                            <path d="M10 20V4"/>
+                                            <path d="M16 20v-7"/>
+                                            <path d="M22 20v-4"/>
+                                        </svg>
+                                    </span>
                                     <div class="stat-content">
                                         <div class="stat-value" id="danmu-density">0</div>
                                         <div class="stat-label">平均密度/分</div>
                                     </div>
                                 </div>
                                 <div class="danmu-stat-item">
-                                    <span class="stat-icon">🔥</span>
+                                    <span class="stat-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 3s4 3.5 4 7.5c0 2.5-1.4 4.5-4 4.5s-4-2-4-4.5C8 6.5 12 3 12 3z"/>
+                                            <path d="M8 14a4 4 0 1 0 8 0c0-1.5-.8-2.9-2-3.8"/>
+                                        </svg>
+                                    </span>
                                     <div class="stat-content">
                                         <div class="stat-value" id="danmu-peak-time">--:--</div>
                                         <div class="stat-label">高能时刻</div>
@@ -707,7 +778,11 @@ export const HTML_TEMPLATE = /* html */ `
                             </div>
                             <div class="danmu-list-container" id="danmu-list-container">
                                 <div class="danmu-list-empty">
-                                    <span class="empty-icon">💬</span>
+                                    <span class="empty-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                        </svg>
+                                    </span>
                                     <p>暂无弹幕数据</p>
                                 </div>
                             </div>
@@ -856,12 +931,12 @@ export const HTML_TEMPLATE = /* html */ `
                 </div>
 
                 <div class="category-tabs">
-                    <button class="tab-btn active" onclick="switchCategory('api')">🔗 API配置</button>
-                    <button class="tab-btn" onclick="switchCategory('source')">📜 源配置</button>
-                    <button class="tab-btn" onclick="switchCategory('match')">🔍 匹配配置</button>
-                    <button class="tab-btn" onclick="switchCategory('danmu')">🔣 弹幕配置</button>
-                    <button class="tab-btn" onclick="switchCategory('cache')">💾 缓存配置</button>
-                    <button class="tab-btn" onclick="switchCategory('system')">⚙️ 系统配置</button>
+                    <button class="tab-btn active" onclick="switchCategory('api')">API配置</button>
+                    <button class="tab-btn" onclick="switchCategory('source')">源配置</button>
+                    <button class="tab-btn" onclick="switchCategory('match')">匹配配置</button>
+                    <button class="tab-btn" onclick="switchCategory('danmu')">弹幕配置</button>
+                    <button class="tab-btn" onclick="switchCategory('cache')">缓存配置</button>
+                    <button class="tab-btn" onclick="switchCategory('system')">系统配置</button>
                 </div>
 
                 <div class="env-grid" id="env-list"></div>
@@ -1034,12 +1109,12 @@ export const HTML_TEMPLATE = /* html */ `
                     <div class="form-group">
                         <label class="form-label">变量类别</label>
                         <select class="form-select" id="env-category" disabled>
-                            <option value="api">🔗 API配置</option>
-                            <option value="source">📜 源配置</option>
-                            <option value="match">🔍 匹配配置</option>
-                            <option value="danmu">🔣 弹幕配置</option>
-                            <option value="cache">💾 缓存配置</option>
-                            <option value="system">⚙️ 系统配置</option>
+                            <option value="api">API配置</option>
+                            <option value="source">源配置</option>
+                            <option value="match">匹配配置</option>
+                            <option value="danmu">弹幕配置</option>
+                            <option value="cache">缓存配置</option>
+                            <option value="system">系统配置</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1099,15 +1174,21 @@ export const HTML_TEMPLATE = /* html */ `
         </div>
         <div class="footer-links">
             <a href="https://t.me/ddjdd_bot" target="_blank" class="footer-link">
-                <span class="footer-link-icon">💬</span>
+                <span class="footer-link-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.5 18.3 19a1.5 1.5 0 0 1-2.1 1l-4.3-1.8-2.2 2.1a1 1 0 0 1-1.7-.7v-3l7.2-6.6c.3-.3-.1-.7-.5-.5l-8.8 5.6-3.8-1.3a1.5 1.5 0 0 1 0-2.9L19.3 3a1.5 1.5 0 0 1 2.2 1.5z"/></svg>
+                </span>
                 <span class="footer-link-text">TG机器人</span>
             </a>
             <a href="https://t.me/logvar_danmu_group" target="_blank" class="footer-link">
-                <span class="footer-link-icon">👥</span>
+                <span class="footer-link-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
                 <span class="footer-link-text">TG群组</span>
             </a>
             <a href="https://t.me/logvar_danmu_channel" target="_blank" class="footer-link">
-                <span class="footer-link-icon">📢</span>
+                <span class="footer-link-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2"/><path d="M6 8v8"/><path d="M10 6v12"/><path d="M14 8v8"/><path d="M18 4v16"/><path d="M21 10v4"/></svg>
+                </span>
                 <span class="footer-link-text">TG频道</span>
             </a>
             <a href="https://github.com/huangxd-/danmu_api" target="_blank" class="footer-link">

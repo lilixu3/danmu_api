@@ -192,8 +192,26 @@ export const shellCssContent = /* css */ `/* ===================================
     margin-bottom: 1rem;
 }
 
+.version-icon,
+.update-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
 .version-icon {
-    font-size: 1.25rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.75rem;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+}
+
+.version-icon svg,
+.update-icon svg {
+    width: 1.05rem;
+    height: 1.05rem;
 }
 
 .version-title {
@@ -241,7 +259,21 @@ export const shellCssContent = /* css */ `/* ===================================
 }
 
 .update-icon {
-    font-size: 1.5rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.875rem;
+    background: rgba(34, 197, 94, 0.12);
+    color: #15803d;
+}
+
+[data-theme="dark"] .version-icon {
+    background: rgba(129, 140, 248, 0.14);
+    color: #c7d2fe;
+}
+
+[data-theme="dark"] .update-icon {
+    background: rgba(52, 211, 153, 0.14);
+    color: #86efac;
 }
 
 .update-text {
