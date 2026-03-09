@@ -1139,16 +1139,30 @@ export const overviewCssContent = /* css */ `/* ================================
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
     border-radius: 15px;
     border: 1px solid rgba(203, 213, 225, 0.72);
     background: rgba(248, 250, 252, 0.92);
     color: #475569;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+.stat-icon-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 56%);
+    pointer-events: none;
 }
 
 .stat-icon-wrapper svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    position: relative;
+    z-index: 1;
     stroke-width: 2;
 }
 
@@ -1266,28 +1280,35 @@ export const overviewCssContent = /* css */ `/* ================================
     flex-shrink: 0;
 }
 
-#status-icon-wrapper svg,
-#mode-icon-wrapper svg {
+#status-icon-wrapper svg {
     width: 18px;
     height: 18px;
 }
 
+#mode-icon-wrapper svg {
+    width: 20px;
+    height: 20px;
+}
+
 #mode-icon-wrapper.mode-preview {
-    background: rgba(241, 245, 249, 0.96);
-    border-color: rgba(148, 163, 184, 0.18);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(226, 232, 240, 0.96) 100%);
+    border-color: rgba(148, 163, 184, 0.22);
     color: #475569;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 10px 18px rgba(148, 163, 184, 0.12);
 }
 
 #mode-icon-wrapper.mode-user {
-    background: rgba(238, 242, 255, 0.96);
-    border-color: rgba(79, 70, 229, 0.16);
-    color: #4338ca;
+    background: linear-gradient(180deg, rgba(96, 165, 250, 0.18) 0%, rgba(79, 70, 229, 0.16) 100%);
+    border-color: rgba(79, 70, 229, 0.2);
+    color: #312e81;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 10px 18px rgba(79, 70, 229, 0.12);
 }
 
 #mode-icon-wrapper.mode-admin {
-    background: rgba(255, 245, 245, 0.96);
-    border-color: rgba(239, 68, 68, 0.16);
-    color: #b91c1c;
+    background: linear-gradient(180deg, rgba(254, 226, 226, 0.98) 0%, rgba(254, 202, 202, 0.96) 100%);
+    border-color: rgba(239, 68, 68, 0.22);
+    color: #9f1239;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 18px rgba(225, 29, 72, 0.12);
 }
 
 .hero-service-header {

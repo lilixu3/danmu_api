@@ -306,6 +306,19 @@ function updateSystemStatusUI(status, text) {
 }
 
 /* ========================================
+   获取模式图标
+   ======================================== */
+function getModeIconSvg(modeClass) {
+    const icons = {
+        'mode-preview': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>',
+        'mode-user': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9" cy="7" r="3"/><path d="m16 11 2 2 4-4"/></svg>',
+        'mode-admin': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z"/><path d="m9.5 12 1.8 1.8 3.2-3.2"/></svg>'
+    };
+
+    return icons[modeClass] || icons['mode-preview'];
+}
+
+/* ========================================
    更新当前模式显示
    ======================================== */
 function updateCurrentModeDisplay() {
@@ -339,6 +352,9 @@ function updateCurrentModeDisplay() {
     if (modeIconWrapper) {
         modeIconWrapper.classList.remove('mode-preview', 'mode-user', 'mode-admin');
         modeIconWrapper.classList.add(modeClass);
+        modeIconWrapper.dataset.mode = modeClass;
+        modeIconWrapper.innerHTML = getModeIconSvg(modeClass);
+        modeIconWrapper.setAttribute('aria-label', modeName);
     }
     
     addLog('🔐 当前访问: ' + modeName, 'info');

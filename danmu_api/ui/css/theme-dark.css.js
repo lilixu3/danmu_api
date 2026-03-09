@@ -342,15 +342,24 @@ export const themeDarkCssContent = /* css */ `/* ===============================
 }
 
 [data-theme="dark"] #mode-icon-wrapper.mode-preview {
-    background: linear-gradient(180deg, #56657f 0%, #3f4d65 100%);
+    background: linear-gradient(180deg, #6f809d 0%, #45536b 100%);
+    border-color: rgba(191, 219, 254, 0.2);
+    color: #f8fbff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 12px 24px rgba(15, 23, 42, 0.22);
 }
 
 [data-theme="dark"] #mode-icon-wrapper.mode-user {
-    background: linear-gradient(180deg, #4e7cff 0%, #365ed0 100%);
+    background: linear-gradient(180deg, #8fb1ff 0%, #5c87ff 42%, #3258c9 100%);
+    border-color: rgba(191, 219, 254, 0.34);
+    color: #f8fbff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 28px rgba(43, 92, 219, 0.32);
 }
 
 [data-theme="dark"] #mode-icon-wrapper.mode-admin {
-    background: linear-gradient(180deg, #ff8793 0%, #dc4d5d 100%);
+    background: linear-gradient(180deg, #ffbec9 0%, #ff7e98 38%, #c83d59 100%);
+    border-color: rgba(254, 205, 211, 0.34);
+    color: #fff7f8;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 28px rgba(200, 61, 89, 0.3);
 }
 
 [data-theme="dark"] .value-type-badge,
