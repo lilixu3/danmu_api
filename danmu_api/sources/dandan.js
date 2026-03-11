@@ -12,6 +12,7 @@ import MangoSource from "./mango.js";
 import BilibiliSource from "./bilibili.js";
 import YoukuSource from "./youku.js";
 import BahamutSource from "./bahamut.js";
+import { titleMatches, getExplicitSeasonNumber } from "../utils/common-util.js";
 
 const tencentSource = new TencentSource();
 const iqiyiSource = new IqiyiSource();
@@ -24,7 +25,13 @@ const bahamutSource = new BahamutSource();
 // 获取弹弹play弹幕
 // =====================
 export default class DandanSource extends BaseSource {
-  async search(keyword) {
+  /**
+   * 搜索动画条目
+   * 包含常规搜索、TMDB 日语原名搜索，以及去除季度信息后的降级搜索策略
+   * @param {string} keyword 搜索关键词
+   * @param {boolean} isFallback 标记当前是否处于降级搜索状态
+   */
+  async search(keyword, isFallback = false) {
     try {
       log("info", `[Dandan] 原始搜索词: ${keyword}`);
 
@@ -140,7 +147,17 @@ export default class DandanSource extends BaseSource {
         return tmdbResult.data;
       }
 
-      log("info", "[Dandan] 原始搜索和基于TMDB的搜索均未返回任何结果");
+      log("info", `[Dandan] 原始搜索和基于TMDB的搜索均未返回任何结果 (当前搜索词: ${keyword})`);
+
+      // 搜不到且标题带季度信息时，回退到去季度关键词再试一次
+      if (!isFallback) {
+        const strippedKeyword = keyword.replace(/(?:第\s*[0-9一二三四五六七八九十百千万]+\s*[季期部])|(?:S(?:eason)?\s*\d+)|(?:Part\s*\d+)/gi, '').trim();
+        if (strippedKeyword && strippedKeyword !== keyword) {
+          log("info", `[Dandan] 尝试去除季度信息进行降级搜索: ${strippedKeyword}`);
+          return this.search(strippedKeyword, true);
+        }
+      }
+
       return [];
     } catch (error) {
       // 捕获请求中的错误
@@ -211,13 +228,6 @@ export default class DandanSource extends BaseSource {
     }
   }
 
-  // 检测标题中是否包含明确的季度或部分特征，用于相关作品开关
-  hasSeasonInfo(title) {
-    return /(?:^|\s)(?:第[0-9一二三四五六七八九十百千万]+季|S(?:eason)?\s*\d+)(?:\s+|_)/gi.test(title)
-      || /^(?:(?:第|S(?:eason)?)\s*\d+(?:季|期|部)?|(?:Part|P|第)\s*\d+(?:部分)?)$/i.test(title)
-      || /(第[0-9一二三四五六七八九十百千万\d]+(?:季|期|部)|S(?:eason)?\s*\d+|Part\s*\d+)/i.test(title);
-  }
-
   // 计算两个字符串的文本相似度（字符集交并比算法）
   calculateSimilarity(str1, str2) {
     if (!str1 || !str2) return 0;
@@ -244,10 +254,10 @@ export default class DandanSource extends BaseSource {
     const existingIds = new Set();
     const queue = [];
 
-    // 初始化任务队列与去重池
+    // 初始化任务队列与去重池，初始搜索结果标记为非相关作品
     for (const anime of sourceAnimes) {
       existingIds.add(anime.animeId);
-      queue.push(anime);
+      queue.push({ ...anime, isRelated: false });
     }
 
     // 递归获取所有层级关联作品，批次处理避免并发过载
@@ -268,16 +278,51 @@ export default class DandanSource extends BaseSource {
           // 关联作品标题含季度信息（避免范围发散），或初始搜索结果不少于25个（API25个结果上限，用相关作品突破）
           if (similarity >= 0.1 && details.relateds && Array.isArray(details.relateds)) {
             for (const rel of details.relateds) {
-              if (!existingIds.has(rel.animeId) && (this.hasSeasonInfo(rel.animeTitle) || initialCount >= 25)) {
+              const hasSeason = getExplicitSeasonNumber(rel.animeTitle) !== null;
+              if (!existingIds.has(rel.animeId) && (hasSeason || initialCount >= 25)) {
                 existingIds.add(rel.animeId);
                 queue.push({
                   animeId: rel.animeId,
                   animeTitle: rel.animeTitle,
                   imageUrl: rel.imageUrl,
                   rating: rel.rating || 0,
+                  isRelated: true,
                 });
               }
             }
+          }
+
+          // 初始搜索结果做完整标题校验，相关作品只保留季度正确的结果
+          const allTitles = [anime.animeTitle, ...aliases];
+          let isMatch = false;
+
+          if (anime.isRelated) {
+            const querySeason = getExplicitSeasonNumber(queryTitle);
+            if (querySeason !== null) {
+              let titleSeason = null;
+              for (const title of allTitles) {
+                if (!title) continue;
+                const season = getExplicitSeasonNumber(title);
+                if (season !== null) {
+                  titleSeason = season;
+                  break;
+                }
+              }
+
+              if (querySeason > 1) {
+                isMatch = (titleSeason || 1) === querySeason;
+              } else if (querySeason === 1) {
+                isMatch = titleSeason === null || titleSeason === 1;
+              }
+            } else {
+              isMatch = true;
+            }
+          } else {
+            isMatch = allTitles.some(title => title && titleMatches(title, queryTitle));
+          }
+
+          if (!isMatch) {
+            return;
           }
 
           let links = [];

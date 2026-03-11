@@ -218,12 +218,29 @@ export function strictTitleMatch(title, query) {
   if (t === q) return true;
 
   // 标题以搜索词开头，且后面跟着空格、括号等分隔符
-  const separators = [' ', '(', '（', ':', '：', '-', '—', '·', '第', 'S', 's'];
+  const separators = [' ', '(', '（', ':', '：', '-', '—', '·', '第', 'S', 's', '年番', '合集'];
   for (const sep of separators) {
     if (t.startsWith(q + sep)) return true;
   }
 
   return false;
+}
+
+/**
+ * 从文本中提取明确的季度数字
+ * 支持阿拉伯数字、中文数字与 Part 表达
+ * @param {string} text - 需要解析的文本
+ * @returns {number|null} 提取出的季度数字，未匹配到时返回 null
+ */
+export function getExplicitSeasonNumber(text) {
+  if (!text) return null;
+
+  const normalizedText = normalizeSpaces(String(text));
+  const match = normalizedText.match(/(?:第([0-9一二三四五六七八九十百千万]+)[季期部])|(?:S(?:eason)?(\d+))|(?:Part(\d+))/i);
+  if (!match) return null;
+
+  const numStr = match[1] || match[2] || match[3];
+  return numStr ? convertChineseNumber(numStr) : null;
 }
 
 /**
@@ -242,6 +259,20 @@ export function titleMatches(title, query) {
 
   // 策略2：包含匹配优先 (性能最优且准确，只要完整包含即匹配)
   if (t.includes(q)) return true;
+
+  // 季度特征校验，避免宽松相似度把不同季度误判为同一作品
+  const querySeason = getExplicitSeasonNumber(query);
+  if (querySeason !== null) {
+    const titleSeason = getExplicitSeasonNumber(title);
+
+    if (querySeason > 1 && (titleSeason || 1) !== querySeason) {
+      return false;
+    }
+
+    if (querySeason === 1 && titleSeason !== null && titleSeason !== 1) {
+      return false;
+    }
+  }
 
   // 策略3：相似度匹配 (阈值0.8)
   // 解决"和/与"等翻译差异，只要搜索词中 大于 80% 的字符出现在标题里，即视为匹配
