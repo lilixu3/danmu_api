@@ -734,6 +734,166 @@ export const shellCssContent = /* css */ `/* ===================================
     gap: 0.85rem;
 }
 
+/* ========================================
+   桌面端版本状态条
+   ======================================== */
+.version-status-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.62rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.version-status-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.version-badge {
+    padding: 0.22rem 0.58rem;
+    border-radius: 999px;
+    background: rgba(79, 70, 229, 0.08);
+    color: #4338ca;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    border: 1px solid rgba(79, 70, 229, 0.12);
+}
+
+.version-divider {
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+}
+
+.version-status {
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.version-status-checking {
+    color: var(--text-tertiary);
+}
+
+.version-status-uptodate {
+    color: #047857;
+}
+
+.version-status-update {
+    color: #4338ca;
+    cursor: pointer;
+}
+
+.version-status-update:hover {
+    text-decoration: underline;
+}
+
+.version-status-failed {
+    color: var(--text-tertiary);
+}
+
+.version-status-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.version-latest-label {
+    color: var(--text-tertiary);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.version-latest-value {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+/* ========================================
+   移动端版本徽章
+   ======================================== */
+.mobile-version-badge {
+    display: none;
+    align-items: center;
+    gap: 0.34rem;
+    padding: 0.22rem 0.58rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(248, 250, 252, 0.92);
+    white-space: nowrap;
+}
+
+.mvb-version {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+}
+
+.mvb-status {
+    font-size: 0.64rem;
+    font-weight: 600;
+}
+
+.mvb-status-checking {
+    color: var(--text-tertiary);
+}
+
+.mvb-status-uptodate {
+    color: #047857;
+}
+
+.mvb-status-update {
+    color: #4338ca;
+}
+
+.mvb-status-failed {
+    color: var(--text-tertiary);
+}
+
+/* 深色模式版本组件 */
+[data-theme="dark"] .version-status-bar {
+    background: rgba(8, 12, 24, 0.78);
+    border-color: rgba(129, 140, 248, 0.18);
+}
+
+[data-theme="dark"] .version-badge {
+    background: rgba(129, 140, 248, 0.16);
+    color: #c7d2fe;
+    border-color: rgba(129, 140, 248, 0.24);
+}
+
+[data-theme="dark"] .version-status-uptodate {
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .version-status-update {
+    color: #a5b4fc;
+}
+
+[data-theme="dark"] .mobile-version-badge {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: rgba(129, 140, 248, 0.16);
+}
+
+[data-theme="dark"] .mvb-status-uptodate {
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .mvb-status-update {
+    color: #a5b4fc;
+}
+
 .desktop-status-pill {
     display: inline-flex;
     align-items: center;

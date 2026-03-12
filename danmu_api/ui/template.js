@@ -166,24 +166,30 @@ export const HTML_TEMPLATE = /* html */ `
 
         <!-- 主内容区 -->
         <main class="main-content">
+
             <header class="desktop-command-bar">
-                <div class="command-bar-copy">
-                    <span class="command-kicker" id="desktop-active-kicker">LogVar Service Hub</span>
-                    <h2 class="command-title" id="desktop-active-title">服务概览</h2>
-                    <p class="command-desc" id="desktop-active-desc">快速查看接入地址、当前状态和基础设置。</p>
-                    <div class="command-shortcuts">
-                        <button class="command-chip" onclick="switchSection('api')" type="button">接口测试</button>
-                        <button class="command-chip" onclick="switchSection('logs')" type="button">运行日志</button>
-                        <button class="command-chip" onclick="switchSection('request-records')" type="button">访问记录</button>
-                        <button class="command-chip" onclick="switchSection('env')" type="button">系统设置</button>
+                <div class="command-bar-left">
+                    <span class="command-bar-mark" aria-hidden="true">LV</span>
+                    <div class="command-bar-copy">
+                        <span class="command-kicker" id="desktop-active-kicker">Workspace</span>
+                        <div class="command-bar-heading">
+                            <h2 class="command-bar-title" id="desktop-active-title">服务概览</h2>
+                            <p class="command-desc" id="desktop-active-desc">快速查看接入地址、当前状态和基础设置。</p>
+                        </div>
                     </div>
                 </div>
-                <div class="command-bar-actions">
-                    <button class="desktop-status-pill" id="desktop-status-pill" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button">
+                <div class="command-bar-nav" aria-label="桌面快捷入口">
+                    <button class="command-chip active" data-section="preview" onclick="switchSection('preview')" type="button">服务概览</button>
+                    <button class="command-chip" data-section="api" onclick="switchSection('api')" type="button">接口测试</button>
+                    <button class="command-chip" data-section="logs" onclick="switchSection('logs')" type="button">运行日志</button>
+                    <button class="command-chip" data-section="request-records" onclick="switchSection('request-records')" type="button">访问记录</button>
+                </div>
+                <div class="command-bar-right">
+                    <button class="desktop-status-pill" id="desktop-status-pill" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button" aria-label="查看部署配置">
                         <span class="status-dot status-running" id="desktop-deploy-status-dot"></span>
                         <span class="desktop-status-text" id="desktop-status-text">配置状态</span>
                     </button>
-                    <button class="theme-toggle theme-toggle-inline" id="theme-toggle" onclick="toggleTheme(this)" title="切换主题" type="button">
+                    <button class="theme-toggle theme-toggle-inline" id="theme-toggle" onclick="toggleTheme(this)" title="切换主题" type="button" aria-label="切换主题">
                         <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="5"/>
                             <line x1="12" y1="1" x2="12" y2="3"/>
@@ -199,44 +205,8 @@ export const HTML_TEMPLATE = /* html */ `
                             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                         </svg>
                     </button>
-                    <div class="version-card version-card-inline">
-                        <div class="version-header">
-                            <div class="version-icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 3l7 4-7 4-7-4 7-4z"/>
-                                    <path d="M5 7v8l7 4 7-4V7"/>
-                                    <path d="M12 11v8"/>
-                                </svg>
-                            </div>
-                            <div class="version-title">版本信息</div>
-                        </div>
-                        <div class="version-content version-content-inline">
-                            <div class="version-item">
-                                <span class="version-label">当前版本</span>
-                                <span class="version-value" id="current-version">v${globals.version}</span>
-                            </div>
-                            <div class="version-item">
-                                <span class="version-label">最新版本</span>
-                                <span class="version-value version-latest" id="latest-version">检查中...</span>
-                            </div>
-                            <div class="version-update-notice" id="version-update-notice" style="display: none;">
-                                <div class="update-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M4 12l4 4L20 4"/>
-                                        <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/>
-                                    </svg>
-                                </div>
-                                <div class="update-text">
-                                    <div class="update-title">发现新版本</div>
-                                    <div class="update-desc" id="update-desc">有可用更新</div>
-                                </div>
-                                <button class="update-btn" onclick="showUpdateGuide()" type="button">查看</button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </header>
-
 
             <header class="mobile-header" id="mobile-header">
                 <div class="mobile-header-inner">
@@ -253,6 +223,10 @@ export const HTML_TEMPLATE = /* html */ `
                         </div>
                     </div>
                     <div class="mobile-header-right">
+                        <div class="mobile-version-badge" id="mobile-version-badge">
+                            <span class="mvb-version" id="mobile-current-version">v${globals.version}</span>
+                            <span class="mvb-status mvb-status-checking" id="mobile-version-status">检查中...</span>
+                        </div>
                         <button class="mobile-status-indicator" id="mobile-status" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button" aria-label="查看部署配置">
                             <span class="status-dot status-running" id="deploy-env-status-dot"></span>
                         </button>
@@ -307,28 +281,10 @@ export const HTML_TEMPLATE = /* html */ `
                                 <div class="hero-brand-block">
                                     <div class="hero-overview-topline">
                                         <span class="preview-hero-eyebrow">首页概览</span>
-                                        <div class="hero-overview-actions" aria-label="首页概览操作">
-                                            <button class="hero-overview-action hero-overview-status" id="hero-status-pill" title="查看部署配置" onclick="openDeployEnvStatusModal()" type="button">
-                                                <span class="status-dot status-running" id="hero-deploy-status-dot"></span>
-                                                <span class="hero-overview-action-label" id="hero-status-text">状态</span>
-                                            </button>
-                                            <button class="hero-overview-action hero-overview-theme" onclick="toggleTheme(this)" title="切换主题" type="button">
-                                                <svg class="mobile-action-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <circle cx="12" cy="12" r="5"/>
-                                                    <line x1="12" y1="1" x2="12" y2="3"/>
-                                                    <line x1="12" y1="21" x2="12" y2="23"/>
-                                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                                                    <line x1="1" y1="12" x2="3" y2="12"/>
-                                                    <line x1="21" y1="12" x2="23" y2="12"/>
-                                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                                                </svg>
-                                                <svg class="mobile-action-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                                                </svg>
-                                                <span class="hero-overview-action-label">主题</span>
-                                            </button>
+                                        <div class="hero-version-tag" id="hero-version-panel">
+                                            <span class="hero-version-badge" id="hero-current-version">v${globals.version}</span>
+                                            <span class="hero-version-divider">·</span>
+                                            <span class="hero-version-status hero-version-status-checking" id="hero-version-status">检查中...</span>
                                         </div>
                                     </div>
                                     <div class="preview-hero-header preview-hero-header-refined">

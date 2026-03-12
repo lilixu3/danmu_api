@@ -1443,10 +1443,6 @@ export const responsiveCssContent = /* css */ `/* ==============================
         transform: translateX(0);
     }
 
-    .desktop-command-bar {
-        display: none;
-    }
-
     .main-content {
         padding: 0 12px 16px;
     }
@@ -1501,19 +1497,6 @@ export const responsiveCssContent = /* css */ `/* ==============================
         gap: 0.42rem;
     }
 
-    .hero-overview-actions {
-        gap: 0.28rem;
-    }
-
-    .hero-overview-action {
-        min-height: 26px;
-        padding: 0.22rem 0.42rem;
-    }
-
-    .hero-overview-action-label {
-        font-size: 0.6rem;
-    }
-
 
     .preview-stats-grid {
         grid-template-columns: 1fr;
@@ -1563,21 +1546,6 @@ export const responsiveCssContent = /* css */ `/* ==============================
         align-items: center;
     }
 
-    .hero-overview-actions {
-        gap: 0.34rem;
-        flex: 0 0 auto;
-    }
-
-    .hero-overview-action {
-        min-height: 28px;
-        padding: 0.24rem 0.46rem;
-        border-radius: 999px;
-    }
-
-    .hero-overview-action-label {
-        font-size: 0.64rem;
-    }
-
     .hero-overview-theme .mobile-action-icon {
         width: 12px;
         height: 12px;
@@ -1601,10 +1569,6 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .main-content {
         padding: 0 12px calc(104px + env(safe-area-inset-bottom));
-    }
-
-    .desktop-command-bar {
-        display: none;
     }
 
     .mobile-header {
@@ -1874,16 +1838,9 @@ export const responsiveCssContent = /* css */ `/* ==============================
 }
 
 @media (max-width: 860px) {
-    .mobile-header {
-        display: none !important;
-    }
-
-    .desktop-command-bar {
-        display: none;
-    }
-
     .main-content {
         padding: 0 12px calc(72px + env(safe-area-inset-bottom));
+        gap: 0;
     }
 
     .content-shell {
@@ -2134,9 +2091,10 @@ export const responsiveCssContent = /* css */ `/* ==============================
         position: sticky;
         top: 0;
         z-index: 145;
-        margin: 0 -12px 14px;
+        margin: 0 -12px 6px;
         width: calc(100% + 24px);
-        padding: calc(env(safe-area-inset-top) + 10px) 14px 12px;
+        /* 浏览器已处理顶部安全区，站内顶栏不再额外叠加 */
+        padding: 8px 14px 8px;
         border: 0;
         border-bottom: 1px solid rgba(148, 163, 184, 0.14);
         border-radius: 0;
@@ -2278,7 +2236,7 @@ export const responsiveCssContent = /* css */ `/* ==============================
     .mobile-header {
         margin: 0 -10px 12px;
         width: calc(100% + 20px);
-        padding: calc(env(safe-area-inset-top) + 8px) 12px 10px;
+        padding: 8px 12px 10px;
     }
 
     .mobile-title {
@@ -2305,7 +2263,220 @@ export const responsiveCssContent = /* css */ `/* ==============================
    2026 桌面 / 平板首页顶区收口
    ======================================== */
 .desktop-command-bar {
-    display: none;
+    display: flex;
+    align-items: center;
+    gap: 0.62rem;
+    padding: 0.48rem 0.62rem;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.command-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.52rem;
+    flex-shrink: 0;
+}
+
+.command-bar-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(148, 163, 184, 0.1);
+    color: #475569;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+}
+
+.command-bar-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.command-bar-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+}
+
+.command-bar-nav .command-chip {
+    min-height: 28px;
+    padding: 0.24rem 0.62rem;
+    font-size: 0.74rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.command-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    flex-shrink: 0;
+}
+
+.desktop-command-bar .desktop-status-pill {
+    min-height: 30px;
+    padding: 0 0.58rem;
+    border-radius: 999px;
+    gap: 0.38rem;
+}
+
+.desktop-command-bar .desktop-status-text {
+    font-size: 0.76rem;
+}
+
+.desktop-command-bar .theme-toggle-inline {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+}
+
+[data-theme="dark"] .desktop-command-bar {
+    background: rgba(8, 12, 24, 0.82);
+    border-color: rgba(129, 140, 248, 0.16);
+    box-shadow: 0 8px 20px rgba(2, 6, 23, 0.18);
+}
+
+[data-theme="dark"] .command-bar-mark {
+    background: rgba(129, 140, 248, 0.12);
+    border-color: rgba(129, 140, 248, 0.18);
+    color: #c7d2fe;
+}
+
+@media (max-width: 1024px) and (min-width: 861px) {
+    .command-bar-title {
+        display: none;
+    }
+
+    .command-bar-nav .command-chip {
+        padding: 0.2rem 0.48rem;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 860px) {
+    .desktop-command-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        position: sticky;
+        top: 0;
+        z-index: 120;
+        padding: 0.72rem 0.75rem;
+        border-radius: 16px;
+        margin: 0 0 6px;
+        width: auto;
+        background: rgba(248, 250, 252, 0.88);
+        backdrop-filter: blur(18px);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+        grid-template-columns: none;
+    }
+
+    .command-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 0.42rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .command-bar-nav {
+        display: none;
+    }
+
+    .command-bar-mark {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 0.62rem;
+    }
+
+    .command-bar-title {
+        font-size: 0.92rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .command-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 0.32rem;
+        flex-shrink: 0;
+    }
+
+    .desktop-command-bar .desktop-status-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        height: 30px;
+        padding: 0 0.46rem;
+        border-radius: 999px;
+        gap: 0;
+    }
+
+    .desktop-command-bar .desktop-status-text {
+        display: none;
+    }
+
+    .desktop-command-bar .theme-toggle-inline {
+        width: 30px;
+        height: 30px;
+        min-height: auto;
+        border-radius: 9px;
+        position: static;
+    }
+
+    .desktop-command-bar .theme-toggle-inline .theme-icon {
+        width: 15px;
+        height: 15px;
+    }
+}
+
+@media (max-width: 560px) {
+    .desktop-command-bar {
+        padding: 0.62rem 0.65rem;
+        gap: 0.42rem;
+        border-radius: 14px;
+    }
+
+    .command-bar-mark {
+        width: 28px;
+        height: 28px;
+        font-size: 0.58rem;
+    }
+
+    .command-bar-title {
+        font-size: 0.86rem;
+    }
+
+    .desktop-command-bar .desktop-status-pill,
+    .desktop-command-bar .theme-toggle-inline {
+        width: 28px;
+        height: 28px;
+        min-height: 28px;
+    }
+}
+
+@media (max-width: 860px) {
+    [data-theme="dark"] .desktop-command-bar {
+        background: rgba(8, 12, 24, 0.88);
+        border-color: rgba(129, 140, 248, 0.12);
+    }
 }
 
 @media (min-width: 861px) {
@@ -2347,7 +2518,7 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .hero-status-panel,
     .hero-mode-panel {
-        min-height: 88px;
+        min-height: 72px;
     }
 
     .preview-stats-strip {
@@ -2360,11 +2531,6 @@ export const responsiveCssContent = /* css */ `/* ==============================
     .hero-main-row {
         grid-template-columns: minmax(0, 1fr) minmax(286px, 0.82fr);
     }
-
-    .hero-overview-actions {
-        width: auto;
-        justify-content: flex-end;
-    }
 }
 
 @media (max-width: 1120px) and (min-width: 861px) {
@@ -2375,6 +2541,241 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .preview-stats-strip {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ========================================
+   版本组件响应式
+   ======================================== */
+/* 移动端显示版本徽章 */
+@media (max-width: 860px) {
+    .mobile-version-badge {
+        display: none;
+    }
+
+    .version-status-bar {
+        display: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .mobile-version-badge {
+        padding: 0.18rem 0.46rem;
+    }
+
+    .mvb-version {
+        font-size: 0.62rem;
+    }
+
+    .mvb-status {
+        font-size: 0.58rem;
+    }
+}
+
+@media (min-width: 861px) {
+    .desktop-command-bar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.9rem 1rem;
+        padding: 0.72rem 0.84rem;
+        border-radius: 24px;
+        position: relative;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+    }
+
+    .desktop-command-bar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 48%);
+        pointer-events: none;
+    }
+
+    .command-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 0.72rem;
+        min-width: 0;
+    }
+
+    .command-bar-mark {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(226, 232, 240, 0.92) 100%);
+        color: #475569;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+        flex-shrink: 0;
+    }
+
+    .command-bar-copy {
+        display: grid;
+        gap: 0.14rem;
+        min-width: 0;
+        padding-right: 0;
+    }
+
+    .command-bar-heading {
+        display: flex;
+        align-items: baseline;
+        gap: 0.48rem;
+        min-width: 0;
+    }
+
+    .desktop-command-bar .command-kicker {
+        padding: 0;
+        background: transparent;
+        color: var(--text-tertiary);
+        font-size: 0.6rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .desktop-command-bar .command-bar-title {
+        max-width: 100%;
+        font-size: 1.02rem;
+        line-height: 1.08;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .desktop-command-bar .command-desc {
+        display: none;
+        margin: 0;
+        max-width: 26ch;
+        color: var(--text-secondary);
+        font-size: 0.74rem;
+        line-height: 1.4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .command-bar-nav {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.38rem;
+        padding-left: 50px;
+        min-width: 0;
+    }
+
+    .desktop-command-bar .command-chip {
+        min-height: 30px;
+        padding: 0.24rem 0.66rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        color: var(--text-secondary);
+        font-size: 0.72rem;
+        font-weight: 700;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+    }
+
+    .desktop-command-bar .command-chip.active {
+        background: rgba(79, 70, 229, 0.08);
+        border-color: rgba(79, 70, 229, 0.16);
+        color: #312e81;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 8px 18px rgba(79, 70, 229, 0.08);
+    }
+
+    .command-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 0.42rem;
+        flex-shrink: 0;
+    }
+
+    .desktop-command-bar .desktop-status-pill {
+        min-height: 38px;
+        height: 38px;
+        padding: 0 0.78rem;
+        border-radius: 14px;
+        gap: 0.45rem;
+    }
+
+    .desktop-command-bar .desktop-status-text {
+        font-size: 0.78rem;
+        white-space: nowrap;
+    }
+
+    .desktop-command-bar .theme-toggle-inline {
+        width: 38px;
+        height: 38px;
+        min-height: auto;
+        border-radius: 14px;
+        justify-self: auto;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+    }
+
+    .desktop-command-bar .theme-toggle-inline .theme-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    [data-theme="dark"] .desktop-command-bar {
+        background: linear-gradient(180deg, rgba(8, 12, 24, 0.9) 0%, rgba(12, 19, 34, 0.94) 100%);
+        border-color: rgba(129, 140, 248, 0.14);
+        box-shadow: 0 16px 28px rgba(2, 6, 23, 0.22);
+    }
+
+    [data-theme="dark"] .desktop-command-bar .command-kicker {
+        color: rgba(198, 208, 235, 0.64);
+    }
+
+    [data-theme="dark"] .command-bar-mark {
+        background: linear-gradient(180deg, rgba(20, 30, 54, 0.94) 0%, rgba(14, 24, 44, 0.9) 100%);
+        border-color: rgba(129, 140, 248, 0.18);
+        color: #c7d2fe;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    [data-theme="dark"] .desktop-command-bar .command-chip {
+        background: rgba(15, 23, 42, 0.76);
+        border-color: rgba(129, 140, 248, 0.12);
+        color: rgba(226, 232, 240, 0.78);
+        box-shadow: none;
+    }
+
+    [data-theme="dark"] .desktop-command-bar .command-chip.active {
+        background: linear-gradient(180deg, rgba(70, 88, 164, 0.32) 0%, rgba(39, 54, 114, 0.32) 100%);
+        border-color: rgba(139, 163, 255, 0.2);
+        color: #dbe4ff;
+        box-shadow: none;
+    }
+}
+
+@media (min-width: 1260px) {
+    .desktop-command-bar {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .command-bar-nav {
+        grid-column: auto;
+        padding-left: 0;
+    }
+}
+
+@media (min-width: 1380px) {
+    .desktop-command-bar .command-desc {
+        display: block;
+    }
+}
+
+@media (max-width: 860px) {
+    .desktop-command-bar {
+        display: none !important;
     }
 }
 

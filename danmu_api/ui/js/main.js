@@ -623,6 +623,9 @@ function performSectionSwitch(section, isInitialLoad = false) {
     document.querySelectorAll('.mobile-nav-item').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.section === section);
     });
+    document.querySelectorAll('.desktop-command-bar .command-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.section === section);
+    });
     
     // 更新移动端标题
     const titles = {
@@ -1069,7 +1072,7 @@ function updateApiEndpoint() {
    获取Docker版本并检查更新
    ======================================== */
 function getDockerVersion() {
-    const url = "https://img.shields.io/docker/v/logvar/danmu-api?sort=semver";
+    const url = "https://img.shields.io/docker/v/lilixu3/danmu-api?sort=semver";
 
     fetch(url)
         .then(response => response.text())
@@ -1077,44 +1080,86 @@ function getDockerVersion() {
             const versionMatch = svgContent.match(/version<\\/text><text.*?>(v[\\d\\.]+)/);
 
             if (versionMatch && versionMatch[1]) {
-                const latestVersion = versionMatch[1];
-                const latestVersionElement = document.getElementById('latest-version');
-                
-                if (latestVersionElement) {
-                    latestVersionElement.textContent = latestVersion;
-                    
-                    // 添加版本号动画
-                    latestVersionElement.style.animation = 'pulse 0.6s ease-out';
-                }
-                
+                const latest = versionMatch[1];
+                // 更新所有最新版本显示元素
+                updateAllLatestVersionElements(latest);
                 // 检查是否有新版本
-                checkForUpdate(latestVersion);
+                checkForUpdate(latest);
             }
         })
         .catch(error => {
             console.error("Error fetching the SVG:", error);
-            const latestVersionElement = document.getElementById('latest-version');
-            if (latestVersionElement) {
-                latestVersionElement.textContent = '获取失败';
-            }
+            // 所有位置显示检查失败
+            updateAllLatestVersionElements('获取失败');
+            updateVersionStatusAll('failed', '检查失败');
         });
+}
+
+/* ========================================
+   更新所有最新版本显示元素
+   ======================================== */
+function updateAllLatestVersionElements(text) {
+    latestVersion = text;
+    const ids = [];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = text;
+            el.style.animation = 'pulse 0.6s ease-out';
+        }
+    });
+}
+
+/* ========================================
+   更新所有版本状态徽章
+   state: 'uptodate' | 'update' | 'failed' | 'checking'
+   ======================================== */
+function updateVersionStatusAll(state, text, latestVer) {
+    const statusEls = [
+        { el: document.getElementById('version-status'), prefix: 'version-status' },
+        { el: document.getElementById('mobile-version-status'), prefix: 'mvb-status' },
+        { el: document.getElementById('hero-version-status'), prefix: 'hero-version-status' }
+    ];
+
+    const stateClass = {
+        'uptodate': '-uptodate',
+        'update': '-update',
+        'failed': '-failed',
+        'checking': '-checking'
+    };
+
+    statusEls.forEach(({ el, prefix }) => {
+        if (!el) return;
+        el.className = prefix + ' ' + prefix + (stateClass[state] || '');
+        el.textContent = text;
+        if (state === 'update' && latestVer) {
+            el.style.cursor = 'pointer';
+            el.onclick = function() { showUpdateGuide(); };
+        } else {
+            el.style.cursor = '';
+            el.onclick = null;
+        }
+    });
 }
 
 /* ========================================
    检查版本更新
    ======================================== */
-function checkForUpdate(latestVersion) {
-    const currentVersionElement = document.getElementById('current-version');
+function checkForUpdate(latestVer) {
+    const currentVersionElement = document.getElementById('hero-current-version');
     if (!currentVersionElement) return;
-    
-    const currentVersion = currentVersionElement.textContent.trim();
-    
+
+    const curVer = currentVersionElement.textContent.trim();
+    currentVersion = curVer;
+    latestVersion = latestVer;
+
     // 比较版本号
-    if (compareVersions(latestVersion, currentVersion) > 0) {
-        showUpdateNotice(currentVersion, latestVersion);
-        addLog(\`🎉 发现新版本: \${latestVersion} (当前: \${currentVersion})\`, 'info');
+    if (compareVersions(latestVer, curVer) > 0) {
+        updateVersionStatusAll('update', '\\u2191 有新版本 ' + latestVer, latestVer);
+        addLog(\`🎉 发现新版本: \${latestVer} (当前: \${curVer})\`, 'info');
     } else {
-        addLog(\`✅ 当前已是最新版本: \${currentVersion}\`, 'success');
+        updateVersionStatusAll('uptodate', '\\u2713 已是最新');
+        addLog(\`✅ 当前已是最新版本: \${curVer}\`, 'success');
     }
 }
 
@@ -1141,36 +1186,23 @@ function compareVersions(v1, v2) {
 }
 
 /* ========================================
-   显示更新提示
-   ======================================== */
-function showUpdateNotice(currentVersion, latestVersion) {
-    const updateNotice = document.getElementById('version-update-notice');
-    const updateDesc = document.getElementById('update-desc');
-    
-    if (updateNotice && updateDesc) {
-        updateDesc.textContent = \`\${currentVersion} → \${latestVersion}\`;
-        updateNotice.style.display = 'flex';
-    }
-}
-
-/* ========================================
    显示更新指南
    ======================================== */
 function showUpdateGuide() {
-    const currentVersion = document.getElementById('current-version').textContent.trim();
-    const latestVersion = document.getElementById('latest-version').textContent.trim();
-    
+    const curVer = currentVersion || '未知';
+    const latVer = latestVersion || '未知';
+
     const guideMessage = \`
 📦 版本更新提示
 
-当前版本: \${currentVersion}
-最新版本: \${latestVersion}
+当前版本: \${curVer}
+最新版本: \${latVer}
 
 更新方法：
 
 🐳 Docker 部署：
 1. 停止当前容器: docker stop danmu-api
-2. 拉取最新镜像: docker pull logvar/danmu-api:latest
+2. 拉取最新镜像: docker pull lilixu3/danmu-api:latest
 3. 重新启动容器
 
 ☁️ 云平台部署 (Vercel/Netlify/Cloudflare)：

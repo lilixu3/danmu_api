@@ -1133,15 +1133,15 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .stat-icon-wrapper {
-    width: 46px;
-    height: 46px;
+    width: 42px;
+    height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     position: relative;
     overflow: hidden;
-    border-radius: 15px;
+    border-radius: 14px;
     border: 1px solid rgba(203, 213, 225, 0.72);
     background: rgba(248, 250, 252, 0.92);
     color: #475569;
@@ -1188,10 +1188,10 @@ export const overviewCssContent = /* css */ `/* ================================
 .hero-mode-panel {
     display: flex;
     align-items: center;
-    gap: 0.82rem;
+    gap: 0.64rem;
     min-width: 0;
-    min-height: 96px;
-    padding: 0.88rem 0.94rem;
+    min-height: 76px;
+    padding: 0.62rem 0.82rem;
     border-radius: 20px;
     border: 1px solid rgba(203, 213, 225, 0.68);
     background: rgba(255, 255, 255, 0.9);
@@ -1226,7 +1226,7 @@ export const overviewCssContent = /* css */ `/* ================================
     min-width: 0;
     flex: 1 1 auto;
     display: grid;
-    gap: 0.18rem;
+    gap: 0.12rem;
 }
 
 .hero-status-label,
@@ -1274,9 +1274,9 @@ export const overviewCssContent = /* css */ `/* ================================
 
 #status-icon-wrapper,
 #mode-icon-wrapper {
-    width: 46px;
-    height: 46px;
-    border-radius: 15px;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
     flex-shrink: 0;
 }
 
@@ -1609,5 +1609,69 @@ export const overviewCssContent = /* css */ `/* ================================
 [data-theme="dark"] .hero-metric-unit,
 [data-theme="dark"] .hero-metric-meta {
     color: rgba(226, 232, 240, 0.68);
+}
+
+/* ========================================
+   首页概览版本标签（topline 右侧）
+   ======================================== */
+.hero-version-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.2rem 0.62rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.hero-version-badge {
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    color: #4338ca;
+}
+
+.hero-version-divider {
+    color: var(--text-tertiary);
+    font-size: 0.78rem;
+}
+
+.hero-version-status {
+    font-size: 0.72rem;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.hero-version-status-checking {
+    color: var(--text-tertiary);
+}
+
+.hero-version-status-uptodate {
+    color: #047857;
+}
+
+.hero-version-status-update {
+    color: #4338ca;
+    cursor: pointer;
+}
+
+.hero-version-status-update:hover {
+    text-decoration: underline;
+}
+
+.hero-version-status-failed {
+    color: var(--text-tertiary);
+}
+
+[data-theme="dark"] .hero-version-badge {
+    color: #c7d2fe;
+}
+
+[data-theme="dark"] .hero-version-status-uptodate {
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .hero-version-status-update {
+    color: #a5b4fc;
 }
 `;
