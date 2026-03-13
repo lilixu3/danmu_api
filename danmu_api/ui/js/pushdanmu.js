@@ -509,7 +509,7 @@ function getBangumiForPush(animeId) {
    ======================================== */
 function displayEpisodeListForPush(animeTitle, episodes) {
     const container = document.getElementById('push-episode-list');
-    
+
     let html = \`
         <div class="episode-list-header">
             <h3 class="episode-anime-title">
@@ -527,24 +527,32 @@ function displayEpisodeListForPush(animeTitle, episodes) {
                 </span>
             </div>
         </div>
+        <div class="jump-to-episode" style="margin: 1rem 0 1.25rem; padding: 0.9rem 1rem; background: rgba(255,255,255,0.72); border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 14px; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <span style="font-weight: 600; color: var(--text-primary);">跳转到第</span>
+            <input type="number" id="jump-episode-input-push" placeholder="输入集数" min="1" style="padding: 0.6rem 0.75rem; width: 96px; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 10px; background: rgba(255,255,255,0.92);">
+            <span style="font-weight: 600; color: var(--text-primary);">集</span>
+            <button class="btn btn-primary btn-sm" onclick="jumpToEpisodeForPushDanmu()" style="border-radius: 10px;">跳转</button>
+            <span style="color: var(--text-secondary); font-size: 0.92rem;">支持快速定位较长剧集列表</span>
+        </div>
         <div class="episode-grid">
     \`;
 
     episodes.forEach((episode, index) => {
         const commentUrl = window.location.origin + buildApiUrl('/api/v2/comment/' + episode.episodeId + '?format=xml');
+        const episodeNumber = episode.episodeNumber || (index + 1);
         html += \`
-            <div class="episode-item" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
+            <div class="episode-item" id="episode-item-push-\${episodeNumber}" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
                 <div class="episode-info">
                     <div class="episode-number">
                         <span class="episode-icon">📺</span>
-                        第 \${episode.episodeNumber} 集
+                        第 \${episodeNumber} 集
                     </div>
                     <div class="episode-title">\${escapeHtml(episode.episodeTitle || '无标题')}</div>
                 </div>
                 <button class="btn btn-success btn-sm episode-push-btn" 
                         data-comment-url="\${commentUrl}"
-                        data-episode-title="\${escapeHtml(episode.episodeTitle || '第' + episode.episodeNumber + '集')}"
-                        onclick="pushDanmu('\${commentUrl}', '\${escapeHtml(episode.episodeTitle || '第' + episode.episodeNumber + '集').replace(/'/g, "\\\\'")}', this)">
+                        data-episode-title="\${escapeHtml(episode.episodeTitle || '第' + episodeNumber + '集')}"
+                        onclick="pushDanmu('\${commentUrl}', '\${escapeHtml(episode.episodeTitle || '第' + episodeNumber + '集').replace(/'/g, "\\'")}', this)">
                     <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                     </svg>
@@ -553,11 +561,39 @@ function displayEpisodeListForPush(animeTitle, episodes) {
             </div>
         \`;
     });
-    
+
     html += '</div>';
-    
+
     container.innerHTML = html;
     container.style.display = 'block';
+
+    setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+}
+
+function jumpToEpisodeForPushDanmu() {
+    const episodeInput = document.getElementById('jump-episode-input-push');
+    const episodeNumber = parseInt(episodeInput && episodeInput.value, 10);
+
+    if (!episodeNumber || episodeNumber <= 0) {
+        customAlert('请输入有效的集数（正整数）', '⚠️ 定位失败');
+        return;
+    }
+
+    const episodeElement = document.getElementById('episode-item-push-' + episodeNumber);
+    if (!episodeElement) {
+        customAlert('找不到第' + episodeNumber + '集', '⚠️ 定位失败');
+        return;
+    }
+
+    episodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    episodeElement.style.boxShadow = '0 0 0 2px rgba(251, 191, 36, 0.55)';
+    episodeElement.style.background = 'rgba(254, 240, 138, 0.18)';
+    setTimeout(() => {
+        episodeElement.style.boxShadow = '';
+        episodeElement.style.background = '';
+    }, 1800);
 }
 
 /* ========================================

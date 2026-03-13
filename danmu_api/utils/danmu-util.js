@@ -13,27 +13,14 @@ import { traditionalized } from './zh-util.js';
  * @param {number} n 分组时间间隔（分钟），0表示不分组（除非多源合并强制去重）
  * @returns {Array} 处理后的弹幕列表
  */
-export function groupDanmusByMinute(filteredDanmus, n) {
-  // 解析弹幕来源标签以确定合并源数量，用于智能去重
-  // 检查第一条弹幕的 p 属性结尾的 [source] 标签
-  let sourceCount = 1;
-  if (filteredDanmus.length > 0 && filteredDanmus[0].p) {
-    const pStr = filteredDanmus[0].p;
-    const match = pStr.match(/\[([^\]]*)\]$/);
-    if (match && match[1]) {
-      // 支持半角 '&' 和全角 '＆' 分隔符
-      sourceCount = match[1].split(/[&＆]/).length;
-    }
-  }
-
-  // 如果检测到多源合并，输出日志提示
-  if (sourceCount > 1) {
-    log("info", `[Smart Deduplication] Detected multi-source merged danmaku (${sourceCount} sources). Applying smart count adjustment.`);
+export function groupDanmusByMinute(filteredDanmus, n, isMultiSource = false) {
+  if (isMultiSource) {
+    log("info", '[Smart Deduplication] Detected multi-source merged danmaku. Applying source-aware deduplication.');
   }
 
   // 特殊逻辑：如果未开启分组(n=0)且为单源，直接返回原始数据
   // 若为多源，即使n=0也强制执行精确时间点去重，以消除源之间的重复数据
-  if (n === 0 && sourceCount === 1) {
+  if (n === 0 && !isMultiSource) {
     return filteredDanmus.map(danmu => ({
       ...danmu,
       t: danmu.t !== undefined ? danmu.t : parseFloat(danmu.p.split(',')[0])
@@ -42,67 +29,70 @@ export function groupDanmusByMinute(filteredDanmus, n) {
 
   // 按 n 分钟分组
   const groupedByTime = filteredDanmus.reduce((acc, danmu) => {
-    // 获取时间：优先使用 t 字段，如果没有则使用 p 的第一个值
     const time = danmu.t !== undefined ? danmu.t : parseFloat(danmu.p.split(',')[0]);
-    
-    // 确定分组键：n=0时使用精确时间(保留2位小数)，否则使用分钟索引
     const groupKey = n === 0 ? time.toFixed(2) : Math.floor(time / (n * 60));
 
-    // 初始化分组
     if (!acc[groupKey]) {
       acc[groupKey] = [];
     }
 
-    // 添加到对应分组
     acc[groupKey].push({ ...danmu, t: time });
     return acc;
   }, {});
 
-  // 处理每组的弹幕
   const result = Object.keys(groupedByTime).map(key => {
     const danmus = groupedByTime[key];
 
-    // 按消息内容分组
     const groupedByMessage = danmus.reduce((acc, danmu) => {
-      const message = danmu.m.split(' X')[0].trim(); // 提取原始消息（去除 Xn 后缀）
+      const message = danmu.m.split(' X')[0].trim();
       if (!acc[message]) {
         acc[message] = {
           count: 0,
           earliestT: danmu.t,
           cid: danmu.cid,
           p: danmu.p,
-          like: 0  // 初始化like字段
+          like: 0,
+          sources: new Set()
         };
       }
       acc[message].count += 1;
-      // 更新最早时间
       acc[message].earliestT = Math.min(acc[message].earliestT, danmu.t);
-      // 合并like字段，如果是undefined则视为0
       acc[message].like += (danmu.like !== undefined ? danmu.like : 0);
+
+      if (danmu.p) {
+        const match = danmu.p.match(/\[([^\]]*)\]$/);
+        if (match && match[1]) {
+          match[1].split(/[&＆]/).forEach(source => {
+            if (source.trim()) acc[message].sources.add(source.trim());
+          });
+        }
+      }
       return acc;
     }, {});
 
-    // 转换为结果格式
     return Object.keys(groupedByMessage).map(message => {
       const data = groupedByMessage[message];
-      
-      // 计算显示计数：总次数除以源数量，四舍五入
-      // 过滤因多源合并产生的自然重复
-      let displayCount = Math.round(data.count / sourceCount);
+      const localSourceCount = isMultiSource ? Math.max(1, data.sources.size) : 1;
+      let displayCount = isMultiSource ? Math.round(data.count / localSourceCount) : data.count;
       if (displayCount < 1) displayCount = 1;
+
+      const combinedSources = isMultiSource && data.sources.size > 0
+        ? Array.from(data.sources).join('＆')
+        : null;
+      const newP = combinedSources
+        ? data.p.replace(/\[([^\]]*)\]$/, `[${combinedSources}]`)
+        : data.p;
 
       return {
         cid: data.cid,
-        p: data.p,
-        // 仅当计算后的逻辑计数大于1时才显示 "x N"
+        p: newP,
         m: displayCount > 1 ? `${message}\u200Ax\u200A${displayCount}` : message,
         t: data.earliestT,
-        like: data.like // 包含合并后的like字段
+        like: data.like
       };
     });
   });
 
-  // 展平结果并按时间排序
   return result.flat().sort((a, b) => a.t - b.t);
 }
 
@@ -150,6 +140,10 @@ function resolveDanmuLikeIcon(item, preset) {
 export function handleDanmusLike(groupedDanmus) {
   const likePreset = normalizeDanmuLikePreset(globals.danmuLikePreset);
 
+  if (!globals.likeSwitch) {
+    return groupedDanmus;
+  }
+
   if (likePreset === 'off') {
     return groupedDanmus.map(item => {
       const { like, ...rest } = item;
@@ -158,31 +152,24 @@ export function handleDanmusLike(groupedDanmus) {
   }
 
   return groupedDanmus.map(item => {
-    // 如果item没有like字段或者like值小于5，则不处理
     if (!item.like || item.like < 5) {
       return item;
     }
 
     const icon = resolveDanmuLikeIcon(item, likePreset);
 
-    // 格式化点赞数，缩写显示
     let formattedLike;
     if (item.like >= 10000) {
-      // 万级别，如 1.2w
       formattedLike = (item.like / 10000).toFixed(1) + 'w';
     } else if (item.like >= 1000) {
-      // 千级别，如 1.2k
       formattedLike = (item.like / 1000).toFixed(1) + 'k';
     } else {
-      // 百级别及以下，直接显示数字
       formattedLike = item.like.toString();
     }
 
-    // 在弹幕内容后追加点赞信息（发丝空格）
     const likeText = `\u200A${icon}${formattedLike}`;
     const newM = item.m + likeText;
 
-    // 创建新对象，复制原属性，更新m字段，并删除like字段
     const { like, ...rest } = item;
     return {
       ...rest,
@@ -223,6 +210,7 @@ export function limitDanmusByCount(filteredDanmus, danmuLimit) {
 export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
   let danmus = [];
   let cidCounter = 1;
+  let isMultiSource = false;
   const timeOffset = Number(offsetSeconds) || 0;
 
   // 统一处理输入为数组
@@ -316,6 +304,10 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
       currentPlatform = `${currentPlatform}＆${item.realTimeSource}`;
     }
 
+    if (!isMultiSource && /[&＆]/.test(currentPlatform)) {
+      isMultiSource = true;
+    }
+
     attributes = [
       time,
       mode,
@@ -353,7 +345,7 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
 
   // 按n分钟内去重
   log("info", `去重分钟数: ${globals.groupMinute}`);
-  const groupedDanmus = groupDanmusByMinute(filteredDanmus, globals.groupMinute);
+  const groupedDanmus = groupDanmusByMinute(filteredDanmus, globals.groupMinute, isMultiSource);
 
   // 处理点赞数
   const likeDanmus = handleDanmusLike(groupedDanmus);

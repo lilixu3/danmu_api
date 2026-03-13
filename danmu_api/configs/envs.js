@@ -475,6 +475,7 @@ export class Envs {
       'DANMU_FONT_SIZE': { category: 'danmu', type: 'number', description: '弹幕字体大小（B站标准），默认25', min: 10, max: 100 },
       'DANMU_OUTPUT_FORMAT': { category: 'danmu', type: 'select', options: ['json', 'xml'], description: '弹幕输出格式，默认json' },
       'DANMU_PUSH_URL': { category: 'danmu', type: 'text', description: '弹幕推送地址，示例 http://127.0.0.1:9978/action?do=refresh&type=danmaku&path= ' },
+      'LIKE_SWITCH': { category: 'danmu', type: 'boolean', description: '弹幕点赞数显示开关，默认开启' },
       'TITLE_PLATFORM_OFFSET_TABLE': { category: 'danmu', type: 'timeline-offset', options: timelineOffsetOptions, description: '剧名-平台-时间轴偏移配置，格式：剧名@平台1&平台2@-5;剧名2@all@5（all 表示全部平台），偏移单位为秒' },
 
       // 缓存配置
@@ -533,6 +534,7 @@ export class Envs {
         return v;
       })(),
       danmuPushUrl: this.get('DANMU_PUSH_URL', '', 'string'), // 代理/反代地址
+      likeSwitch: this.get('LIKE_SWITCH', true, 'boolean'), // 弹幕点赞数显示开关，默认开启
       tmdbApiKey: this.get('TMDB_API_KEY', '', 'string', true), // TMDB API KEY
       redisUrl: this.get('UPSTASH_REDIS_REST_URL', '', 'string', true), // upstash redis url
       redisToken: this.get('UPSTASH_REDIS_REST_TOKEN', '', 'string', true), // upstash redis url

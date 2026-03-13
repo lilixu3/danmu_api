@@ -1099,7 +1099,7 @@ function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
    ======================================== */
 function displayEpisodeList(animeTitle, episodes) {
     const container = document.getElementById('danmu-search-results');
-    
+
     let html = \`
         <div class="form-card">
             <div class="episode-list-header">
@@ -1114,19 +1114,25 @@ function displayEpisodeList(animeTitle, episodes) {
                     </span>
                 </div>
             </div>
+            <div class="jump-to-episode" style="margin: 1rem 0 1.25rem; padding: 0.9rem 1rem; background: rgba(255,255,255,0.72); border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 14px; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <span style="font-weight: 600; color: var(--text-primary);">跳转到第</span>
+                <input type="number" id="jump-episode-input" placeholder="输入集数" min="1" style="padding: 0.6rem 0.75rem; width: 96px; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 10px; background: rgba(255,255,255,0.92);">
+                <span style="font-weight: 600; color: var(--text-primary);">集</span>
+                <button class="btn btn-primary btn-sm" onclick="jumpToEpisode()" style="border-radius: 10px;">跳转</button>
+                <span style="color: var(--text-secondary); font-size: 0.92rem;">快速定位手动搜索结果中的指定集数</span>
+            </div>
             <div class="episode-grid">
     \`;
-    
+
     episodes.forEach((episode, index) => {
-        // 兼容不同的字段名
         const episodeId = episode.episodeId || episode.id || episode.cid;
         const episodeNumber = episode.episodeNumber || episode.episode || (index + 1);
         const episodeTitle = episode.episodeTitle || episode.title || episode.name || '';
         const displayTitle = episodeTitle || \`第 \${episodeNumber} 集\`;
         const fullTitle = \`\${animeTitle} - \${displayTitle}\`;
-        
+
         html += \`
-            <div class="episode-item" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
+            <div class="episode-item" id="episode-item-\${episodeNumber}" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
                 <div class="episode-info">
                     <div class="episode-number">
                         <span class="episode-icon">📺</span>
@@ -1134,7 +1140,7 @@ function displayEpisodeList(animeTitle, episodes) {
                     </div>
                     <div class="episode-title">\${escapeHtml(episodeTitle || '无标题')}</div>
                 </div>
-                <button class="btn btn-primary btn-sm" onclick="loadDanmuData('\${episodeId}', '\${escapeHtml(fullTitle).replace(/'/g, "\\\\'")}')">
+                <button class="btn btn-primary btn-sm" onclick="loadDanmuData('\${episodeId}', '\${escapeHtml(fullTitle).replace(/'/g, "\\'")}')">
                     <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
                     </svg>
@@ -1143,15 +1149,38 @@ function displayEpisodeList(animeTitle, episodes) {
             </div>
         \`;
     });
-    
+
     html += '</div></div>';
-    
+
     container.innerHTML = html;
-    
-    // 滚动到剧集列表
+
     setTimeout(() => {
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, 100);
+}
+
+function jumpToEpisode() {
+    const episodeInput = document.getElementById('jump-episode-input');
+    const episodeNumber = parseInt(episodeInput && episodeInput.value, 10);
+
+    if (!episodeNumber || episodeNumber <= 0) {
+        customAlert('请输入有效的集数（正整数）', '⚠️ 定位失败');
+        return;
+    }
+
+    const episodeElement = document.getElementById('episode-item-' + episodeNumber);
+    if (!episodeElement) {
+        customAlert('找不到第' + episodeNumber + '集', '⚠️ 定位失败');
+        return;
+    }
+
+    episodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    episodeElement.style.boxShadow = '0 0 0 2px rgba(251, 191, 36, 0.55)';
+    episodeElement.style.background = 'rgba(254, 240, 138, 0.18)';
+    setTimeout(() => {
+        episodeElement.style.boxShadow = '';
+        episodeElement.style.background = '';
+    }, 1800);
 }
 
 /* ========================================

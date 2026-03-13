@@ -117,6 +117,12 @@ export default class DandanSource extends BaseSource {
           }
 
           const animes = resp.data.animes;
+
+          // 标记 TMDB 来源，供后续处理环节识别以跳过常规标题匹配
+          for (const anime of animes) {
+            anime.isTmdbSource = true;
+          }
+
           log("info", `dandanSearchresp (tmdb): ${JSON.stringify(animes)}`);
           log("info", `[Dandan] 返回 ${animes.length} 条结果 (source: tmdb)`);
           return { success: true, data: animes, source: 'tmdb' };
@@ -154,7 +160,7 @@ export default class DandanSource extends BaseSource {
         const strippedKeyword = keyword.replace(/(?:第\s*[0-9一二三四五六七八九十百千万]+\s*[季期部])|(?:S(?:eason)?\s*\d+)|(?:Part\s*\d+)/gi, '').trim();
         if (strippedKeyword && strippedKeyword !== keyword) {
           log("info", `[Dandan] 尝试去除季度信息进行降级搜索: ${strippedKeyword}`);
-          return this.search(strippedKeyword, true);
+          return await this.search(strippedKeyword, true);
         }
       }
 
@@ -292,11 +298,12 @@ export default class DandanSource extends BaseSource {
             }
           }
 
-          // 初始搜索结果做完整标题校验，相关作品只保留季度正确的结果
+          // 区分初始搜索结果与动态相关作品的结果过滤逻辑
           const allTitles = [anime.animeTitle, ...aliases];
           let isMatch = false;
 
-          if (anime.isRelated) {
+          if (anime.isRelated || anime.isTmdbSource) {
+            // 相关作品及 TMDB 原名搜索结果仅执行季度过滤，避免语言差异误伤
             const querySeason = getExplicitSeasonNumber(queryTitle);
             if (querySeason !== null) {
               let titleSeason = null;
