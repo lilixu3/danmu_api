@@ -1133,8 +1133,8 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .stat-icon-wrapper {
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1159,8 +1159,8 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .stat-icon-wrapper svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     position: relative;
     z-index: 1;
     stroke-width: 2;
@@ -1188,10 +1188,10 @@ export const overviewCssContent = /* css */ `/* ================================
 .hero-mode-panel {
     display: flex;
     align-items: center;
-    gap: 0.64rem;
+    gap: 0.56rem;
     min-width: 0;
-    min-height: 76px;
-    padding: 0.62rem 0.82rem;
+    min-height: 68px;
+    padding: 0.54rem 0.76rem;
     border-radius: 20px;
     border: 1px solid rgba(203, 213, 225, 0.68);
     background: rgba(255, 255, 255, 0.9);
@@ -1226,7 +1226,7 @@ export const overviewCssContent = /* css */ `/* ================================
     min-width: 0;
     flex: 1 1 auto;
     display: grid;
-    gap: 0.12rem;
+    gap: 0.08rem;
 }
 
 .hero-status-label,
@@ -1243,8 +1243,8 @@ export const overviewCssContent = /* css */ `/* ================================
 .hero-mode-value {
     margin: 0;
     color: var(--text-primary);
-    font-size: 1.08rem;
-    line-height: 1.25;
+    font-size: 1.03rem;
+    line-height: 1.18;
     font-weight: 700;
 }
 

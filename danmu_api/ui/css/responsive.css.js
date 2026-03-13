@@ -1899,6 +1899,24 @@ export const responsiveCssContent = /* css */ `/* ==============================
         gap: 0.6rem;
     }
 
+    .hero-status-panel,
+    .hero-mode-panel {
+        min-height: 62px;
+        padding: 0.48rem 0.68rem;
+        gap: 0.5rem;
+        border-radius: 18px;
+    }
+
+    .stat-icon-wrapper {
+        width: 35px;
+        height: 35px;
+    }
+
+    .stat-icon-wrapper svg {
+        width: 17px;
+        height: 17px;
+    }
+
     .preview-stats-strip {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.55rem;
