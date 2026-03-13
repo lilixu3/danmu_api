@@ -549,7 +549,7 @@ export class Envs {
       searchCacheMaxItems: this.get('SEARCH_CACHE_MAX_ITEMS', 300, 'number'), // 搜索缓存最大条目数（默认 300，0表示不限制）
       commentCacheMaxItems: this.get('COMMENT_CACHE_MAX_ITEMS', 300, 'number'), // 弹幕缓存最大条目数（默认 300，0表示不限制）
       convertTopBottomToScroll: this.get('CONVERT_TOP_BOTTOM_TO_SCROLL', false, 'boolean'), // 顶部/底部弹幕转换为浮动弹幕配置（默认 false，禁用转换）
-      convertColor: this.get('CONVERT_COLOR', 'default', 'string'), // 弹幕转换颜色配置，支持 default、white、color（默认 default，禁用转换）
+      convertColor: this.get('CONVERT_COLOR', 'default', 'string'), // 弹幕转换颜色配置，支持 default、white、color 或自定义十进制颜色列表
       danmuOutputFormat: this.get('DANMU_OUTPUT_FORMAT', 'json', 'string'), // 弹幕输出格式配置（默认 json，可选值：json, xml）
       strictTitleMatch: this.get('STRICT_TITLE_MATCH', false, 'boolean'), // 严格标题匹配模式配置（默认 false，宽松模糊匹配）
       titleToChinese: this.get('TITLE_TO_CHINESE', false, 'boolean'), // 外语标题转换中文开关

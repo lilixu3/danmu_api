@@ -102,6 +102,12 @@ export function groupDanmusByMinute(filteredDanmus, n, isMultiSource = false) {
  * @returns {Array} 处理后的弹幕列表
  */
 const DANMU_LIKE_PRESETS = ['default', 'pink_under_1k', 'outline_under_1k', 'pink_only', 'outline_only', 'off'];
+const DEFAULT_RANDOM_COLOR_POOL = [
+  16777215, 16777215, 16777215, 16777215,
+  16777215, 16777215, 16777215, 16777215,
+  16744319, 16752762, 16774799, 9498256,
+  8388564, 8900346, 14204888, 16758465
+];
 
 function normalizeDanmuLikePreset(rawPreset) {
   const preset = String(rawPreset || 'default').trim().toLowerCase();
@@ -135,6 +141,33 @@ function resolveDanmuLikeIcon(item, preset) {
   if (like >= 1000) return '🔥';
   if (like >= 100) return '💗';
   return '♡';
+}
+
+function resolveConvertColorConfig(rawConvertColor) {
+  const value = String(rawConvertColor || '').trim();
+
+  if (!value || value === 'default') {
+    return null;
+  }
+
+  if (value === 'white') {
+    return { mode: 'white', pool: [16777215] };
+  }
+
+  if (value === 'color') {
+    return { mode: 'random', pool: DEFAULT_RANDOM_COLOR_POOL };
+  }
+
+  const pool = value
+    .split(',')
+    .map(item => Number.parseInt(item.trim(), 10))
+    .filter(color => Number.isInteger(color) && color >= 0 && color <= 16777215);
+
+  if (pool.length === 0) {
+    return null;
+  }
+
+  return { mode: 'random', pool };
 }
 
 export function handleDanmusLike(groupedDanmus) {
@@ -352,7 +385,8 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
 
   // 应用弹幕转换规则（在去重和限制弹幕数之后）
   let convertedDanmus = limitDanmusByCount(likeDanmus, globals.danmuLimit);
-  if (globals.convertTopBottomToScroll || globals.convertColor === 'white' || globals.convertColor === 'color') {
+  const convertColorConfig = resolveConvertColorConfig(globals.convertColor);
+  if (globals.convertTopBottomToScroll || convertColorConfig) {
     let topBottomCount = 0;
     let colorCount = 0;
 
@@ -373,19 +407,19 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
 
       // 2. 弹幕转换颜色
       // 2.1 将彩色弹幕转换为白色
-      if (globals.convertColor === 'white' && color !== 16777215) {
+      if (convertColorConfig?.mode === 'white' && color !== 16777215) {
         colorCount++;
         color = 16777215;
         modified = true;
       }
-      // 2.2 将白色弹幕转换为随机颜色，白、红、橙、黄、绿、青、蓝、紫、粉（模拟真实情况，增加白色出现概率）
-      let colors = [16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 16777215, 
-                    16744319, 16752762, 16774799, 9498256, 8388564, 8900346, 14204888, 16758465];
-      let randomColor = colors[Math.floor(Math.random() * colors.length)];
-      if (globals.convertColor === 'color' && color === 16777215 && color !== randomColor) {
-        colorCount++;
-        color = randomColor;
-        modified = true;
+      // 2.2 将白色弹幕按颜色池随机转换，支持默认池和自定义 CSV 颜色池
+      if (convertColorConfig?.mode === 'random' && color === 16777215) {
+        const randomColor = convertColorConfig.pool[Math.floor(Math.random() * convertColorConfig.pool.length)];
+        if (color !== randomColor) {
+          colorCount++;
+          color = randomColor;
+          modified = true;
+        }
       }
 
       if (modified) {
