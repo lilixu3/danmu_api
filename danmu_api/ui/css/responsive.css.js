@@ -1901,20 +1901,20 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .hero-status-panel,
     .hero-mode-panel {
-        min-height: 62px;
-        padding: 0.48rem 0.68rem;
-        gap: 0.5rem;
+        min-height: 65px;
+        padding: 0.52rem 0.72rem;
+        gap: 0.52rem;
         border-radius: 18px;
     }
 
     .stat-icon-wrapper {
-        width: 35px;
-        height: 35px;
+        width: 36px;
+        height: 36px;
     }
 
     .stat-icon-wrapper svg {
-        width: 17px;
-        height: 17px;
+        width: 17.5px;
+        height: 17.5px;
     }
 
     .preview-stats-strip {
