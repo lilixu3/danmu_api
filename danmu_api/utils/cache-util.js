@@ -2,6 +2,7 @@ import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { Anime } from "../models/dandan-model.js";
 import { simpleHash } from "./codec-util.js";
+import { enrichAnimeTitleMeta } from "./title-meta-util.js";
 let fs, path;
 
 // =====================
@@ -140,16 +141,23 @@ export function setCommentCache(videoUrl, comments) {
 
 // 添加元素到 episodeIds：检查 url 是否存在，若不存在则以自增 id 添加
 export function addEpisode(url, title) {
+    const payload = typeof url === "object" && url !== null
+        ? { ...url }
+        : { url, title };
+    const episodeUrl = payload.url;
+    const episodeTitle = payload.title;
+
     // 检查是否已存在相同的 url 和 title
-    const existingEpisode = globals.episodeIds.find(episode => episode.url === url && episode.title === title);
+    const existingEpisode = globals.episodeIds.find(episode => episode.url === episodeUrl && episode.title === episodeTitle);
     if (existingEpisode) {
-        log("info", `Episode with URL ${url} and title ${title} already exists in episodeIds, returning existing episode.`);
+        Object.assign(existingEpisode, payload);
+        log("info", `Episode with URL ${episodeUrl} and title ${episodeTitle} already exists in episodeIds, returning existing episode.`);
         return existingEpisode; // 返回已存在的 episode
     }
 
     // 自增 episodeNum 并使用作为 id
     globals.episodeNum++;
-    const newEpisode = { id: globals.episodeNum, url: url, title: title };
+    const newEpisode = { id: globals.episodeNum, ...payload };
 
     // 添加新对象
     globals.episodeIds.push(newEpisode);
@@ -195,7 +203,7 @@ export function findTitleById(id) {
 
 // 添加 anime 对象到 animes，并将其 links 添加到 episodeIds
 export function addAnime(anime) {
-    anime = Anime.fromJson(anime);
+    anime = Anime.fromJson(enrichAnimeTitleMeta(anime));
     try {
         // 确保 anime 有 links 属性且是数组
         if (!anime.links || !Array.isArray(anime.links)) {
@@ -207,7 +215,7 @@ export function addAnime(anime) {
         const newLinks = [];
         anime.links.forEach(link => {
             if (link.url) {
-                const episode = addEpisode(link.url, link.title);
+                const episode = addEpisode(link.toJson ? link.toJson() : link);
                 if (episode) {
                     newLinks.push(episode); // 仅添加成功添加的 episode
                 }

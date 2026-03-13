@@ -1,3 +1,4 @@
+import { globals } from "../configs/globals.js";
 import { log } from "../utils/log-util.js";
 import { convertToDanmakuJson } from "../utils/danmu-util.js";
 import { extractAnimeTitle, extractYear } from "../utils/common-util.js";
@@ -110,8 +111,11 @@ export default class BaseSource {
         // 检查 curAnimes 中是否已存在相同 animeId 的动漫
         const existingIndex = curAnimes.findIndex(a => a.animeId === anime.animeId);
         if (existingIndex === -1) {
-          // 不存在则添加
-          curAnimes.push(anime);
+          // 搜索响应优先复用缓存中的完整对象
+          const cachedAnime = globals.animes.find(item =>
+            item.animeId === anime.animeId || (anime.bangumiId && item.bangumiId === anime.bangumiId)
+          );
+          curAnimes.push(cachedAnime || anime);
         }
         // 如果已存在则跳过，避免重复
       });

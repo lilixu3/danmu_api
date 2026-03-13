@@ -20,6 +20,54 @@ let heatmapInteractionInited = false;
    ======================================== */
 const DANMU_PAGE_SIZE = 50;
 let currentDanmuPage = 0;
+
+/* ========================================
+   标题展示辅助
+   ======================================== */
+function buildDanmuDisplayTitle(animeTitle, episodeTitle, episodeNumber) {
+    const safeAnimeTitle = animeTitle || "";
+    const safeEpisodeTitle = episodeTitle || (episodeNumber ? ("第" + episodeNumber + "集") : "");
+    if (safeAnimeTitle && safeEpisodeTitle) {
+        return safeAnimeTitle + " - " + safeEpisodeTitle;
+    }
+    return safeAnimeTitle || safeEpisodeTitle;
+}
+
+function getAnimeDisplayTitle(anime) {
+    if (!anime || typeof anime !== "object") return "";
+    if (anime.playerAnimeTitle) return anime.playerAnimeTitle;
+    if (anime.animeDisplayTitle) return anime.animeDisplayTitle;
+    if (anime.animeName && anime.animeYear) {
+        return anime.animeName + " (" + anime.animeYear + ")";
+    }
+    return anime.animeName || anime.animeTitle || anime.title || "";
+}
+
+function getEpisodeDisplayTitle(episode) {
+    if (!episode || typeof episode !== "object") return "";
+    return episode.playerEpisodeTitle || episode.episodeTitle || episode.title || episode.name || "";
+}
+
+function getEpisodeFullDisplayTitle(animeTitle, episode) {
+    if (episode && typeof episode === "object" && episode.displayTitle) {
+        return episode.displayTitle;
+    }
+    return buildDanmuDisplayTitle(
+        animeTitle,
+        getEpisodeDisplayTitle(episode),
+        episode && (episode.episodeNumber || episode.episode)
+    );
+}
+
+function getMatchDisplayTitle(matchResult) {
+    if (!matchResult || typeof matchResult !== "object") return "";
+    if (matchResult.displayTitle) return matchResult.displayTitle;
+    return buildDanmuDisplayTitle(
+        matchResult.playerAnimeTitle || matchResult.animeDisplayTitle || matchResult.animeTitle || "",
+        matchResult.playerEpisodeTitle || matchResult.episodeTitle || matchResult.episode || "",
+        matchResult.episodeNumber
+    );
+}
 /* ========================================
    API配置
    ======================================== */
@@ -835,10 +883,11 @@ function autoMatchDanmu() {
                 // 弹弹Play 标准格式
                 const firstMatch = data.matches[0];
                 matchResult = {
-                    animeTitle: firstMatch.animeTitle || firstMatch.anime || '',
-                    episodeTitle: firstMatch.episodeTitle || firstMatch.episode || '',
+                    ...firstMatch,
+                    animeTitle: firstMatch.playerAnimeTitle || firstMatch.animeTitle || firstMatch.anime || '',
+                    episodeTitle: firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '',
                     episodeId: firstMatch.episodeId,
-                    episodeNumber: extractEpisodeNumber(firstMatch.episodeTitle || firstMatch.episode || '')
+                    episodeNumber: firstMatch.episodeNumber || extractEpisodeNumber(firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '')
                 };
             } else if (data.success && data.match) {
                 // 自定义格式
@@ -847,17 +896,16 @@ function autoMatchDanmu() {
                 // 简化格式
                 const firstMatch = data.matches[0];
                 matchResult = {
-                    animeTitle: firstMatch.animeTitle || firstMatch.anime || '',
-                    episodeTitle: firstMatch.episodeTitle || firstMatch.episode || '',
+                    ...firstMatch,
+                    animeTitle: firstMatch.playerAnimeTitle || firstMatch.animeTitle || firstMatch.anime || '',
+                    episodeTitle: firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '',
                     episodeId: firstMatch.episodeId,
-                    episodeNumber: extractEpisodeNumber(firstMatch.episodeTitle || firstMatch.episode || '')
+                    episodeNumber: firstMatch.episodeNumber || extractEpisodeNumber(firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '')
                 };
             }
             
             if (matchResult && matchResult.episodeId) {
-                const displayTitle = matchResult.episodeTitle 
-                    ? \`\${matchResult.animeTitle} - \${matchResult.episodeTitle}\`
-                    : \`\${matchResult.animeTitle} - 第\${matchResult.episodeNumber || 1}集\`;
+                const displayTitle = getMatchDisplayTitle(matchResult);
                 addLog(\`✅ 匹配成功: \${displayTitle}\`, 'success');
                 loadDanmuData(matchResult.episodeId, displayTitle);
             } else {
@@ -979,12 +1027,14 @@ function displayDanmuSearchResults(animes) {
     
     animes.forEach((anime, index) => {
         const imageUrl = anime.imageUrl || 'https://placehold.co/150x200?text=No+Image';
+        const animeDisplayTitle = getAnimeDisplayTitle(anime);
+        const sourceLabel = anime.sourceLabel && anime.sourceLabel !== 'unknown' ? anime.sourceLabel : '';
         html += \`
-            <div class="anime-card" onclick="selectAnimeForDanmu(\${anime.animeId}, '\${escapeHtml(anime.animeTitle).replace(/'/g, "\\\\'")}', \${anime.episodeCount})"
+            <div class="anime-card" onclick="selectAnimeForDanmu(\${anime.animeId}, '\${escapeHtml(animeDisplayTitle).replace(/'/g, "\\\\'")}', \${anime.episodeCount})"
                  style="animation: fadeInUp 0.4s ease-out \${index * 0.05}s backwards;">
                 <div class="anime-card-image-wrapper">
                     <img src="\${imageUrl}" 
-                         alt="\${escapeHtml(anime.animeTitle)}" 
+                         alt="\${escapeHtml(animeDisplayTitle)}" 
                          referrerpolicy="no-referrer" 
                          class="anime-image"
                          loading="lazy">
@@ -994,14 +1044,20 @@ function displayDanmuSearchResults(animes) {
                     </div>
                 </div>
                 <div class="anime-info">
-                    <h4 class="anime-title" title="\${escapeHtml(anime.animeTitle)}">
-                        \${escapeHtml(anime.animeTitle)}
+                    <h4 class="anime-title" title="\${escapeHtml(animeDisplayTitle)}">
+                        \${escapeHtml(animeDisplayTitle)}
                     </h4>
                     <div class="anime-meta">
                         <span class="episode-count">
                             <span class="meta-icon">📺</span>
                             共 \${anime.episodeCount} 集
                         </span>
+                        \${sourceLabel ? \`
+                        <span class="episode-count">
+                            <span class="meta-icon">🏷️</span>
+                            \${escapeHtml(sourceLabel)}
+                        </span>
+                        \` : ''}
                     </div>
                 </div>
             </div>
@@ -1061,10 +1117,10 @@ function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
             
             if (data.bangumi && data.bangumi.episodes) {
                 episodes = data.bangumi.episodes;
-                resolvedAnimeTitle = data.bangumi.animeTitle || animeTitle;
+                resolvedAnimeTitle = data.bangumi.playerAnimeTitle || data.bangumi.animeDisplayTitle || data.bangumi.animeTitle || animeTitle;
             } else if (data.episodes && Array.isArray(data.episodes)) {
                 episodes = data.episodes;
-                resolvedAnimeTitle = data.animeTitle || animeTitle;
+                resolvedAnimeTitle = data.playerAnimeTitle || data.animeDisplayTitle || data.animeTitle || animeTitle;
             } else if (Array.isArray(data)) {
                 episodes = data;
             }
@@ -1127,16 +1183,16 @@ function displayEpisodeList(animeTitle, episodes) {
     episodes.forEach((episode, index) => {
         const episodeId = episode.episodeId || episode.id || episode.cid;
         const episodeNumber = episode.episodeNumber || episode.episode || (index + 1);
-        const episodeTitle = episode.episodeTitle || episode.title || episode.name || '';
-        const displayTitle = episodeTitle || \`第 \${episodeNumber} 集\`;
-        const fullTitle = \`\${animeTitle} - \${displayTitle}\`;
+        const episodeTitle = getEpisodeDisplayTitle(episode);
+        const fullTitle = getEpisodeFullDisplayTitle(animeTitle, episode);
+        const episodeHeaderTitle = episode.episodeCode || episode.episodeSubtitle || ('第 ' + episodeNumber + ' 集');
 
         html += \`
             <div class="episode-item" id="episode-item-\${episodeNumber}" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
                 <div class="episode-info">
                     <div class="episode-number">
                         <span class="episode-icon">📺</span>
-                        第 \${episodeNumber} 集
+                        \${escapeHtml(episodeHeaderTitle)}
                     </div>
                     <div class="episode-title">\${escapeHtml(episodeTitle || '无标题')}</div>
                 </div>

@@ -13,6 +13,7 @@ import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.j
 import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
 import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
+import { getAnimeTitleMeta, getLinkTitleMeta, getDisplayTitle, getEmbyTitle, enrichAnimeTitleMeta } from "../utils/title-meta-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import AIClient from '../utils/ai-util.js';
 import Kan360Source from "../sources/kan360.js";
@@ -238,16 +239,90 @@ async function withPendingCommentRequest(pendingKey, taskFactory) {
   }
 }
 
+function resolveAnimeForResponse(anime) {
+  if (!anime) return null;
+
+  const cachedAnime = (globals.animes || []).find((item) => {
+    const animeIdMatched = anime.animeId !== undefined && String(item.animeId) === String(anime.animeId);
+    const bangumiIdMatched = anime.bangumiId && String(item.bangumiId) === String(anime.bangumiId);
+    return animeIdMatched || bangumiIdMatched;
+  });
+
+  return enrichAnimeTitleMeta(cachedAnime || anime);
+}
+
+function buildAnimeTitleFields(anime) {
+  const resolvedAnime = resolveAnimeForResponse(anime);
+  const animeMeta = getAnimeTitleMeta(resolvedAnime);
+
+  return {
+    legacyAnimeTitle: resolvedAnime?.animeTitle || "",
+    playerAnimeTitle: animeMeta.playerAnimeTitle || "",
+    animeDisplayTitle: animeMeta.animeDisplayTitle || "",
+    animeName: animeMeta.animeName || "",
+    animeYear: animeMeta.year || null,
+    sourceLabel: animeMeta.sourceLabel || "",
+    seasonNumber: animeMeta.seasonNumber || null,
+    titleMeta: animeMeta,
+  };
+}
+
+function buildEpisodeTitleFields(episode, anime, fallbackEpisodeNumber = null) {
+  const resolvedAnime = resolveAnimeForResponse(anime);
+  const episodeMeta = getLinkTitleMeta(episode, resolvedAnime, fallbackEpisodeNumber);
+  const rawEpisodeTitle = String(episode?.episodeTitle ?? episode?.title ?? "");
+
+  return {
+    legacyEpisodeTitle: rawEpisodeTitle,
+    playerEpisodeTitle: episodeMeta.playerEpisodeTitle || "",
+    displayTitle: episodeMeta.displayTitle || "",
+    embyTitle: episodeMeta.embyTitle || "",
+    sourceLabel: episodeMeta.sourceLabel || "",
+    episodeCode: episodeMeta.episodeCode || "",
+    episodeSubtitle: episodeMeta.episodeSubtitle || "",
+    seasonNumber: episodeMeta.seasonNumber || null,
+    parsedEpisodeNumber: episodeMeta.episodeNumber || null,
+    titleMeta: episodeMeta,
+  };
+}
+
+function buildAnimeResponseData(anime) {
+  const resolvedAnime = resolveAnimeForResponse(anime);
+  if (!resolvedAnime) return null;
+
+  const { links, ...animeWithoutLinks } = resolvedAnime;
+  return Anime.fromJson({
+    ...animeWithoutLinks,
+    ...buildAnimeTitleFields(resolvedAnime)
+  });
+}
+
+function hydrateAnimeResults(animes = []) {
+  return (animes || [])
+    .map(anime => buildAnimeResponseData(anime))
+    .filter(Boolean);
+}
+
+function buildEpisodeResponseData(episode, anime, fallbackEpisodeNumber = null) {
+  const rawEpisodeTitle = String(episode?.episodeTitle ?? episode?.title ?? "");
+  return {
+    ...episode,
+    episodeTitle: rawEpisodeTitle,
+    ...buildEpisodeTitleFields(episode, anime, fallbackEpisodeNumber)
+  };
+}
+
 function buildEpisodesFromAnimeLinks(anime) {
   if (!anime || !Array.isArray(anime.links)) return [];
 
-  let episodesList = anime.links.map((link, index) => ({
+  let episodesList = anime.links.map((link, index) => buildEpisodeResponseData({
+    ...link,
     seasonId: `season-${anime.animeId}`,
     episodeId: link.id,
     episodeTitle: `${link.title}`,
     episodeNumber: `${index + 1}`,
     airDate: anime.startDate,
-  }));
+  }, anime, index + 1));
 
   if (globals.enableAnimeEpisodeFilter) {
     episodesList = episodesList.filter(ep => !globals.episodeTitleFilter.test(ep.episodeTitle));
@@ -379,7 +454,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       errorCode: 0,
       success: true,
       errorMessage: "",
-      animes: cachedResults,
+      animes: hydrateAnimeResults(cachedResults),
     });
   }
 
@@ -398,7 +473,8 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       "startDate": "2025-08-08T13:25:11.189Z",
       "episodeCount": 1,
       "rating": 0,
-      "isFavorited": true
+      "isFavorited": true,
+      "source": "unknown"
     });
 
     let platform = "unknown";
@@ -433,8 +509,9 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       "url": queryTitle,
       "title": `【${platform}】 ${pageTitle}`
     }];
-    curAnimes.push(tmpAnime);
-    addAnime(Anime.fromJson({...tmpAnime, links: links}));
+    const animeWithLinks = Anime.fromJson({ ...tmpAnime, source: platform, links });
+    curAnimes.push(buildAnimeResponseData(animeWithLinks));
+    addAnime(animeWithLinks);
     if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
 
     // 如果有新的anime获取到，则更新本地缓存
@@ -453,7 +530,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       errorCode: 0,
       success: true,
       errorMessage: "",
-      animes: curAnimes,
+      animes: hydrateAnimeResults(curAnimes),
     });
   }
 
@@ -636,6 +713,10 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     curAnimes.length = 0;
     curAnimes.push(...validAnimes);
   }
+
+  const hydratedAnimes = hydrateAnimeResults(curAnimes);
+  curAnimes.length = 0;
+  curAnimes.push(...hydratedAnimes);
 
   // 如果有新的anime获取到，则更新本地缓存
   if (globals.localCacheValid && curAnimes.length !== 0) {
@@ -1380,13 +1461,26 @@ export async function matchAnime(url, req) {
     };
 
     if (resEpisode) {
+      const animeTitleFields = buildAnimeTitleFields(resAnime);
+      const episodeTitleFields = buildEpisodeTitleFields(resEpisode, resAnime, resEpisode.episodeNumber);
       resData["isMatched"] = true;
       resData["matches"] = [
         AnimeMatch.fromJson({
           "episodeId": resEpisode.episodeId,
           "animeId": resAnime.animeId,
-          "animeTitle": resAnime.animeTitle,
-          "episodeTitle": resEpisode.episodeTitle,
+          "animeTitle": animeTitleFields.playerAnimeTitle || resAnime.animeTitle,
+          "episodeTitle": episodeTitleFields.playerEpisodeTitle || resEpisode.episodeTitle,
+          "legacyAnimeTitle": animeTitleFields.legacyAnimeTitle,
+          "legacyEpisodeTitle": episodeTitleFields.legacyEpisodeTitle,
+          "playerAnimeTitle": animeTitleFields.playerAnimeTitle,
+          "playerEpisodeTitle": episodeTitleFields.playerEpisodeTitle,
+          "displayTitle": episodeTitleFields.displayTitle || getDisplayTitle(resEpisode, resAnime, resEpisode.episodeNumber),
+          "embyTitle": episodeTitleFields.embyTitle || getEmbyTitle(resEpisode, resAnime, resEpisode.episodeNumber),
+          "sourceLabel": episodeTitleFields.sourceLabel,
+          "episodeCode": episodeTitleFields.episodeCode,
+          "episodeSubtitle": episodeTitleFields.episodeSubtitle,
+          "seasonNumber": episodeTitleFields.seasonNumber,
+          "episodeNumber": episodeTitleFields.parsedEpisodeNumber || resEpisode.episodeNumber,
           "type": resAnime.type,
           "typeDescription": resAnime.typeDescription,
           "shift": 0,
@@ -1486,10 +1580,8 @@ export async function searchEpisodes(url) {
           animeTitle: animeItem.animeTitle,
           type: animeItem.type,
           typeDescription: animeItem.typeDescription,
-          episodes: filteredEpisodes.map(ep => ({
-            episodeId: ep.episodeId,
-            episodeTitle: ep.episodeTitle
-          }))
+          ...buildAnimeTitleFields(animeItem),
+          episodes: filteredEpisodes.map(ep => buildEpisodeResponseData(ep, animeItem, ep.episodeNumber))
         }));
       }
     }
@@ -1532,17 +1624,7 @@ export async function getBangumi(path) {
   log("info", `Fetched details for anime ID: ${idParam}`);
 
   // 构建 episodes 列表
-  let episodesList = [];
-  for (let i = 0; i < anime.links.length; i++) {
-    const link = anime.links[i];
-    episodesList.push({
-      seasonId: `season-${anime.animeId}`,
-      episodeId: link.id,
-      episodeTitle: `${link.title}`,
-      episodeNumber: `${i+1}`,
-      airDate: anime.startDate,
-    });
-  }
+  let episodesList = buildEpisodesFromAnimeLinks(anime);
 
   // 如果启用了集标题过滤，则应用过滤
   if (globals.enableAnimeEpisodeFilter) {
@@ -1578,6 +1660,7 @@ export async function getBangumi(path) {
     rating: anime.rating,
     type: anime.type,
     typeDescription: anime.typeDescription,
+    ...buildAnimeTitleFields(anime),
     seasons: [
       {
         id: `season-${anime.animeId}`,
