@@ -146,21 +146,25 @@ export function addEpisode(url, title) {
         : { url, title };
     const episodeUrl = payload.url;
     const episodeTitle = payload.title;
+    const hasExplicitId = Number.isInteger(payload.id);
 
-    // 从 payload 中剥离 id，避免模型默认值覆盖自增 id
-    const { id: _ignoreId, ...payloadWithoutId } = payload;
+    // 仅在显式传入合法 id 时保留，默认情况统一走缓存层自增
+    const { id: explicitId, ...payloadWithoutId } = payload;
 
     // 检查是否已存在相同的 url 和 title
     const existingEpisode = globals.episodeIds.find(episode => episode.url === episodeUrl && episode.title === episodeTitle);
     if (existingEpisode) {
         Object.assign(existingEpisode, payloadWithoutId);
+        if (hasExplicitId) {
+            existingEpisode.id = explicitId;
+        }
         log("info", `Episode with URL ${episodeUrl} and title ${episodeTitle} already exists in episodeIds, returning existing episode.`);
         return existingEpisode; // 返回已存在的 episode
     }
 
     // 自增 episodeNum 并使用作为 id
     globals.episodeNum++;
-    const newEpisode = { ...payloadWithoutId, id: globals.episodeNum };
+    const newEpisode = { ...payloadWithoutId, id: hasExplicitId ? explicitId : globals.episodeNum };
 
     // 添加新对象
     globals.episodeIds.push(newEpisode);

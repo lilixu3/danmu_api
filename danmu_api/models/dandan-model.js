@@ -50,14 +50,19 @@ export class Anime {
 
 // 定义 Link 模型
 class Link {
-  constructor({ name = "", url = "", title = "", id = 10001, ...rest } = {}) {
+  constructor({ name = "", url = "", title = "", id, ...rest } = {}) {
     validateType(name, "string");
     validateType(url, "string");
     validateType(title, "string");
-    validateType(id, "number");
+    if (id !== undefined && id !== null) {
+      validateType(id, "number");
+    }
 
-    // 直接解构并赋值给 this
-    Object.assign(this, { name, url, title, id }, rest);
+    // 缺省 id 留给缓存层统一分配
+    Object.assign(this, { name, url, title }, rest);
+    if (id !== undefined && id !== null) {
+      this.id = id;
+    }
   }
 
   // ---- 静态方法：从 JSON 创建 Link 对象 ----
