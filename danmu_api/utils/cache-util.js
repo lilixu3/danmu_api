@@ -147,17 +147,20 @@ export function addEpisode(url, title) {
     const episodeUrl = payload.url;
     const episodeTitle = payload.title;
 
+    // 从 payload 中剥离 id，避免模型默认值覆盖自增 id
+    const { id: _ignoreId, ...payloadWithoutId } = payload;
+
     // 检查是否已存在相同的 url 和 title
     const existingEpisode = globals.episodeIds.find(episode => episode.url === episodeUrl && episode.title === episodeTitle);
     if (existingEpisode) {
-        Object.assign(existingEpisode, payload);
+        Object.assign(existingEpisode, payloadWithoutId);
         log("info", `Episode with URL ${episodeUrl} and title ${episodeTitle} already exists in episodeIds, returning existing episode.`);
         return existingEpisode; // 返回已存在的 episode
     }
 
     // 自增 episodeNum 并使用作为 id
     globals.episodeNum++;
-    const newEpisode = { id: globals.episodeNum, ...payload };
+    const newEpisode = { ...payloadWithoutId, id: globals.episodeNum };
 
     // 添加新对象
     globals.episodeIds.push(newEpisode);
