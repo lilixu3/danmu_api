@@ -192,14 +192,14 @@ export function createDynamicPlatformOrder(preferredPlatform) {
 }
 
 /**
- * 规范化标题中的空格（移除所有空格以便进行空格无关的匹配）
+ * 规范化标题（移除空格并清理修饰性符号）
  * @param {string} str - 输入字符串
- * @returns {string} 规范化后的字符串（移除所有空格）
+ * @returns {string} 规范化后的字符串
  */
 export function normalizeSpaces(str) {
   if (!str) return '';
-  // 移除所有空格（包括多个连续空格、制表符等）
-  return String(str).trim().replace(/\s+/g, '');
+  // 移除所有空格与修饰性符号，减少标题格式噪音
+  return String(str).trim().replace(/[\s【】\[\]《》<>「」!?！？.,，。~～]/g, '');
 }
 
 /**

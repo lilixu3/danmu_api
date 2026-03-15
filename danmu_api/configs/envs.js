@@ -322,6 +322,125 @@ export class Envs {
   }
 
   /**
+   * 解析 IP 黑名单列表
+   * @description 支持逗号/分号/换行分隔，支持 /regex/ 或 /regex/i，支持 IPv4/IPv6 CIDR
+   * @returns {Array}
+   */
+  static resolveIpBlacklist() {
+    const rawList = this.get('IP_BLACKLIST', '', 'string', false).trim();
+
+    if (!rawList) {
+      this.accessedEnvVars.set('IP_BLACKLIST', []);
+      return [];
+    }
+
+    const entries = rawList
+      .split(/[\n,;]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    const rules = [];
+
+    for (const entry of entries) {
+      try {
+        if (entry.startsWith('/') && entry.lastIndexOf('/') > 0) {
+          const lastSlashIndex = entry.lastIndexOf('/');
+          const pattern = entry.slice(1, lastSlashIndex);
+          const flags = entry.slice(lastSlashIndex + 1);
+          rules.push({ type: 'regex', value: new RegExp(pattern, flags) });
+          continue;
+        }
+
+        if (entry.includes('/')) {
+          const [ip, prefix] = entry.split('/').map(s => s.trim());
+          const prefixNum = Number(prefix);
+          const isIpv4 = this.isValidIpv4(ip);
+          const isIpv6 = this.isValidIpv6(ip);
+          if (Number.isInteger(prefixNum)) {
+            if (isIpv4 && prefixNum >= 0 && prefixNum <= 32) {
+              rules.push({ type: 'cidr', ip, prefix: prefixNum });
+              continue;
+            }
+            if (isIpv6 && prefixNum >= 0 && prefixNum <= 128) {
+              rules.push({ type: 'cidr', ip, prefix: prefixNum });
+              continue;
+            }
+          }
+        }
+
+        if (this.isValidIpv4(entry) || this.isValidIpv6(entry)) {
+          rules.push({ type: 'exact', value: entry });
+          continue;
+        }
+
+        const escaped = entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        rules.push({ type: 'regex', value: new RegExp(`^${escaped}$`) });
+      } catch (error) {
+        console.warn(`Invalid IP_BLACKLIST entry: ${entry}, skipped.`);
+      }
+    }
+
+    this.accessedEnvVars.set('IP_BLACKLIST', entries);
+    return rules;
+  }
+
+  /**
+   * 校验 IPv4 地址合法性
+   * @param {string} ip IPv4 地址
+   * @returns {boolean}
+   */
+  static isValidIpv4(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(part => {
+      if (!/^(\d{1,3})$/.test(part)) return false;
+      const num = Number(part);
+      return num >= 0 && num <= 255;
+    });
+  }
+
+  /**
+   * 校验 IPv6 地址合法性
+   * @param {string} ip IPv6 地址
+   * @returns {boolean}
+   */
+  static isValidIpv6(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+    const normalized = ip.trim();
+    if (!normalized.includes(':')) return false;
+
+    const segments = normalized.split('::');
+    if (segments.length > 2) return false;
+
+    let leftParts = segments[0] ? segments[0].split(':').filter(Boolean) : [];
+    let rightParts = segments[1] ? segments[1].split(':').filter(Boolean) : [];
+
+    const expandIpv4Part = (parts) => {
+      if (parts.length === 0) return parts;
+      const last = parts[parts.length - 1];
+      if (!last.includes('.')) return parts;
+      if (!this.isValidIpv4(last)) return null;
+      const nums = last.split('.').map(n => Number(n));
+      const high = ((nums[0] << 8) | nums[1]).toString(16);
+      const low = ((nums[2] << 8) | nums[3]).toString(16);
+      return [...parts.slice(0, -1), high, low];
+    };
+
+    leftParts = expandIpv4Part(leftParts);
+    rightParts = expandIpv4Part(rightParts);
+    if (!leftParts || !rightParts) return false;
+
+    const totalParts = leftParts.length + rightParts.length;
+    if (totalParts > 8) return false;
+
+    const isValidGroup = (part) => /^[0-9a-fA-F]{1,4}$/.test(part);
+    if (!leftParts.every(isValidGroup)) return false;
+    if (!rightParts.every(isValidGroup)) return false;
+
+    return true;
+  }
+  /**
    * 获取记录的原始环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
    */
@@ -479,8 +598,8 @@ export class Envs {
       'TITLE_PLATFORM_OFFSET_TABLE': { category: 'danmu', type: 'timeline-offset', options: timelineOffsetOptions, description: '剧名-平台-时间轴偏移配置，格式：剧名@平台1&平台2@-5;剧名2@all@5（all 表示全部平台），偏移单位为秒' },
 
       // 缓存配置
-      'SEARCH_CACHE_MINUTES': { category: 'cache', type: 'number', description: '搜索结果缓存时间(分钟)，默认1', min: 1, max: 120 },
-      'COMMENT_CACHE_MINUTES': { category: 'cache', type: 'number', description: '弹幕缓存时间(分钟)，默认1', min: 1, max: 120 },
+      'SEARCH_CACHE_MINUTES': { category: 'cache', type: 'number', description: '搜索结果缓存时间(分钟)，默认3', min: 1, max: 120 },
+      'COMMENT_CACHE_MINUTES': { category: 'cache', type: 'number', description: '弹幕缓存时间(分钟)，默认3', min: 1, max: 120 },
       'SEARCH_CACHE_MAX_ITEMS': { category: 'cache', type: 'number', description: '搜索缓存最大条目数（0表示不限制），默认300', min: 0, max: 50000 },
       'COMMENT_CACHE_MAX_ITEMS': { category: 'cache', type: 'number', description: '弹幕缓存最大条目数（0表示不限制），默认300', min: 0, max: 50000 },
       'REMEMBER_LAST_SELECT': { category: 'cache', type: 'boolean', description: '记住手动选择结果' },
@@ -497,6 +616,7 @@ export class Envs {
       'DEPLOY_PLATFROM_PROJECT': { category: 'system', type: 'text', description: '部署平台项目名称' },
       'DEPLOY_PLATFROM_TOKEN': { category: 'system', type: 'text', description: '部署平台访问令牌' },
       'NODE_TLS_REJECT_UNAUTHORIZED': { category: 'system', type: 'number', description: '在建立 HTTPS 连接时是否验证服务器的 SSL/TLS 证书，0表示忽略，默认为1', min: 0, max: 1 },
+      'IP_BLACKLIST': { category: 'system', type: 'text', description: 'IP 黑名单列表，支持逗号/分号/换行分隔，支持 /regex/ 或 /regex/i 正则，支持 IPv4/IPv6 CIDR（如 10.0.0.0/4、2001:db8::/64）' },
       'ALLOW_PRIVATE_URLS': { category: 'system', type: 'boolean', description: '是否允许访问本地/内网 URL（默认 false，开启可能存在 SSRF 风险）' },
     };
 
@@ -543,9 +663,10 @@ export class Envs {
       enableEpisodeFilter: this.get('ENABLE_EPISODE_FILTER', false, 'boolean'), // 兼容旧变量，建议使用 ENABLE_ANIME_EPISODE_FILTER
       enableAnimeEpisodeFilter: this.get('ENABLE_ANIME_EPISODE_FILTER', this.get('ENABLE_EPISODE_FILTER', false, 'boolean'), 'boolean'), // 新集标题过滤开关
       logLevel: this.get('LOG_LEVEL', 'info', 'string'), // 日志级别配置（默认 info，可选值：debug, info, warn, error）
+      ipBlacklist: this.resolveIpBlacklist(), // IP 黑名单（支持正则与 CIDR）
       allowPrivateUrls: this.get('ALLOW_PRIVATE_URLS', false, 'boolean'), // 是否允许访问本地/内网 URL（默认 false）
-      searchCacheMinutes: this.get('SEARCH_CACHE_MINUTES', 1, 'number'), // 搜索结果缓存时间配置（分钟，默认 1）
-      commentCacheMinutes: this.get('COMMENT_CACHE_MINUTES', 1, 'number'), // 弹幕缓存时间配置（分钟，默认 1）
+      searchCacheMinutes: this.get('SEARCH_CACHE_MINUTES', 3, 'number'), // 搜索结果缓存时间配置（分钟，默认 3）
+      commentCacheMinutes: this.get('COMMENT_CACHE_MINUTES', 3, 'number'), // 弹幕缓存时间配置（分钟，默认 3）
       searchCacheMaxItems: this.get('SEARCH_CACHE_MAX_ITEMS', 300, 'number'), // 搜索缓存最大条目数（默认 300，0表示不限制）
       commentCacheMaxItems: this.get('COMMENT_CACHE_MAX_ITEMS', 300, 'number'), // 弹幕缓存最大条目数（默认 300，0表示不限制）
       convertTopBottomToScroll: this.get('CONVERT_TOP_BOTTOM_TO_SCROLL', false, 'boolean'), // 顶部/底部弹幕转换为浮动弹幕配置（默认 false，禁用转换）

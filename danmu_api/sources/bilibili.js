@@ -434,13 +434,23 @@ export default class BilibiliSource extends BaseSource {
       return [];
     }
 
+    sourceAnimes.forEach(anime => {
+      anime.aliases = anime.aliases || [];
+      if (anime.title && !anime.aliases.includes(anime.title)) {
+        anime.aliases.push(anime.title);
+      }
+      if (anime.org_title && !anime.aliases.includes(anime.org_title)) {
+        anime.aliases.push(anime.org_title);
+      }
+    });
+
     // 应用tmdb智能标题替换
     const cnAlias = sourceAnimes.length > 0 ? sourceAnimes[0]._tmdbCnAlias : null;
     smartTitleReplace(sourceAnimes, cnAlias);
 
     const processPromises = sourceAnimes
-      // 港澳台资源不做严格标题匹配，因为可能搜到的是日语/繁体标题
-      .filter(anime => anime.isOversea || titleMatches(anime.title, queryTitle)||(anime.org_title && titleMatches(anime.org_title, queryTitle)))
+      // 港澳台资源不做严格标题匹配，其他资源根据当前标题或别名池验证匹配度
+      .filter(anime => anime.isOversea || titleMatches(anime.title, queryTitle) || (anime.aliases && anime.aliases.some(alias => titleMatches(alias, queryTitle))))
       .map(async (anime) => {
         try {
           let links = [];
@@ -523,6 +533,7 @@ export default class BilibiliSource extends BaseSource {
             rating: 0,
             isFavorited: true,
             source: "bilibili",
+            aliases: anime.aliases
           };
 
           tmpAnimes.push(transformedAnime);
@@ -900,6 +911,7 @@ export default class BilibiliSource extends BaseSource {
                         provider: "bilibili",
                         mediaId: i.season_id ? `ss${i.season_id}` : (i.uri.match(/season\/(\d+)/)?.[1] ? `ss${i.uri.match(/season\/(\d+)/)[1]}` : ""),
                         title: (i.title||"").replace(/<[^>]+>/g,'').trim(),
+                        org_title: (i.org_title||"").replace(/<[^>]+>/g,'').trim(),
                         type: this._extractMediaType(i.season_type_name),
                         year: i.ptime ? new Date(i.ptime*1000).getFullYear() : null,
                         imageUrl: i.cover||i.pic||"",
@@ -940,6 +952,7 @@ export default class BilibiliSource extends BaseSource {
         if(data.data?.result) {
             return data.data.result.filter(i => i.url?.includes("bilibili.com") && (!i.areas?.includes("漫游"))).map(i => ({
                 provider: "bilibili", mediaId: i.season_id?`ss${i.season_id}`:"", title: (i.title||"").replace(/<[^>]+>/g,'').trim(),
+                org_title: (i.org_title || "").replace(/<[^>]+>/g,'').replace(/&[^;]+;/g, match => { const entities = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": "\"", "&#39;": "'" }; return entities[match] || match; }).trim(),
                 type: this._extractMediaType(i.season_type_name), year: i.pubtime?new Date(i.pubtime*1000).getFullYear():null, imageUrl: i.cover||null,
                 episodeCount: i.ep_size||0, _eps: i.eps, isOversea: true
             })).filter(i => i.mediaId);
