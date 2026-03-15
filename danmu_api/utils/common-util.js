@@ -191,6 +191,58 @@ export function createDynamicPlatformOrder(preferredPlatform) {
   return dynamicOrder;
 }
 
+
+// 解析剧名固定来源规则
+export function resolveTitleSourceRule(title) {
+  const rules = Array.isArray(globals.titleSourceRules) ? globals.titleSourceRules : [];
+  if (!title || rules.length === 0) return null;
+
+  const normalizedTitle = normalizeSpaces(title).toLowerCase();
+  for (let index = rules.length - 1; index >= 0; index--) {
+    const rule = rules[index];
+    if (!rule?.title || !rule?.source) continue;
+    if (normalizeSpaces(rule.title).toLowerCase() === normalizedTitle) {
+      return rule.source;
+    }
+  }
+
+  return null;
+}
+
+// 根据剧名和手动记忆创建动态来源顺序
+export function createDynamicSourceOrder(title, preferAnimeId = null) {
+  const defaultOrder = Array.isArray(globals.sourceOrderArr) ? [...globals.sourceOrderArr] : [];
+
+  if (globals.rememberLastSelect && preferAnimeId) {
+    return {
+      sourceOrder: defaultOrder,
+      fixedSource: null,
+      bypassedByPrefer: true
+    };
+  }
+
+  const fixedSource = resolveTitleSourceRule(title);
+  if (!fixedSource) {
+    return {
+      sourceOrder: defaultOrder,
+      fixedSource: null,
+      bypassedByPrefer: false
+    };
+  }
+
+  return {
+    sourceOrder: [fixedSource],
+    fixedSource,
+    bypassedByPrefer: false
+  };
+}
+
+// 构建搜索缓存键，避免固定来源规则与普通搜索互串缓存
+export function buildSearchCacheKey(keyword, fixedSource = null) {
+  if (!fixedSource) return keyword;
+  return `${keyword}@@source:${fixedSource}`;
+}
+
 /**
  * 规范化标题（移除空格并清理修饰性符号）
  * @param {string} str - 输入字符串

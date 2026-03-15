@@ -1562,8 +1562,52 @@ FFFFFF FF5733 00FF00"></textarea>
         const currentKey = document.getElementById('env-key') ? document.getElementById('env-key').value : '';
         const isBilibiliCookie = currentKey === 'BILIBILI_COOKIE';
         const isAiApiKey = currentKey === 'AI_API_KEY';
+        const isTitleSourceTable = currentKey === 'TITLE_SOURCE_TABLE';
         
-        if (isAiApiKey) {
+        if (isTitleSourceTable) {
+            const sourceOptions = item && Array.isArray(item.options) ? item.options : [];
+            container.innerHTML = \`
+                <div class="title-source-panel">
+                    <div class="timeline-offset-header">
+                        <div class="timeline-offset-title">剧名固定来源规则</div>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="showTitleSourceRuleForm()">
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
+                                <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
+                            </svg>
+                            <span>新增规则</span>
+                        </button>
+                    </div>
+                    <div class="timeline-offset-help">支持手动输入，每行或分号一条，格式：剧名@来源。若开启记住上次手动选择结果，则手动选择优先于这里的配置。</div>
+                    <textarea class="form-textarea title-source-textarea" id="text-value" placeholder="例如：逐玉@iqiyi&#10;庆余年@tencent" rows="6" oninput="renderTitleSourceRulePreview()">\${escapeHtml(value)}</textarea>
+                    <div class="timeline-offset-form" id="title-source-rule-form" style="display: none;">
+                        <div style="display: grid; grid-template-columns: minmax(0, 2fr) auto; gap: 0.75rem; align-items: end;">
+                            <div class="timeline-offset-field">
+                                <label>剧名</label>
+                                <input type="text" class="form-input" id="title-source-rule-title" placeholder="例如：逐玉">
+                            </div>
+                            <div class="timeline-offset-field" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="hideTitleSourceRuleForm()">取消</button>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="confirmTitleSourceRuleAdd()">添加</button>
+                            </div>
+                        </div>
+                        <div class="timeline-offset-platforms">
+                            <div class="timeline-offset-platforms-label">来源（从后端支持列表动态加载）</div>
+                            <div class="timeline-offset-platforms-chips" id="title-source-rule-options">
+                                \${sourceOptions.map(opt => \`
+                                    <button type="button" class="platform-chip" data-value="\${escapeHtml(opt)}" onclick="selectTitleSourceRuleOption(this)">\${escapeHtml(opt)}</button>
+                                \`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-offset-list" id="title-source-rule-preview"></div>
+                </div>
+            \`;
+
+            setTimeout(() => {
+                renderTitleSourceRulePreview();
+            }, 0);
+        } else if (isAiApiKey) {
             // AI API Key 专用编辑界面
             container.innerHTML = \`
                 <div class="ai-apikey-editor">
@@ -2609,6 +2653,112 @@ function toggleTimelineOffsetPlatform(button) {
             chip.classList.remove('selected');
         }
     });
+}
+
+
+function parseTitleSourceRuleText(rawValue) {
+    return String(rawValue || '')
+        .split(/[\\n;；]+/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => {
+            const atIndex = line.lastIndexOf('@');
+            if (atIndex <= 0) return null;
+            const title = line.slice(0, atIndex).trim();
+            const source = line.slice(atIndex + 1).trim();
+            if (!title || !source) return null;
+            return {
+                title,
+                source,
+                raw: title + '@' + source
+            };
+        })
+        .filter(Boolean);
+}
+
+function normalizeTitleSourceRuleKey(title) {
+    return String(title || '').trim().replace(/[\\s【】\\[\\]《》<>「」!?！？.,，。~～]/g, '').toLowerCase();
+}
+
+function showTitleSourceRuleForm() {
+    const form = document.getElementById('title-source-rule-form');
+    if (!form) return;
+    form.style.display = 'block';
+    const titleInput = document.getElementById('title-source-rule-title');
+    if (titleInput) {
+        titleInput.focus();
+    }
+}
+
+function hideTitleSourceRuleForm() {
+    const form = document.getElementById('title-source-rule-form');
+    if (!form) return;
+    form.style.display = 'none';
+    const titleInput = document.getElementById('title-source-rule-title');
+    if (titleInput) titleInput.value = '';
+    const chips = form.querySelectorAll('.platform-chip');
+    chips.forEach(chip => chip.classList.remove('selected'));
+}
+
+function selectTitleSourceRuleOption(button) {
+    const container = document.getElementById('title-source-rule-options');
+    if (!button || !container || !container.contains(button)) return;
+    container.querySelectorAll('.platform-chip').forEach(chip => {
+        chip.classList.toggle('selected', chip === button);
+    });
+}
+
+function confirmTitleSourceRuleAdd() {
+    const input = document.getElementById('text-value');
+    const titleInput = document.getElementById('title-source-rule-title');
+    const selectedSource = document.querySelector('#title-source-rule-options .platform-chip.selected');
+    const titleValue = titleInput ? titleInput.value.trim() : '';
+    const sourceValue = selectedSource ? selectedSource.dataset.value : '';
+
+    if (!input || !titleValue || !sourceValue) {
+        customAlert('请填写剧名并选择来源', '⚠️ 提示');
+        return;
+    }
+
+    const nextRules = parseTitleSourceRuleText(input.value)
+        .filter(rule => normalizeTitleSourceRuleKey(rule.title) !== normalizeTitleSourceRuleKey(titleValue));
+    nextRules.push({
+        title: titleValue,
+        source: sourceValue,
+        raw: titleValue + '@' + sourceValue
+    });
+
+    input.value = nextRules.map(rule => rule.raw).join('\\n');
+    renderTitleSourceRulePreview();
+    hideTitleSourceRuleForm();
+}
+
+function removeTitleSourceRule(index) {
+    const input = document.getElementById('text-value');
+    if (!input) return;
+    const rules = parseTitleSourceRuleText(input.value);
+    rules.splice(index, 1);
+    input.value = rules.map(rule => rule.raw).join('\\n');
+    renderTitleSourceRulePreview();
+}
+
+function renderTitleSourceRulePreview() {
+    const input = document.getElementById('text-value');
+    const container = document.getElementById('title-source-rule-preview');
+    if (!input || !container) return;
+
+    const rules = parseTitleSourceRuleText(input.value);
+    if (rules.length === 0) {
+        container.innerHTML = '<div style="padding: 0.85rem 1rem; border: 1px dashed var(--border-color); border-radius: var(--radius-md); color: var(--text-secondary); background: var(--bg-secondary);">暂无规则，支持手动输入或点击上方“新增规则”。</div>';
+        return;
+    }
+
+    container.innerHTML = rules.map((rule, index) => \`
+        <div class="timeline-offset-line">
+            <input type="text" class="timeline-offset-line-input form-input" value="\${escapeHtml(rule.raw)}" readonly>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeTitleSourceRule(\${index})">删除</button>
+        </div>
+    \`).join('');
 }
 // 点击模态框背景关闭
 document.addEventListener('click', function(e) {

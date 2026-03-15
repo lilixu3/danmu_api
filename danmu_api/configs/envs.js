@@ -321,6 +321,35 @@ export class Envs {
     }
   }
 
+
+  /**
+   * 解析剧名固定来源规则
+   * @description 用于控制指定剧名只从某个来源加载
+   * @returns {Array<{title: string, source: string}>}
+   */
+  static resolveTitleSourceRules() {
+    const config = this.get('TITLE_SOURCE_TABLE', '', 'string').trim();
+    if (!config) return [];
+
+    return config
+      .split(/[\n;；]+/)
+      .map(item => item.trim())
+      .filter(Boolean)
+      .map(item => {
+        const atIndex = item.lastIndexOf('@');
+        if (atIndex <= 0) return null;
+
+        const title = item.slice(0, atIndex).trim();
+        const source = item.slice(atIndex + 1).trim().toLowerCase();
+
+        if (!title || !source) return null;
+        if (!this.ALLOWED_SOURCES.includes(source)) return null;
+
+        return { title, source };
+      })
+      .filter(Boolean);
+  }
+
   /**
    * 解析 IP 黑名单列表
    * @description 支持逗号/分号/换行分隔，支持 /regex/ 或 /regex/i，支持 IPv4/IPv6 CIDR
@@ -568,6 +597,7 @@ export class Envs {
       'YOUKU_CONCURRENCY': { category: 'source', type: 'number', description: '优酷并发配置，默认8', min: 1, max: 16 },
       'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },
       'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '弹弹第三方弹幕源实时拉取开关，默认为false（关闭），可选值：true、false' },
+      'TITLE_SOURCE_TABLE': { category: 'source', type: 'text', options: this.ALLOWED_SOURCES, description: '剧名固定来源配置，命中后只从指定来源加载，不再按 SOURCE_ORDER 排序。若开启记住上次手动选择结果，则手动选择优先于该变量。支持手动输入或使用前端快捷添加，格式：剧名@来源;剧名2@来源2，例如：逐玉@iqiyi;庆余年@tencent' },
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置，可以配置自动匹配时的优选平台。\n当配置合并平台的时候，可以指定期望的合并源，\n示例：一个结果返回了“dandan&bilibili1&animeko”和“youku”时，\n当配置“youku”时返回“youku” \n当配置“dandan&animeko”时返回“dandan&bilibili1&animeko”' },
       'ANIME_TITLE_FILTER': { category: 'match', type: 'text', description: '剧名过滤规则' },
@@ -635,6 +665,7 @@ export class Envs {
       youkuConcurrency: Math.min(this.get('YOUKU_CONCURRENCY', 8, 'number'), 16), // 优酷并发配置
       mergeSourcePairs: this.resolveMergeSourcePairs(), // 源合并配置，用于将源合并获取
       realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 弹弹第三方弹幕源实时拉取开关
+      titleSourceRules: this.resolveTitleSourceRules(), // 剧名固定来源规则
       platformOrderArr: this.resolvePlatformOrder(), // 自动匹配优选平台
       animeTitleFilter: this.resolveAnimeTitleFilter(), // 剧名正则过滤
       episodeTitleFilter: this.resolveEpisodeTitleFilter(), // 剧集标题正则过滤

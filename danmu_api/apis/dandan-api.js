@@ -11,7 +11,7 @@ import {
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear, titleMatches } from "../utils/common-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, createDynamicSourceOrder, buildSearchCacheKey, normalizeSpaces, extractYear, titleMatches } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { getAnimeTitleMeta, getLinkTitleMeta, getDisplayTitle, getEmbyTitle, enrichAnimeTitleMeta } from "../utils/title-meta-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
@@ -480,8 +480,19 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     queryTitle = simplifiedTitle;
   }
 
+  const sourceOrderContext = createDynamicSourceOrder(queryTitle, preferAnimeId);
+  const searchSourceOrder = sourceOrderContext.sourceOrder;
+  const fixedSource = sourceOrderContext.fixedSource;
+  const searchCacheKey = buildSearchCacheKey(queryTitle, fixedSource);
+
+  if (sourceOrderContext.bypassedByPrefer) {
+    log("info", `[searchAnime] 已命中上次手动选择记忆，跳过剧名固定来源规则: ${queryTitle}`);
+  } else if (fixedSource) {
+    log("info", `[searchAnime] 剧名固定来源命中: ${queryTitle} -> ${fixedSource}`);
+  }
+
   // 检查搜索缓存
-  const cachedResults = getSearchCache(queryTitle);
+  const cachedResults = getSearchCache(searchCacheKey);
   if (cachedResults !== null) {
     return jsonResponse({
       errorCode: 0,
@@ -569,8 +580,8 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
 
   try {
     // 根据 sourceOrderArr 动态构建请求数组
-    log("info", "Search sourceOrderArr:", globals.sourceOrderArr);
-    const requestPromises = globals.sourceOrderArr.map(source => {
+    log("info", "Search sourceOrderArr:", searchSourceOrder);
+    const requestPromises = searchSourceOrder.map(source => {
       if (source === "360") return kan360Source.search(queryTitle);
       if (source === "vod") return vodSource.search(queryTitle, preferAnimeId, preferSource);
       if (source === "tmdb") return tmdbSource.search(queryTitle);
@@ -598,7 +609,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     const settledResults = await Promise.allSettled(requestPromises);
     const results = settledResults.map((result, index) => {
       if (result.status === "fulfilled") return result.value;
-      const source = globals.sourceOrderArr[index];
+      const source = searchSourceOrder[index];
       const reason = result.reason?.message || String(result.reason || "unknown error");
       log("warn", `[searchAnime] 源 ${source} 搜索失败: ${reason}`);
       return [];
@@ -608,7 +619,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     const resultData = {};
 
     // 动态根据 sourceOrderArr 顺序将结果赋值给对应的来源
-    globals.sourceOrderArr.forEach((source, index) => {
+    searchSourceOrder.forEach((source, index) => {
       resultData[source] = results[index];  // 根据顺序赋值
     });
 
@@ -622,7 +633,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     } = resultData;
 
     // 按顺序处理每个来源的结果（单源处理失败不影响其它源）
-    for (const key of globals.sourceOrderArr) {
+    for (const key of searchSourceOrder) {
       try {
         if (key === '360') {
           // 等待处理360来源
@@ -765,7 +776,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
 
   // 缓存搜索结果
   if (curAnimes.length > 0) {
-    setSearchCache(queryTitle, curAnimes);
+    setSearchCache(searchCacheKey, curAnimes);
   }
 
   return jsonResponse({
