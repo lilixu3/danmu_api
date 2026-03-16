@@ -2,30 +2,11 @@ import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { Anime } from "../models/dandan-model.js";
 import { simpleHash } from "./codec-util.js";
-import { enrichAnimeTitleMeta } from "./title-meta-util.js";
 let fs, path;
 
 // =====================
 // cache数据结构处理函数
 // =====================
-
-// 用于存储最后一次搜索的上下文 (IP -> Context)
-const lastSearchMap = new Map();
-
-export function setLastSearch(ip, data) {
-    lastSearchMap.set(ip, { ...data, timestamp: Date.now() });
-    if (lastSearchMap.size > 200) {
-        for (const [key, value] of lastSearchMap) {
-            if (Date.now() - value.timestamp > 3600 * 1000) {
-                lastSearchMap.delete(key);
-            }
-        }
-    }
-}
-
-export function getLastSearch(ip) {
-    return lastSearchMap.get(ip);
-}
 
 function parseCacheContent(raw) {
     if (raw === null || raw === undefined) return null;
@@ -159,30 +140,16 @@ export function setCommentCache(videoUrl, comments) {
 
 // 添加元素到 episodeIds：检查 url 是否存在，若不存在则以自增 id 添加
 export function addEpisode(url, title) {
-    const payload = typeof url === "object" && url !== null
-        ? { ...url }
-        : { url, title };
-    const episodeUrl = payload.url;
-    const episodeTitle = payload.title;
-    const hasExplicitId = Number.isInteger(payload.id);
-
-    // 仅在显式传入合法 id 时保留，默认情况统一走缓存层自增
-    const { id: explicitId, ...payloadWithoutId } = payload;
-
     // 检查是否已存在相同的 url 和 title
-    const existingEpisode = globals.episodeIds.find(episode => episode.url === episodeUrl && episode.title === episodeTitle);
+    const existingEpisode = globals.episodeIds.find(episode => episode.url === url && episode.title === title);
     if (existingEpisode) {
-        Object.assign(existingEpisode, payloadWithoutId);
-        if (hasExplicitId) {
-            existingEpisode.id = explicitId;
-        }
-        log("info", `Episode with URL ${episodeUrl} and title ${episodeTitle} already exists in episodeIds, returning existing episode.`);
+        log("info", `Episode with URL ${url} and title ${title} already exists in episodeIds, returning existing episode.`);
         return existingEpisode; // 返回已存在的 episode
     }
 
     // 自增 episodeNum 并使用作为 id
     globals.episodeNum++;
-    const newEpisode = { ...payloadWithoutId, id: hasExplicitId ? explicitId : globals.episodeNum };
+    const newEpisode = { id: globals.episodeNum, url: url, title: title };
 
     // 添加新对象
     globals.episodeIds.push(newEpisode);
@@ -228,7 +195,7 @@ export function findTitleById(id) {
 
 // 添加 anime 对象到 animes，并将其 links 添加到 episodeIds
 export function addAnime(anime) {
-    anime = Anime.fromJson(enrichAnimeTitleMeta(anime));
+    anime = Anime.fromJson(anime);
     try {
         // 确保 anime 有 links 属性且是数组
         if (!anime.links || !Array.isArray(anime.links)) {
@@ -240,7 +207,7 @@ export function addAnime(anime) {
         const newLinks = [];
         anime.links.forEach(link => {
             if (link.url) {
-                const episode = addEpisode(link.toJson ? link.toJson() : link);
+                const episode = addEpisode(link.url, link.title);
                 if (episode) {
                     newLinks.push(episode); // 仅添加成功添加的 episode
                 }
@@ -313,35 +280,20 @@ export function storeAnimeIdsToMap(curAnimes, key) {
         uniqueAnimeIds.add(anime.animeId);
     }
 
-    // 保存旧的 prefer/source/offsets（兼容旧结构）
+    // 保存旧的prefer值
     const oldValue = globals.lastSelectMap.get(key);
     const oldPrefer = oldValue?.prefer;
     const oldSource = oldValue?.source;
-    const oldPreferBySeason = oldValue?.preferBySeason;
-    const oldSourceBySeason = oldValue?.sourceBySeason;
-    const oldOffsets = oldValue?.offsets;
-
-    const preferBySeason = oldPreferBySeason ? { ...oldPreferBySeason } : {};
-    const sourceBySeason = oldSourceBySeason ? { ...oldSourceBySeason } : {};
-
-    if (oldPrefer !== undefined) {
-        preferBySeason.default = oldPrefer;
-    }
-    if (oldSource !== undefined) {
-        sourceBySeason.default = oldSource;
-    }
 
     // 如果key已存在，先删除它（为了更新顺序，保证 FIFO）
     if (globals.lastSelectMap.has(key)) {
         globals.lastSelectMap.delete(key);
     }
 
-    // 添加新记录，保留 prefer 字段
+    // 添加新记录，保留prefer字段
     globals.lastSelectMap.set(key, {
         animeIds: [...uniqueAnimeIds],
-        ...(Object.keys(preferBySeason).length > 0 && { preferBySeason }),
-        ...(Object.keys(sourceBySeason).length > 0 && { sourceBySeason }),
-        ...(oldOffsets !== undefined && { offsets: oldOffsets })
+        ...(oldPrefer !== undefined && { prefer: oldPrefer, source: oldSource })
     });
 
     // 检查是否超过 MAX_LAST_SELECT_MAP，超过则删除最早的
@@ -357,26 +309,19 @@ export function findAnimeIdByCommentId(commentId) {
   for (const anime of globals.animes) {
     for (const link of anime.links) {
       if (link.id === commentId) {
-        return [anime.animeId, anime.source, link.title];
+        return [anime.animeId, anime.source];
       }
     }
   }
-  return [null, null, null];
+  return [null, null];
 }
 
 // 通过 animeId 查找 lastSelectMap 中 animeIds 包含该 animeId 的 key，并设置其 prefer 为 animeId
-export function setPreferByAnimeId(animeId, source, season = null, offset = null) {
+export function setPreferByAnimeId(animeId, source) {
   for (const [key, value] of globals.lastSelectMap.entries()) {
     if (value.animeIds && value.animeIds.includes(animeId)) {
-      const seasonKey = season === null ? 'default' : String(season);
-      value.preferBySeason = value.preferBySeason || {};
-      value.sourceBySeason = value.sourceBySeason || {};
-      value.preferBySeason[seasonKey] = animeId;
-      value.sourceBySeason[seasonKey] = source;
-      if (season !== null && offset !== null) {
-        value.offsets = value.offsets || {};
-        value.offsets[seasonKey] = offset;
-      }
+      value.prefer = animeId;
+      value.source = source;
       globals.lastSelectMap.set(key, value); // 确保更新被保存
       return key; // 返回被修改的 key
     }
@@ -384,22 +329,13 @@ export function setPreferByAnimeId(animeId, source, season = null, offset = null
   return null; // 如果没有找到匹配的 key，返回 null
 }
 
-// 通过 title 查询优选 animeId（按 season 维度）
-export function getPreferAnimeId(title, season = null) {
+// 通过title查询优选animeId
+export function getPreferAnimeId(title) {
   const value = globals.lastSelectMap.get(title);
-  if (!value) {
-    return [null, null, null];
+  if (!value || !value.prefer) {
+    return [null, null];
   }
-
-  const seasonKey = season === null ? 'default' : String(season);
-  const preferBySeason = value.preferBySeason || {};
-  const sourceBySeason = value.sourceBySeason || {};
-
-  const prefer = preferBySeason[seasonKey] ?? preferBySeason.default ?? value.prefer ?? null;
-  const source = sourceBySeason[seasonKey] ?? sourceBySeason.default ?? value.source ?? null;
-  const offsets = value.offsets || null;
-
-  return [prefer, source, offsets];
+  return [value.prefer, value.source];
 }
 
 // 清理所有过期的 IP 记录（超过 1 分钟没有请求的 IP）

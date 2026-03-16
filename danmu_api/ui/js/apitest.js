@@ -20,54 +20,6 @@ let heatmapInteractionInited = false;
    ======================================== */
 const DANMU_PAGE_SIZE = 50;
 let currentDanmuPage = 0;
-
-/* ========================================
-   标题展示辅助
-   ======================================== */
-function buildDanmuDisplayTitle(animeTitle, episodeTitle, episodeNumber) {
-    const safeAnimeTitle = animeTitle || "";
-    const safeEpisodeTitle = episodeTitle || (episodeNumber ? ("第" + episodeNumber + "集") : "");
-    if (safeAnimeTitle && safeEpisodeTitle) {
-        return safeAnimeTitle + " - " + safeEpisodeTitle;
-    }
-    return safeAnimeTitle || safeEpisodeTitle;
-}
-
-function getAnimeDisplayTitle(anime) {
-    if (!anime || typeof anime !== "object") return "";
-    if (anime.playerAnimeTitle) return anime.playerAnimeTitle;
-    if (anime.animeDisplayTitle) return anime.animeDisplayTitle;
-    if (anime.animeName && anime.animeYear) {
-        return anime.animeName + " (" + anime.animeYear + ")";
-    }
-    return anime.animeName || anime.animeTitle || anime.title || "";
-}
-
-function getEpisodeDisplayTitle(episode) {
-    if (!episode || typeof episode !== "object") return "";
-    return episode.playerEpisodeTitle || episode.episodeTitle || episode.title || episode.name || "";
-}
-
-function getEpisodeFullDisplayTitle(animeTitle, episode) {
-    if (episode && typeof episode === "object" && episode.displayTitle) {
-        return episode.displayTitle;
-    }
-    return buildDanmuDisplayTitle(
-        animeTitle,
-        getEpisodeDisplayTitle(episode),
-        episode && (episode.episodeNumber || episode.episode)
-    );
-}
-
-function getMatchDisplayTitle(matchResult) {
-    if (!matchResult || typeof matchResult !== "object") return "";
-    if (matchResult.displayTitle) return matchResult.displayTitle;
-    return buildDanmuDisplayTitle(
-        matchResult.playerAnimeTitle || matchResult.animeDisplayTitle || matchResult.animeTitle || "",
-        matchResult.playerEpisodeTitle || matchResult.episodeTitle || matchResult.episode || "",
-        matchResult.episodeNumber
-    );
-}
 /* ========================================
    API配置
    ======================================== */
@@ -79,11 +31,11 @@ const apiConfigs = {
         path: '/api/v2/search/anime',
         description: '根据关键词搜索动漫',
         params: [
-            { 
-                name: 'keyword', 
-                label: '关键词 或 播放链接URL', 
-                type: 'text', 
-                required: true, 
+            {
+                name: 'keyword',
+                label: '关键词 或 播放链接URL',
+                type: 'text',
+                required: true,
                 placeholder: '示例: 生万物 或 http://v.qq.com/x/cover/rjae621myqca41h/j0032ubhl9s.html',
                 description: '输入动漫名称，或直接输入播放链接URL进行解析'
             }
@@ -96,19 +48,19 @@ const apiConfigs = {
         path: '/api/v2/search/episodes',
         description: '搜索指定动漫的剧集列表',
         params: [
-            { 
-                name: 'anime', 
-                label: '动漫名称', 
-                type: 'text', 
-                required: true, 
+            {
+                name: 'anime',
+                label: '动漫名称',
+                type: 'text',
+                required: true,
                 placeholder: '示例: 生万物',
                 description: '输入完整的动漫名称'
             },
-            { 
-                name: 'episode', 
-                label: '集', 
-                type: 'text', 
-                required: false, 
+            {
+                name: 'episode',
+                label: '集',
+                type: 'text',
+                required: false,
                 placeholder: '示例: 1, movie',
                 description: '可选，指定集（数字或标识）'
             }
@@ -121,11 +73,11 @@ const apiConfigs = {
         path: '/api/v2/match',
         description: '根据文件名智能匹配动漫',
         params: [
-            { 
-                name: 'fileName', 
-                label: '文件名', 
-                type: 'text', 
-                required: true, 
+            {
+                name: 'fileName',
+                label: '文件名',
+                type: 'text',
+                required: true,
                 placeholder: '示例: 生万物 S02E08',
                 description: '支持多种命名格式，如: 无忧渡.S02E08.2160p.WEB-DL.H265.DDP.5.1'
             }
@@ -138,11 +90,11 @@ const apiConfigs = {
         path: '/api/v2/bangumi/:animeId',
         description: '获取指定番剧的详细信息',
         params: [
-            { 
-                name: 'animeId', 
-                label: '动漫ID', 
-                type: 'text', 
-                required: true, 
+            {
+                name: 'animeId',
+                label: '动漫ID',
+                type: 'text',
+                required: true,
                 placeholder: '示例: 236379',
                 description: '从搜索结果中获取的动漫ID'
             }
@@ -155,30 +107,30 @@ const apiConfigs = {
         path: '/api/v2/comment/:commentId',
         description: '获取指定剧集的弹幕数据',
         params: [
-            { 
-                name: 'commentId', 
-                label: '弹幕ID', 
-                type: 'text', 
-                required: true, 
+            {
+                name: 'commentId',
+                label: '弹幕ID',
+                type: 'text',
+                required: true,
                 placeholder: '示例: 10009',
                 description: '从剧集列表中获取的弹幕ID'
             },
-            { 
-                name: 'format', 
-                label: '格式', 
-                type: 'select', 
-                required: false, 
-                placeholder: '默认: json', 
+            {
+                name: 'format',
+                label: '格式',
+                type: 'select',
+                required: false,
+                placeholder: '默认: json',
                 options: ['json', 'xml'],
                 default: 'json',
                 description: '选择返回数据的格式'
             },
-            { 
-                name: 'segmentflag', 
-                label: '分片标志', 
-                type: 'select', 
-                required: false, 
-                placeholder: '默认: 不启用（完整弹幕）', 
+            {
+                name: 'segmentflag',
+                label: '分片标志',
+                type: 'select',
+                required: false,
+                placeholder: '默认: 不启用（完整弹幕）',
                 options: ['true', 'false'],
                 description: '是否启用分片弹幕（部分源支持）。不选择时获取完整弹幕列表'
             }
@@ -218,12 +170,12 @@ const apiConfigs = {
         path: '/api/v2/segmentcomment',
         description: '通过请求体获取分片弹幕（用于分段/区间弹幕）',
         params: [
-            { 
-                name: 'format', 
-                label: '格式', 
-                type: 'select', 
-                required: false, 
-                placeholder: '默认: json', 
+            {
+                name: 'format',
+                label: '格式',
+                type: 'select',
+                required: false,
+                placeholder: '默认: json',
                 options: ['json', 'xml'],
                 default: 'json',
                 description: '选择返回数据的格式'
@@ -293,7 +245,7 @@ function loadApiParams() {
 
     const config = apiConfigs[apiKey];
     paramsDiv.style.display = 'block';
-    
+
     // 显示API信息卡片
     const apiInfoHTML = \`
         <div class="api-info-card">
@@ -337,7 +289,7 @@ function loadApiParams() {
     if (hasParams) {
         formHtml += config.params.map((param, index) => {
             let inputHTML = '';
-            
+
             if (param.type === 'select') {
                 // 支持默认值：如果配置了 default，则不强制用户再手动选择
                 let optionsHtml = param.default ? '' : '<option value="">-- 请选择 --</option>';
@@ -356,17 +308,17 @@ function loadApiParams() {
                 const placeholder = param.placeholder || "请输入" + param.label;
                 const defaultAttr = (param.default !== undefined && param.default !== null) ? \`value="\${String(param.default).replace(/\"/g, '&quot;')}"\` : '';
                 inputHTML = \`
-                    <input 
-                        type="\${param.type}" 
-                        class="form-input" 
-                        id="param-\${param.name}" 
-                        placeholder="\${placeholder}" 
+                    <input
+                        type="\${param.type}"
+                        class="form-input"
+                        id="param-\${param.name}"
+                        placeholder="\${placeholder}"
                         \${defaultAttr}
                         \${param.required ? 'required' : ''}
                     >
                 \`;
             }
-            
+
             return \`
                 <div class="form-group" style="animation: fadeInUp 0.3s ease-out \${index * 0.1}s backwards;">
                     <label class="form-label \${param.required ? 'required' : ''}">
@@ -393,10 +345,10 @@ function loadApiParams() {
                     <span class="param-icon">🧾</span>
                     请求体内容 (JSON)
                 </label>
-                <textarea 
-                    class="form-textarea" 
-                    id="body-content" 
-                    rows="6" 
+                <textarea
+                    class="form-textarea"
+                    id="body-content"
+                    rows="6"
                     placeholder='输入JSON格式的请求体，例如：{"type":"qq","segment_start":0,"segment_end":30000,"url":"https://dm.video.qq.com/barrage/segment/j0032ubhl9s/t/v1/0/30000"}'
                     required
                 ></textarea>
@@ -409,7 +361,7 @@ function loadApiParams() {
     }
 
     formDiv.innerHTML = formHtml;
-    
+
     // 为参数输入框添加回车事件监听
     attachEnterEventToParams();
 }
@@ -493,7 +445,7 @@ function testApi() {
     config.params.forEach(param => {
         const input = document.getElementById(\`param-\${param.name}\`);
         const value = input.value.trim();
-        
+
         if (param.required && !value) {
             input.classList.add('error');
             input.focus();
@@ -524,11 +476,11 @@ function testApi() {
     const startTime = performance.now();
     let url = config.path;
     const isPathParameterApi = config.path.includes(':');
-    
+
     if (isPathParameterApi) {
         const pathParams = {};
         const queryParams = {};
-        
+
         for (const [key, value] of Object.entries(params)) {
             if (config.path.includes(':' + key)) {
                 pathParams[key] = value;
@@ -536,11 +488,11 @@ function testApi() {
                 queryParams[key] = value;
             }
         }
-        
+
         for (const [key, value] of Object.entries(pathParams)) {
             url = url.replace(':' + key, encodeURIComponent(value));
         }
-        
+
         if (config.method === 'GET' && Object.keys(queryParams).length > 0) {
             const queryString = new URLSearchParams(queryParams).toString();
             url = url + '?' + queryString;
@@ -597,14 +549,14 @@ function testApi() {
         .then(response => {
             const endTime = performance.now();
             const responseTime = Math.round(endTime - startTime);
-            
+
             if (!response.ok) {
                 throw new Error(\`HTTP error! status: \${response.status}\`);
             }
-            
+
             // 检查format参数以确定如何处理响应
             const formatParam = params.format || 'json';
-            
+
             if (formatParam.toLowerCase() === 'xml') {
                 return response.text().then(text => ({
                     data: text,
@@ -624,9 +576,9 @@ function testApi() {
         .then(result => {
             const responseContainer = document.getElementById('api-response-container');
             const responseDiv = document.getElementById('api-response');
-            
+
             responseContainer.style.display = 'block';
-            
+
             // 创建响应头部
             const responseHeaderDiv = document.createElement('div');
             responseHeaderDiv.className = 'response-header';
@@ -640,7 +592,7 @@ function testApi() {
                     <span>\${result.responseTime}ms</span>
                 </span>
             \`;
-            
+
             // 创建复制按钮
             const copyBtn = document.createElement('button');
             copyBtn.className = 'btn btn-secondary btn-sm copy-response-btn';
@@ -655,42 +607,42 @@ function testApi() {
                 copyApiResponse(result.data, result.format, this);
             };
             responseHeaderDiv.appendChild(copyBtn);
-            
+
             // 清空并添加新内容
             responseDiv.innerHTML = '';
             responseDiv.appendChild(responseHeaderDiv);
-            
+
             // 创建响应内容
             const codeBlock = document.createElement('div');
             codeBlock.className = 'response-content';
-            
+
             if (result.format === 'xml') {
                 codeBlock.classList.add('xml');
                 codeBlock.textContent = result.data;
             } else {
                 codeBlock.innerHTML = highlightJSON(result.data);
             }
-            
+
             responseDiv.appendChild(codeBlock);
-            
+
             addLog(\`✅ 接口调用成功 - 耗时 \${result.responseTime}ms\`, 'success');
-            
+
             // 滚动到响应区域
             setTimeout(() => {
-                responseContainer.scrollIntoView({ 
-                    behavior: 'smooth', 
-                    block: 'nearest' 
+                responseContainer.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
                 });
             }, 100);
         })
         .catch(error => {
             const endTime = performance.now();
             const responseTime = Math.round(endTime - startTime);
-            
+
             const errorMessage = \`❌ API请求失败: \${error.message}\`;
             const responseContainer = document.getElementById('api-response-container');
             const responseDiv = document.getElementById('api-response');
-            
+
             responseContainer.style.display = 'block';
             responseDiv.innerHTML = \`
                 <div class="response-header">
@@ -705,7 +657,7 @@ function testApi() {
                 </div>
                 <div class="response-content error">\${escapeHtml(errorMessage)}</div>
             \`;
-            
+
             addLog(errorMessage, 'error');
         })
         .finally(() => {
@@ -719,12 +671,12 @@ function testApi() {
    ======================================== */
 function copyApiResponse(data, format, buttonElement) {
     const text = format === 'xml' ? data : JSON.stringify(data, null, 2);
-    
+
     navigator.clipboard.writeText(text)
         .then(() => {
             const btn = buttonElement;
             const originalHTML = btn.innerHTML;
-            
+
             btn.innerHTML = \`
                 <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <polyline points="20 6 9 17 4 12"></polyline>
@@ -733,13 +685,13 @@ function copyApiResponse(data, format, buttonElement) {
             \`;
             btn.classList.add('copied');
             btn.disabled = true;
-            
+
             setTimeout(() => {
                 btn.innerHTML = originalHTML;
                 btn.classList.remove('copied');
                 btn.disabled = false;
             }, 2000);
-            
+
             addLog('📋 响应内容已复制到剪贴板', 'success');
         })
         .catch(err => {
@@ -759,7 +711,7 @@ function switchApiMode(mode) {
             tab.classList.add('active');
         }
     });
-    
+
     // 切换显示内容
     if (mode === 'api-test') {
         document.getElementById('api-test-mode').style.display = 'block';
@@ -845,19 +797,19 @@ function switchDanmuTestMethod(method) {
 function autoMatchDanmu() {
     const filename = document.getElementById('auto-match-filename').value.trim();
     const searchBtn = event.target.closest('.btn') || event.target;
-    
+
     if (!filename) {
         customAlert('请输入文件名', '⚠️ 提示');
         document.getElementById('auto-match-filename').focus();
         return;
     }
-    
+
     const originalText = searchBtn.innerHTML;
     searchBtn.innerHTML = '<span class="loading-spinner-small"></span> <span>匹配中...</span>';
     searchBtn.disabled = true;
-    
+
     addLog(\`🎯 开始自动匹配: \${filename}\`, 'info');
-    
+
     fetch(buildApiUrl('/api/v2/match'), {
         method: 'POST',
         headers: {
@@ -876,18 +828,17 @@ function autoMatchDanmu() {
             // 格式1: {isMatched: true, matches: [{animeId, animeTitle, episodeId, episodeTitle}, ...]}
             // 格式2: {success: true, match: {animeTitle, episodeNumber, episodeId}}
             // 格式3: {matches: [...]}
-            
+
             let matchResult = null;
-            
+
             if (data.isMatched && data.matches && data.matches.length > 0) {
                 // 弹弹Play 标准格式
                 const firstMatch = data.matches[0];
                 matchResult = {
-                    ...firstMatch,
-                    animeTitle: firstMatch.playerAnimeTitle || firstMatch.animeTitle || firstMatch.anime || '',
-                    episodeTitle: firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '',
+                    animeTitle: firstMatch.animeTitle || firstMatch.anime || '',
+                    episodeTitle: firstMatch.episodeTitle || firstMatch.episode || '',
                     episodeId: firstMatch.episodeId,
-                    episodeNumber: firstMatch.episodeNumber || extractEpisodeNumber(firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '')
+                    episodeNumber: extractEpisodeNumber(firstMatch.episodeTitle || firstMatch.episode || '')
                 };
             } else if (data.success && data.match) {
                 // 自定义格式
@@ -896,16 +847,17 @@ function autoMatchDanmu() {
                 // 简化格式
                 const firstMatch = data.matches[0];
                 matchResult = {
-                    ...firstMatch,
-                    animeTitle: firstMatch.playerAnimeTitle || firstMatch.animeTitle || firstMatch.anime || '',
-                    episodeTitle: firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '',
+                    animeTitle: firstMatch.animeTitle || firstMatch.anime || '',
+                    episodeTitle: firstMatch.episodeTitle || firstMatch.episode || '',
                     episodeId: firstMatch.episodeId,
-                    episodeNumber: firstMatch.episodeNumber || extractEpisodeNumber(firstMatch.playerEpisodeTitle || firstMatch.episodeTitle || firstMatch.episode || '')
+                    episodeNumber: extractEpisodeNumber(firstMatch.episodeTitle || firstMatch.episode || '')
                 };
             }
-            
+
             if (matchResult && matchResult.episodeId) {
-                const displayTitle = getMatchDisplayTitle(matchResult);
+                const displayTitle = matchResult.episodeTitle
+                    ? \`\${matchResult.animeTitle} - \${matchResult.episodeTitle}\`
+                    : \`\${matchResult.animeTitle} - 第\${matchResult.episodeNumber || 1}集\`;
                 addLog(\`✅ 匹配成功: \${displayTitle}\`, 'success');
                 loadDanmuData(matchResult.episodeId, displayTitle);
             } else {
@@ -950,21 +902,21 @@ function extractEpisodeNumber(episodeTitle) {
 function manualSearchDanmu() {
     const keyword = document.getElementById('manual-search-keyword').value.trim();
     const searchBtn = event.target.closest('.btn') || event.target;
-    
+
     if (!keyword) {
         customAlert('请输入搜索关键词', '⚠️ 提示');
         document.getElementById('manual-search-keyword').focus();
         return;
     }
-    
+
     const originalText = searchBtn.innerHTML;
     searchBtn.innerHTML = '<span class="loading-spinner-small"></span> <span>搜索中...</span>';
     searchBtn.disabled = true;
-    
+
     addLog(\`🔍 开始搜索: \${keyword}\`, 'info');
-    
+
     const searchUrl = buildApiUrl('/api/v2/search/anime?keyword=' + encodeURIComponent(keyword));
-    
+
     fetch(searchUrl)
         .then(response => {
             if (!response.ok) {
@@ -978,9 +930,9 @@ function manualSearchDanmu() {
             // 格式2: {success: true, animes: [...]}
             // 格式3: {hasMore: false, animes: [...]}
             // 格式4: 直接是数组 [{animeId, animeTitle, ...}, ...]
-            
+
             let animes = null;
-            
+
             if (Array.isArray(data)) {
                 animes = data;
             } else if (data.animes && Array.isArray(data.animes)) {
@@ -988,7 +940,7 @@ function manualSearchDanmu() {
             } else if (data.data && Array.isArray(data.data)) {
                 animes = data.data;
             }
-            
+
             if (animes && animes.length > 0) {
                 addLog(\`✅ 找到 \${animes.length} 个搜索结果\`, 'success');
                 displayDanmuSearchResults(animes);
@@ -1013,7 +965,7 @@ function manualSearchDanmu() {
    ======================================== */
 function displayDanmuSearchResults(animes) {
     const container = document.getElementById('danmu-search-results');
-    
+
     let html = \`
         <div class="form-card">
             <h3 class="card-title">
@@ -1024,18 +976,16 @@ function displayDanmuSearchResults(animes) {
             </h3>
             <div class="anime-grid">
     \`;
-    
+
     animes.forEach((anime, index) => {
         const imageUrl = anime.imageUrl || 'https://placehold.co/150x200?text=No+Image';
-        const animeDisplayTitle = getAnimeDisplayTitle(anime);
-        const sourceLabel = anime.sourceLabel && anime.sourceLabel !== 'unknown' ? anime.sourceLabel : '';
         html += \`
-            <div class="anime-card" onclick="selectAnimeForDanmu(\${anime.animeId}, '\${escapeHtml(animeDisplayTitle).replace(/'/g, "\\\\'")}', \${anime.episodeCount})"
+            <div class="anime-card" onclick="selectAnimeForDanmu(\${anime.animeId}, '\${escapeHtml(anime.animeTitle).replace(/'/g, "\\\\'")}', \${anime.episodeCount})"
                  style="animation: fadeInUp 0.4s ease-out \${index * 0.05}s backwards;">
                 <div class="anime-card-image-wrapper">
-                    <img src="\${imageUrl}" 
-                         alt="\${escapeHtml(animeDisplayTitle)}" 
-                         referrerpolicy="no-referrer" 
+                    <img src="\${imageUrl}"
+                         alt="\${escapeHtml(anime.animeTitle)}"
+                         referrerpolicy="no-referrer"
                          class="anime-image"
                          loading="lazy">
                     <div class="anime-card-overlay">
@@ -1044,34 +994,28 @@ function displayDanmuSearchResults(animes) {
                     </div>
                 </div>
                 <div class="anime-info">
-                    <h4 class="anime-title" title="\${escapeHtml(animeDisplayTitle)}">
-                        \${escapeHtml(animeDisplayTitle)}
+                    <h4 class="anime-title" title="\${escapeHtml(anime.animeTitle)}">
+                        \${escapeHtml(anime.animeTitle)}
                     </h4>
                     <div class="anime-meta">
                         <span class="episode-count">
                             <span class="meta-icon">📺</span>
                             共 \${anime.episodeCount} 集
                         </span>
-                        \${sourceLabel ? \`
-                        <span class="episode-count">
-                            <span class="meta-icon">🏷️</span>
-                            \${escapeHtml(sourceLabel)}
-                        </span>
-                        \` : ''}
                     </div>
                 </div>
             </div>
         \`;
     });
-    
+
     html += '</div></div>';
-    
+
     container.innerHTML = html;
     container.style.display = 'block';
-    
+
     // 隐藏弹幕显示区域
     document.getElementById('danmu-display-area').style.display = 'none';
-    
+
     // 滚动到结果区域
     setTimeout(() => {
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1083,9 +1027,9 @@ function displayDanmuSearchResults(animes) {
    ======================================== */
 function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
     addLog(\`📺 选择动漫: \${animeTitle} (ID: \${animeId})\`, 'info');
-    
+
     const container = document.getElementById('danmu-search-results');
-    
+
     // 显示加载状态
     container.innerHTML = \`
         <div class="form-card">
@@ -1095,9 +1039,9 @@ function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
             </div>
         </div>
     \`;
-    
+
     const bangumiUrl = buildApiUrl('/api/v2/bangumi/' + animeId);
-    
+
     fetch(bangumiUrl)
         .then(response => {
             if (!response.ok) {
@@ -1111,20 +1055,20 @@ function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
             // 格式2: {success: true, bangumi: {...}}
             // 格式3: {episodes: [...]}
             // 格式4: 直接是 {animeTitle, episodes: [...]}
-            
+
             let episodes = null;
             let resolvedAnimeTitle = animeTitle;
-            
+
             if (data.bangumi && data.bangumi.episodes) {
                 episodes = data.bangumi.episodes;
-                resolvedAnimeTitle = data.bangumi.playerAnimeTitle || data.bangumi.animeDisplayTitle || data.bangumi.animeTitle || animeTitle;
+                resolvedAnimeTitle = data.bangumi.animeTitle || animeTitle;
             } else if (data.episodes && Array.isArray(data.episodes)) {
                 episodes = data.episodes;
-                resolvedAnimeTitle = data.playerAnimeTitle || data.animeDisplayTitle || data.animeTitle || animeTitle;
+                resolvedAnimeTitle = data.animeTitle || animeTitle;
             } else if (Array.isArray(data)) {
                 episodes = data;
             }
-            
+
             if (episodes && episodes.length > 0) {
                 addLog(\`✅ 成功加载 \${episodes.length} 个剧集\`, 'success');
                 displayEpisodeList(resolvedAnimeTitle, episodes);
@@ -1136,7 +1080,7 @@ function selectAnimeForDanmu(animeId, animeTitle, episodeCount) {
             console.error('获取剧集失败:', error);
             addLog(\`❌ 获取剧集失败: \${error.message}\`, 'error');
             customAlert('获取剧集失败: ' + error.message, '❌ 加载失败');
-            
+
             container.innerHTML = \`
                 <div class="form-card">
                     <div class="search-error">
@@ -1183,16 +1127,16 @@ function displayEpisodeList(animeTitle, episodes) {
     episodes.forEach((episode, index) => {
         const episodeId = episode.episodeId || episode.id || episode.cid;
         const episodeNumber = episode.episodeNumber || episode.episode || (index + 1);
-        const episodeTitle = getEpisodeDisplayTitle(episode);
-        const fullTitle = getEpisodeFullDisplayTitle(animeTitle, episode);
-        const episodeHeaderTitle = episode.episodeCode || episode.episodeSubtitle || ('第 ' + episodeNumber + ' 集');
+        const episodeTitle = episode.episodeTitle || episode.title || episode.name || '';
+        const displayTitle = episodeTitle || \`第 \${episodeNumber} 集\`;
+        const fullTitle = \`\${animeTitle} - \${displayTitle}\`;
 
         html += \`
             <div class="episode-item" id="episode-item-\${episodeNumber}" style="animation: fadeInUp 0.3s ease-out \${index * 0.03}s backwards;">
                 <div class="episode-info">
                     <div class="episode-number">
                         <span class="episode-icon">📺</span>
-                        \${escapeHtml(episodeHeaderTitle)}
+                        第 \${episodeNumber} 集
                     </div>
                     <div class="episode-title">\${escapeHtml(episodeTitle || '无标题')}</div>
                 </div>
@@ -1399,19 +1343,19 @@ function loadDanmuData(episodeId, title) {
 function displayDanmuData(title, comments) {
     // 更新标题
     document.getElementById('danmu-subtitle').textContent = \`共 \${comments.length} 条弹幕\`;
-    
+
     // 计算统计数据
     const stats = calculateDanmuStats(comments);
-    
+
     // 更新统计信息
     document.getElementById('danmu-total-count').textContent = stats.totalCount;
     document.getElementById('danmu-duration').textContent = stats.duration;
     document.getElementById('danmu-density').textContent = stats.density;
     document.getElementById('danmu-peak-time').textContent = stats.peakTime;
-    
+
     // 绘制热力图
     drawHeatmap(comments, stats.maxTime);
-    
+
     // 显示弹幕列表
     filteredDanmuData = comments;
     renderDanmuList(comments);
@@ -1422,7 +1366,7 @@ function displayDanmuData(title, comments) {
    ======================================== */
 function calculateDanmuStats(comments) {
     const totalCount = comments.length;
-    
+
     // 用 P99 代替最大值，避免极少数异常时间戳拉高整体时长
     const validTimes = comments
         .map(c => parseFloat((c.p || '0').split(',')[0]))
@@ -1431,14 +1375,14 @@ function calculateDanmuStats(comments) {
     const p99Index = validTimes.length > 0 ? Math.floor((validTimes.length - 1) * 0.99) : 0;
     const maxTime = validTimes.length > 0 ? validTimes[p99Index] : 0;
     const duration = formatTime(maxTime);
-    
+
     // 计算密度（每分钟）
     const durationMinutes = maxTime / 60;
     const density = durationMinutes > 0 ? Math.round(totalCount / durationMinutes) : 0;
-    
+
     // 找出高能时刻（弹幕最密集的时间段）
     const peakTime = findPeakTime(comments, maxTime);
-    
+
     return {
         totalCount,
         duration,
@@ -1453,12 +1397,12 @@ function calculateDanmuStats(comments) {
    ======================================== */
 function findPeakTime(comments, maxTime) {
     if (comments.length === 0 || !Number.isFinite(maxTime) || maxTime <= 0) return '--:--';
-    
+
     // 将时间轴分成30秒的区间
     const interval = 30;
     const intervals = Math.ceil(maxTime / interval);
     const counts = new Array(intervals).fill(0);
-    
+
     comments.forEach(comment => {
         const time = parseFloat(comment.p.split(',')[0]);
         const index = Math.floor(time / interval);
@@ -1466,11 +1410,11 @@ function findPeakTime(comments, maxTime) {
             counts[index]++;
         }
     });
-    
+
     // 找出最大值的索引
     const maxCount = Math.max(...counts);
     const maxIndex = counts.indexOf(maxCount);
-    
+
     // 返回该区间的中间时间
     const peakTime = (maxIndex * interval) + (interval / 2);
     return formatTime(peakTime);
@@ -1483,7 +1427,7 @@ function formatTime(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    
+
     if (hours > 0) {
         return \`\${hours}:\${minutes.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')}\`;
     } else {
@@ -1824,7 +1768,7 @@ function drawHeatmap(comments, maxTime) {
    ======================================== */
 function renderDanmuList(comments) {
     const container = document.getElementById('danmu-list-container');
-    
+
     if (comments.length === 0) {
         container.innerHTML = \`
             <div class="danmu-list-empty">
@@ -1834,7 +1778,7 @@ function renderDanmuList(comments) {
         \`;
         return;
     }
-    
+
     // 统计各类型弹幕数量
     const typeCounts = {
         all: comments.length,
@@ -1842,24 +1786,24 @@ function renderDanmuList(comments) {
         top: 0,
         bottom: 0
     };
-    
+
     comments.forEach(comment => {
         const mode = parseInt(comment.p.split(',')[1]);
         if (mode === 5) typeCounts.top++;
         else if (mode === 4) typeCounts.bottom++;
         else typeCounts.scroll++;
     });
-    
+
     // 更新过滤器计数
     document.getElementById('filter-all-count').textContent = typeCounts.all;
     document.getElementById('filter-scroll-count').textContent = typeCounts.scroll;
     document.getElementById('filter-top-count').textContent = typeCounts.top;
     document.getElementById('filter-bottom-count').textContent = typeCounts.bottom;
-    
+
     // 重置分页并清空容器
     currentDanmuPage = 0;
     container.innerHTML = '';
-    
+
     // 渲染第一页
     loadMoreDanmu(comments, container);
 }
@@ -1871,30 +1815,30 @@ function loadMoreDanmu(comments, container) {
     const start = currentDanmuPage * DANMU_PAGE_SIZE;
     const end = Math.min(start + DANMU_PAGE_SIZE, comments.length);
     const pageComments = comments.slice(start, end);
-    
+
     // 移除之前的"加载更多"按钮和结束提示
     const oldLoadMoreBtn = container.querySelector('.load-more-btn');
     if (oldLoadMoreBtn) oldLoadMoreBtn.remove();
     const oldEndDiv = container.querySelector('.danmu-list-end');
     if (oldEndDiv) oldEndDiv.remove();
-    
+
     // 使用 DocumentFragment 优化 DOM 操作
     const fragment = document.createDocumentFragment();
-    
+
     pageComments.forEach((comment) => {
         const parts = comment.p.split(',');
         const time = parts[0];
         const mode = parts[1];
         const modeInt = parseInt(mode);
-        
+
         // 正确解析颜色值
         // 后端返回格式：时间,类型,颜色,字体大小,来源 (5字段)
         // 示例：5.0,1,16777215,25,[qq]
         let colorInt = 16777215; // 默认白色
-        
+
         // 直接从第3个字段（索引2）读取颜色
         const colorField = parts[2];
-        
+
         if (colorField) {
             // 尝试解析为十进制数字
             const parsed = parseInt(colorField, 10);
@@ -1909,13 +1853,13 @@ function loadMoreDanmu(comments, container) {
                     colorInt = parseInt(hexMatch, 16);
                 }
             }
-        }        
+        }
         // 转换为十六进制颜色字符串
         const hexColor = '#' + colorInt.toString(16).padStart(6, '0').toUpperCase();
-        
+
         let typeClass = '';
         let typeName = '滚动';
-        
+
         if (modeInt === 5) {
             typeClass = 'type-top';
             typeName = '顶部';
@@ -1923,7 +1867,7 @@ function loadMoreDanmu(comments, container) {
             typeClass = 'type-bottom';
             typeName = '底部';
         }
-        
+
         const itemDiv = document.createElement('div');
         itemDiv.className = 'danmu-item ' + typeClass;
         itemDiv.innerHTML = \`
@@ -1939,16 +1883,16 @@ function loadMoreDanmu(comments, container) {
                 </div>
             </div>
         \`;
-        
+
         fragment.appendChild(itemDiv);
     });
 
-    
+
     container.appendChild(fragment);
-    
+
     // 更新页码
     currentDanmuPage++;
-    
+
     // 如果还有更多数据，添加"加载更多"按钮
     if (end < comments.length) {
         const remaining = comments.length - end;
@@ -1994,11 +1938,11 @@ function filterDanmuList(type) {
             btn.classList.add('active');
         }
     });
-    
+
     if (!currentDanmuData) return;
-    
+
     let filtered = currentDanmuData;
-    
+
     if (type !== 'all') {
         filtered = currentDanmuData.filter(comment => {
             const mode = parseInt(comment.p.split(',')[1]);
@@ -2008,11 +1952,11 @@ function filterDanmuList(type) {
             return true;
         });
     }
-    
+
     filteredDanmuData = filtered;
     currentDanmuPage = 0;  // 重置分页
     renderDanmuList(filtered);
-    
+
     addLog(\`🔍 筛选弹幕: \${type} (\${filtered.length}条)\`, 'info');
 }
 /* ========================================
@@ -2021,14 +1965,14 @@ function filterDanmuList(type) {
 function formatDanmuFilename(rawTitle, format) {
     // 原始格式示例: 奇迹(2025)【电视剧】from tencent - 【qq】 01闯南关(上)_01
     // 目标格式示例: 奇迹(2025) - 01 - 闯南关(上).xml
-    
+
     // 移除来源信息（from xxx - 【xxx】）
     let cleaned = rawTitle.replace(/\\s*from\\s+[^-]+\\s*-\\s*【[^】]+】\\s*/g, '');
-    
+
     // 移除【电视剧】【电影】等类型标签
     cleaned = cleaned.replace(/【[^】]*剧[^】]*】/g, '');
     cleaned = cleaned.replace(/【电影】/g, '');
-    
+
     // 提取剧名(年份)
     const nameYearMatch = cleaned.match(/^(.+?)\\((\\d{4})\\)/);
     if (!nameYearMatch) {
@@ -2039,19 +1983,19 @@ function formatDanmuFilename(rawTitle, format) {
         cleaned = cleaned.replace(/^_|_$/g, '');
         return \`\${cleaned}.\${format}\`;
     }
-    
+
     const animeName = nameYearMatch[1].trim();
     const year = nameYearMatch[2];
     const nameWithYear = \`\${animeName}(\${year})\`;
-    
+
     // 移除剧名(年份)部分，获取剩余内容
     let remaining = cleaned.substring(nameYearMatch[0].length).trim();
     remaining = remaining.replace(/^[_\\s-]+/, ''); // 移除开头的分隔符
-    
+
     if (!remaining) {
         return \`\${nameWithYear}.\${format}\`;
     }
-    
+
     // 提取集数（第一个连续的数字）
     const episodeMatch = remaining.match(/^(\\d+)/);
     if (!episodeMatch) {
@@ -2059,20 +2003,20 @@ function formatDanmuFilename(rawTitle, format) {
         const cleaned2 = remaining.replace(/[\\\\/:*?"<>|]/g, '').replace(/_+/g, '_').replace(/^_|_$/g, '');
         return \`\${nameWithYear} - \${cleaned2}.\${format}\`;
     }
-    
+
     const episodeNum = episodeMatch[1];
-    
+
     // 移除集数部分，获取集标题
     let episodeTitle = remaining.substring(episodeNum.length).trim();
     episodeTitle = episodeTitle.replace(/^[_\\s-]+/, ''); // 移除开头的分隔符
-    
+
     // 移除集标题末尾重复的集数（如 _01, _1 等）
     episodeTitle = episodeTitle.replace(/_\\d+$/, '');
     episodeTitle = episodeTitle.trim();
-    
+
     // 清理集标题中的非法文件名字符
     episodeTitle = episodeTitle.replace(/[\\\\/:*?"<>|]/g, '');
-    
+
     // 组合最终文件名
     if (episodeTitle) {
         return \`\${nameWithYear} - \${episodeNum} - \${episodeTitle}.\${format}\`;
@@ -2089,11 +2033,11 @@ function exportDanmu(format) {
     if (currentEpisodeId) {
         const title = document.getElementById('danmu-title').textContent;
         const filename = formatDanmuFilename(title, format);
-        
+
         addLog(\`📥 开始导出弹幕: \${filename}\`, 'info');
-        
+
         const exportUrl = buildApiUrl('/api/v2/comment/' + currentEpisodeId + '?format=' + format);
-        
+
         fetch(exportUrl)
             .then(response => {
                 if (!response.ok) {
@@ -2123,7 +2067,7 @@ function exportDanmu(format) {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                
+
                 addLog(\`✅ 导出弹幕成功: \${filename}\`, 'success');
                 customAlert(\`弹幕已导出为 \${format.toUpperCase()} 格式\`, '✅ 导出成功');
             })
@@ -2134,7 +2078,7 @@ function exportDanmu(format) {
             });
         return;
     }
-    
+
     // 如果没有 episodeId，提示用户无法导出
     customAlert('无法导出：缺少弹幕ID，请重新加载弹幕后再试', '⚠️ 提示');
     addLog('❌ 导出失败：缺少 episodeId', 'error');
