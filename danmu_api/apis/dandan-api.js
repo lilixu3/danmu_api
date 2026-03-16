@@ -71,6 +71,7 @@ const tmdbSource = new TmdbSource(doubanSource);
 const PENDING_DANMAKU_REQUESTS = new Map();
 // 用于弹幕请求(按集ID/URL)的去重Map
 const PENDING_COMMENT_REQUESTS = new Map();
+const REMEMBER_SELECT_CONTEXT_MAX_AGE_MS = 2 * 60 * 1000;
 let nodeDnsLookup = null;
 
 function buildUrlValidationError(errorMessage) {
@@ -1605,7 +1606,18 @@ export async function matchAnime(url, req, clientIp = null) {
           "shift": 0,
           "imageUrl": resAnime.imageUrl
         })
-      ]
+      ];
+
+      if (clientIp) {
+        setLastSearch(clientIp, {
+          title,
+          season,
+          episode,
+          matchedCommentId: resEpisode.episodeId,
+          matchedAnimeTitle: resAnime.animeTitle
+        });
+        log("info", `[RememberSelect] 更新匹配上下文: ${title} S${season ?? "default"}E${episode ?? "movie"} -> commentId=${resEpisode.episodeId}`);
+      }
     }
 
     log("info", "resMatchData:", resData);
@@ -2051,28 +2063,40 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
     let lastTitle = null;
     let lastSeason = null;
     let offset = null;
+    let shouldRememberSelection = !clientIp;
     const selectedEpisode = globals.episodeIds.find(episode => Number(episode?.id) === commentId);
     const selectedEpisodeNumber = extractKnownEpisodeNumber(selectedEpisode);
 
     if (clientIp) {
       const lastSearch = getLastSearch(clientIp);
       if (lastSearch?.title) {
-        lastTitle = lastSearch.title;
-        lastSeason = lastSearch.season ?? null;
+        const contextAgeMs = Date.now() - Number(lastSearch.timestamp || 0);
+        const isFreshContext = Number.isFinite(contextAgeMs) && contextAgeMs >= 0 && contextAgeMs <= REMEMBER_SELECT_CONTEXT_MAX_AGE_MS;
+        const sameTitle = titleMatches(animeTitle, lastSearch.title);
+        const matchedCommentId = Number(lastSearch.matchedCommentId);
+        const hasMatchedCommentId = Number.isInteger(matchedCommentId) && matchedCommentId > 0;
 
-        if (lastSearch.episode !== undefined && lastSearch.episode !== null && episodeTitle) {
-          const offsetDetail = Number.isInteger(selectedEpisodeNumber) && selectedEpisodeNumber > 0
-            ? `${selectedEpisodeNumber}|${episodeTitle}`
-            : episodeTitle;
-          offset = `${lastSearch.episode}:${offsetDetail}`;
-          log("info", `[RememberSelect] 记录集映射: ${animeTitle} S${lastSeason ?? "default"} ${offset}`);
+        if (isFreshContext && sameTitle && hasMatchedCommentId) {
+          shouldRememberSelection = true;
+          lastTitle = lastSearch.title;
+          lastSeason = lastSearch.season ?? null;
+
+          if (lastSearch.episode !== undefined && lastSearch.episode !== null && episodeTitle) {
+            const offsetDetail = Number.isInteger(selectedEpisodeNumber) && selectedEpisodeNumber > 0
+              ? `${selectedEpisodeNumber}|${episodeTitle}`
+              : episodeTitle;
+            offset = `${lastSearch.episode}:${offsetDetail}`;
+            log("info", `[RememberSelect] 记录集映射: ${animeTitle} S${lastSeason ?? "default"} ${offset}`);
+          }
+        } else {
+          log("info", `[RememberSelect] 跳过写入偏好，上下文无效: fresh=${isFreshContext}; sameTitle=${sameTitle}; matchedCommentId=${hasMatchedCommentId ? matchedCommentId : "none"}`);
         }
       }
     }
 
-    if (!lastTitle || titleMatches(animeTitle, lastTitle)) {
+    if (shouldRememberSelection && (!lastTitle || titleMatches(animeTitle, lastTitle))) {
       setPreferByAnimeId(animeId, source, lastSeason, offset);
-    } else {
+    } else if (shouldRememberSelection) {
       log("info", `[RememberSelect] 跳过写入偏好，标题不匹配: anime=${animeTitle}; query=${lastTitle}`);
     }
 
