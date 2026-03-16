@@ -134,9 +134,10 @@ function inferEpisodeNumberFromText(text) {
   if (!normalized) return null;
 
   const patterns = [
-    /第\s*([0-9]+)\s*[集话期篇部章]/i,
-    /(?:^|\s)[Ee][Pp]?\s*([0-9]+)(?:\s|$|[:：._-])/,
-    /^(\d{1,3})(?:\s|$|[:：._-])/
+    /第\s*0*([0-9]+)\s*[集话期篇部章]/i,
+    /(?:^|\s)[Ee][Pp]?\s*0*([0-9]+)(?:\s|$|[:：._-])/,
+    /^0*([0-9]{1,3})(?:\s|$|[:：._-])/,
+    /[_-]0*([0-9]{1,3})(?:$|[^\d])/
   ];
 
   for (const pattern of patterns) {

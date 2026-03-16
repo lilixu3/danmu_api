@@ -335,7 +335,71 @@ function buildEpisodesFromAnimeLinks(anime) {
   return filterSameEpisodeTitle(episodesList);
 }
 
-function computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode = episode) {
+function parseRememberedOffset(rawOffset) {
+  if (typeof rawOffset !== "string") {
+    return { requestEpisode: null, matchedEpisodeNumber: null, matchedEpisodeTitle: "" };
+  }
+
+  const match = rawOffset.match(/^([^:]+):(.+)$/);
+  const requestEpisode = Number(match?.[1]);
+  const sourcePart = match?.[2] || "";
+  if (!Number.isFinite(requestEpisode) || !sourcePart) {
+    return { requestEpisode: null, matchedEpisodeNumber: null, matchedEpisodeTitle: "" };
+  }
+
+  const enrichedMatch = sourcePart.match(/^(\d+)\|(.+)$/);
+  if (enrichedMatch) {
+    const matchedEpisodeNumber = Number(enrichedMatch[1]);
+    return {
+      requestEpisode,
+      matchedEpisodeNumber: Number.isFinite(matchedEpisodeNumber) ? matchedEpisodeNumber : null,
+      matchedEpisodeTitle: enrichedMatch[2] || ""
+    };
+  }
+
+  return {
+    requestEpisode,
+    matchedEpisodeNumber: null,
+    matchedEpisodeTitle: sourcePart
+  };
+}
+
+function extractKnownEpisodeNumber(episode) {
+  if (!episode || typeof episode !== "object") return null;
+
+  const candidates = [
+    episode.episodeNumber,
+    episode.parsedEpisodeNumber,
+    episode.titleMeta?.episodeNumber,
+    episode.name
+  ];
+
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isInteger(value) && value > 0) {
+      return value;
+    }
+  }
+
+  const rawTitle = episode.episodeTitle || episode.title || episode.rawEpisodeTitle || episode.rawTitle;
+  const extractedFromTitle = extractEpisodeNumberFromTitle(rawTitle);
+  return Number.isInteger(extractedFromTitle) && extractedFromTitle > 0 ? extractedFromTitle : null;
+}
+
+function resolveEpisodeSequenceNumber(episode, fallbackIndex = null) {
+  const explicitEpisodeNumber = extractKnownEpisodeNumber(episode);
+  if (Number.isInteger(explicitEpisodeNumber) && explicitEpisodeNumber > 0) {
+    return explicitEpisodeNumber;
+  }
+
+  if (Number.isInteger(fallbackIndex) && fallbackIndex >= 0) {
+    return fallbackIndex + 1;
+  }
+
+  return null;
+}
+
+export function computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode = episode) {
   if (!offsets || season == null || episode == null || !Array.isArray(filteredEpisodes)) {
     return targetEpisode;
   }
@@ -346,19 +410,30 @@ function computeTargetEpisode(offsets, season, episode, filteredEpisodes, target
     return targetEpisode;
   }
 
-  const match = rawOffset.match(/^([^:]+):(.+)$/);
-  const offsetEpisode = Number(match?.[1]);
-  const offsetEpisodeTitle = match?.[2] || "";
-  if (!Number.isFinite(offsetEpisode) || !offsetEpisodeTitle) {
+  const { requestEpisode, matchedEpisodeNumber, matchedEpisodeTitle } = parseRememberedOffset(rawOffset);
+  if (!Number.isFinite(requestEpisode)) {
     return targetEpisode;
   }
 
-  const episodeIndex = filteredEpisodes.findIndex(item => item?.episodeTitle === offsetEpisodeTitle);
-  if (episodeIndex === -1) {
+  let anchorEpisodeNumber = matchedEpisodeNumber;
+  if (!Number.isFinite(anchorEpisodeNumber) || anchorEpisodeNumber <= 0) {
+    if (!matchedEpisodeTitle) {
+      return targetEpisode;
+    }
+
+    const episodeIndex = filteredEpisodes.findIndex(item => item?.episodeTitle === matchedEpisodeTitle);
+    if (episodeIndex === -1) {
+      return targetEpisode;
+    }
+
+    anchorEpisodeNumber = resolveEpisodeSequenceNumber(filteredEpisodes[episodeIndex], episodeIndex);
+  }
+
+  if (!Number.isFinite(anchorEpisodeNumber) || anchorEpisodeNumber <= 0) {
     return targetEpisode;
   }
 
-  const resolvedEpisode = episodeIndex + (episode - offsetEpisode) + 1;
+  const resolvedEpisode = anchorEpisodeNumber + (episode - requestEpisode);
   if (resolvedEpisode > 0) {
     log("info", `应用记忆集偏移: S${season}E${episode} -> E${resolvedEpisode} (${rawOffset})`);
     return resolvedEpisode;
@@ -800,25 +875,24 @@ function filterSameEpisodeTitle(filteredTmpEpisodes) {
 // 从集标题中提取集数（支持多种格式：第1集、第01集、EP01、E01等）
 function extractEpisodeNumberFromTitle(episodeTitle) {
   if (!episodeTitle) return null;
-  
-  // 匹配格式：第1集、第01集、第10集等
-  const chineseMatch = episodeTitle.match(/第(\d+)集/);
-  if (chineseMatch) {
-    return parseInt(chineseMatch[1], 10);
+
+  const patterns = [
+    /第\s*0*(\d+)\s*[集话期篇部章]/i,
+    /[Ee][Pp]?\s*0*(\d+)(?:\s|$|[:：._-])/,
+    /[_-]0*(\d{1,3})(?:$|[^\d])/,
+    /(?:^|\s)0*(\d+)(?:\s|$)/
+  ];
+
+  for (const pattern of patterns) {
+    const match = String(episodeTitle).match(pattern);
+    if (!match) continue;
+
+    const value = parseInt(match[1], 10);
+    if (Number.isInteger(value) && value > 0) {
+      return value;
+    }
   }
-  
-  // 匹配格式：EP01、EP1、E01、E1等
-  const epMatch = episodeTitle.match(/[Ee][Pp]?(\d+)/);
-  if (epMatch) {
-    return parseInt(epMatch[1], 10);
-  }
-  
-  // 匹配格式：01、1（纯数字，通常在标题开头或结尾）
-  const numberMatch = episodeTitle.match(/(?:^|\s)(\d+)(?:\s|$)/);
-  if (numberMatch) {
-    return parseInt(numberMatch[1], 10);
-  }
-  
+
   return null;
 }
 
@@ -865,48 +939,41 @@ function extractPlatformFromTitle(title) {
     return match ? match[1] : null;
 }
 
-// 根据集数匹配episode（优先使用集标题中的集数，其次使用episodeNumber，最后使用数组索引）
-function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
+// 根据集数匹配episode（优先使用规范化集号，最后才回退到数组索引）
+export function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
   if (!filteredEpisodes || filteredEpisodes.length === 0) {
     return null;
   }
-  
-  // 如果指定了平台，先过滤出该平台的集数 (修改点：使用 getPlatformMatchScore 支持模糊匹配)
+
+  // 如果指定了平台，先过滤出该平台的集数
   let platformEpisodes = filteredEpisodes;
   if (platform) {
     platformEpisodes = filteredEpisodes.filter(ep => {
-        const epTitlePlatform = extractEpisodeTitle(ep.episodeTitle);
-        // 使用评分机制判断是否匹配，只要有分就保留
-        return getPlatformMatchScore(epTitlePlatform, platform) > 0;
+      const epTitlePlatform = extractEpisodeTitle(ep.episodeTitle);
+      return getPlatformMatchScore(epTitlePlatform, platform) > 0;
     });
   }
-  
+
   if (platformEpisodes.length === 0) {
     return null;
   }
-  
-  // 策略1：从集标题中提取集数进行匹配
+
+  // 策略1：优先使用规范化集号，避免被标题中的原始编号或特殊集干扰
   for (const ep of platformEpisodes) {
-    const extractedNumber = extractEpisodeNumberFromTitle(ep.episodeTitle);
-    if (extractedNumber === targetEpisode) {
-      log("info", `Found episode by title number: ${ep.episodeTitle} (extracted: ${extractedNumber})`);
+    const sequenceNumber = extractKnownEpisodeNumber(ep);
+    if (sequenceNumber === targetEpisode) {
+      log("info", `Found episode by normalized number: ${ep.episodeTitle} (episodeNumber: ${sequenceNumber})`);
       return ep;
     }
   }
-  // 策略2：使用数组索引
+
+  // 策略2：使用数组索引兜底
   if (platformEpisodes.length >= targetEpisode) {
     const fallbackEp = platformEpisodes[targetEpisode - 1];
     log("info", `Using fallback array index for episode ${targetEpisode}: ${fallbackEp.episodeTitle}`);
     return fallbackEp;
   }
-  // 策略3：使用episodeNumber字段匹配
-  for (const ep of platformEpisodes) {
-    if (ep.episodeNumber && parseInt(ep.episodeNumber, 10) === targetEpisode) {
-      log("info", `Found episode by episodeNumber: ${ep.episodeTitle} (episodeNumber: ${ep.episodeNumber})`);
-      return ep;
-    }
-  }
-  
+
   return null;
 }
 
@@ -1984,6 +2051,8 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
     let lastTitle = null;
     let lastSeason = null;
     let offset = null;
+    const selectedEpisode = globals.episodeIds.find(episode => Number(episode?.id) === commentId);
+    const selectedEpisodeNumber = extractKnownEpisodeNumber(selectedEpisode);
 
     if (clientIp) {
       const lastSearch = getLastSearch(clientIp);
@@ -1992,7 +2061,10 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
         lastSeason = lastSearch.season ?? null;
 
         if (lastSearch.episode !== undefined && lastSearch.episode !== null && episodeTitle) {
-          offset = `${lastSearch.episode}:${episodeTitle}`;
+          const offsetDetail = Number.isInteger(selectedEpisodeNumber) && selectedEpisodeNumber > 0
+            ? `${selectedEpisodeNumber}|${episodeTitle}`
+            : episodeTitle;
+          offset = `${lastSearch.episode}:${offsetDetail}`;
           log("info", `[RememberSelect] 记录集映射: ${animeTitle} S${lastSeason ?? "default"} ${offset}`);
         }
       }
