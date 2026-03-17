@@ -32,8 +32,6 @@ import { VercelHandler } from "./configs/handlers/vercel-handler.js";
 import { NetlifyHandler } from "./configs/handlers/netlify-handler.js";
 import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
-import { Globals, globals } from "./configs/globals.js";
-import { addEpisode } from "./utils/cache-util.js";
 import { Segment } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -104,65 +102,6 @@ test('worker.js API endpoints', async (t) => {
 
     ({title, season, episode} = await extractTitleSeasonEpisode("宇宙Marry Me? S02E08"));
     assert(title === "宇宙Marry Me?" && season == 2 && episode == 8, `Expected title === "宇宙Marry Me?" && season == 2 && episode == 8, but got ${title} ${season} ${episode}`);
-  });
-
-
-  await t.test('GET /api/v2/comment/:id/duration should use merged max duration without cache', async () => {
-    Globals.init({});
-    Globals.animes = [];
-    Globals.episodeIds = [];
-    Globals.episodeNum = 10001;
-    Globals.commentCache = new Map();
-
-    const originalTencentGetComments = TencentSource.prototype.getComments;
-    const originalIqiyiGetComments = IqiyiSource.prototype.getComments;
-    const originalYoukuGetComments = YoukuSource.prototype.getComments;
-
-    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
-      assert.equal(segmentFlag, true);
-      return {
-        type: 'qq',
-        segmentList: [{ segment_end: 2760 }]
-      };
-    };
-
-    IqiyiSource.prototype.getComments = async function(url, plat, segmentFlag) {
-      assert.equal(segmentFlag, true);
-      return {
-        type: 'qiyi',
-        segmentList: [{ segment_end: 2682 }]
-      };
-    };
-
-    YoukuSource.prototype.getComments = async function(url, plat, segmentFlag) {
-      assert.equal(segmentFlag, true);
-      return {
-        type: 'youku',
-        segmentList: [{ segment_end: 3000 }]
-      };
-    };
-
-    try {
-      const mergedEpisode = addEpisode(
-        'tencent:https://v.qq.com/x/cover/a/b.html$$$iqiyi:https://www.iqiyi.com/v_test.html$$$youku:https://v.youku.com/v_show/id_test.html',
-        '【qq＆qiyi＆youku】合并测试'
-      );
-      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + mergedEpisode.id + '/duration', { method: 'GET' });
-      const res = await handleRequest(req);
-      const body = await parseResponse(res);
-
-      assert.equal(res.status, 200);
-      assert.equal(body.videoDuration, 3000);
-      assert.equal(body.source, 'merge:max(segment:youku)');
-      assert.equal(body.confidence, 'high');
-      assert.equal(globals.commentCache.size, 0);
-    } finally {
-      TencentSource.prototype.getComments = originalTencentGetComments;
-      IqiyiSource.prototype.getComments = originalIqiyiGetComments;
-      YoukuSource.prototype.getComments = originalYoukuGetComments;
-      Globals.episodeIds = [];
-      Globals.commentCache = new Map();
-    }
   });
 
   // await t.test('Test ai cilent', async () => {

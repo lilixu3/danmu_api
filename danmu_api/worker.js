@@ -6,7 +6,7 @@ import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeL
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
-import { getBangumi, getComment, getCommentByUrl, getCommentDuration, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
+import { getBangumi, getComment, getCommentByUrl, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
 import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords } from "./apis/system-api.js";
 import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
 import { Segment } from "./models/dandan-model.js";
@@ -385,11 +385,6 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // GET /api/v2/bangumi/:animeId
   if (path.startsWith("/api/v2/bangumi/") && method === "GET") {
     return getBangumi(path);
-  }
-
-  // GET /api/v2/comment/:commentId/duration
-  if (path.startsWith("/api/v2/comment/") && path.endsWith("/duration") && method === "GET") {
-    return getCommentDuration(path);
   }
 
   // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx
