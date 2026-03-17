@@ -34,7 +34,7 @@ import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
 import { Globals, globals } from "./configs/globals.js";
 import { addEpisode } from "./utils/cache-util.js";
-import { Segment } from "./models/dandan-model.js"
+import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 
 // Mock Request class for testing
 class MockRequest {
@@ -205,6 +205,61 @@ test('worker.js API endpoints', async (t) => {
       Globals.episodeIds = [];
       Globals.commentCache = new Map();
     }
+  });
+
+  await t.test('GET /api/v2/comment/:id/duration should prefer explicit duration field', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const originalBilibiliGetComments = BilibiliSource.prototype.getComments;
+    BilibiliSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(segmentFlag, true);
+      return new SegmentListResponse({
+        type: 'bilibili1',
+        duration: 1312.76,
+        segmentList: [
+          { type: 'bilibili1', segment_start: 0, segment_end: 360, url: 'mock-bili-1' },
+          { type: 'bilibili1', segment_start: 360, segment_end: 720, url: 'mock-bili-2' },
+          { type: 'bilibili1', segment_start: 720, segment_end: 1080, url: 'mock-bili-3' },
+          { type: 'bilibili1', segment_start: 1080, segment_end: 1440, url: 'mock-bili-4' }
+        ]
+      });
+    };
+
+    try {
+      const episode = addEpisode('https://www.bilibili.com/bangumi/play/ep_test.html', '【bilibili】测试样例');
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
+      const res = await handleRequest(req);
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.videoDuration, 1312.76);
+      assert.equal(globals.commentCache.size, 0);
+    } finally {
+      BilibiliSource.prototype.getComments = originalBilibiliGetComments;
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
+  });
+
+  await t.test('GET /api/v2/comment/:id/duration should read acfun duration from url', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const episode = addEpisode('acfun://video/36122087?durationMs=720410&bangumiId=6002918', '【acfun】测试样例');
+    const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert(Math.abs(body.videoDuration - 720.41) < 0.001, `Expected 720.41, but got ${body.videoDuration}`);
+    assert.equal(globals.commentCache.size, 0);
   });
 
   // await t.test('Test ai cilent', async () => {

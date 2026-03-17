@@ -72,19 +72,27 @@ const PENDING_DANMAKU_REQUESTS = new Map();
 const PENDING_COMMENT_REQUESTS = new Map();
 let nodeDnsLookup = null;
 
+function normalizeDurationValue(rawValue) {
+  const duration = Number(rawValue || 0);
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  return duration > 6 * 60 * 60 ? duration / 1000 : duration;
+}
+
 function buildDurationResponse(videoDuration = 0) {
   return { videoDuration };
 }
 
 function extractDurationFromSegments(segmentResult) {
+  const explicitDuration = normalizeDurationValue(segmentResult?.duration || segmentResult?.videoDuration || 0);
+  if (explicitDuration > 0) return explicitDuration;
+
   const segmentList = Array.isArray(segmentResult?.segmentList) ? segmentResult.segmentList : [];
-  if (segmentList.length < 2) return 0;
+  if (!segmentList.length) return 0;
 
   let duration = 0;
   segmentList.forEach((segment) => {
-    const rawValue = Number(segment?.segment_end || 0);
-    if (!Number.isFinite(rawValue) || rawValue <= 0) return;
-    const normalized = rawValue > 6 * 60 * 60 ? rawValue / 1000 : rawValue;
+    const normalized = normalizeDurationValue(segment?.segment_end || 0);
+    if (normalized <= 0) return;
     if (normalized > duration) duration = normalized;
   });
 
@@ -92,6 +100,11 @@ function extractDurationFromSegments(segmentResult) {
 }
 
 async function resolveUrlDuration(url) {
+  if (/^acfun:\/\//i.test(url)) {
+    const { durationMs } = acfunSource.parseEpisodeRef(url);
+    return normalizeDurationValue(durationMs);
+  }
+
   if (!/^https?:\/\//i.test(url)) return 0;
 
   const response = await getCommentByUrl(url, 'json', true);
