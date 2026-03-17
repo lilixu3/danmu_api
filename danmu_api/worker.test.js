@@ -32,6 +32,8 @@ import { VercelHandler } from "./configs/handlers/vercel-handler.js";
 import { NetlifyHandler } from "./configs/handlers/netlify-handler.js";
 import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
+import { Globals, globals } from "./configs/globals.js";
+import { addEpisode } from "./utils/cache-util.js";
 import { Segment } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -102,6 +104,107 @@ test('worker.js API endpoints', async (t) => {
 
     ({title, season, episode} = await extractTitleSeasonEpisode("宇宙Marry Me? S02E08"));
     assert(title === "宇宙Marry Me?" && season == 2 && episode == 8, `Expected title === "宇宙Marry Me?" && season == 2 && episode == 8, but got ${title} ${season} ${episode}`);
+  });
+
+
+  await t.test('GET /api/v2/comment/:id/duration should return segment duration without cache', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(segmentFlag, true);
+      return {
+        type: 'qq',
+        segmentList: [
+          { type: 'qq', segment_start: 0, segment_end: 60, url: 'mock-1' },
+          { type: 'qq', segment_start: 60, segment_end: 2760, url: 'mock-2' }
+        ]
+      };
+    };
+
+    try {
+      const episode = addEpisode('https://v.qq.com/x/cover/a/b.html', '【qq】测试样例');
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
+      const res = await handleRequest(req);
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.videoDuration, 2760);
+      assert.equal(globals.commentCache.size, 0);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
+  });
+
+
+  await t.test('GET /api/v2/comment/:id/duration should use merged max duration', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    const originalIqiyiGetComments = IqiyiSource.prototype.getComments;
+    const originalYoukuGetComments = YoukuSource.prototype.getComments;
+
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(segmentFlag, true);
+      return {
+        type: 'qq',
+        segmentList: [
+          { type: 'qq', segment_start: 0, segment_end: 2760, url: 'mock-qq' }
+        ]
+      };
+    };
+
+    IqiyiSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(segmentFlag, true);
+      return {
+        type: 'qiyi',
+        segmentList: [
+          { type: 'qiyi', segment_start: 0, segment_end: 1200, url: 'mock-qiyi-1' },
+          { type: 'qiyi', segment_start: 1200, segment_end: 2682, url: 'mock-qiyi-2' }
+        ]
+      };
+    };
+
+    YoukuSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(segmentFlag, true);
+      return {
+        type: 'youku',
+        segmentList: [
+          { type: 'youku', segment_start: 0, segment_end: 1800, url: 'mock-youku-1' },
+          { type: 'youku', segment_start: 1800, segment_end: 3000, url: 'mock-youku-2' }
+        ]
+      };
+    };
+
+    try {
+      const episode = addEpisode(
+        'tencent:https://v.qq.com/x/cover/a/b.html$$$iqiyi:https://www.iqiyi.com/v_test.html$$$youku:https://v.youku.com/v_show/id_test.html',
+        '【qq＆qiyi＆youku】合并测试'
+      );
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
+      const res = await handleRequest(req);
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.videoDuration, 3000);
+      assert.equal(globals.commentCache.size, 0);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      IqiyiSource.prototype.getComments = originalIqiyiGetComments;
+      YoukuSource.prototype.getComments = originalYoukuGetComments;
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
   });
 
   // await t.test('Test ai cilent', async () => {

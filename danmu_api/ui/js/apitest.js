@@ -1184,6 +1184,98 @@ function jumpToEpisode() {
 }
 
 /* ========================================
+   时长估算工具
+   ======================================== */
+function fetchDanmuDuration(episodeId) {
+    const durationUrl = buildApiUrl('/api/v2/comment/' + episodeId + '/duration');
+    return fetch(durationUrl)
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            const seconds = Number((data && data.videoDuration) || 0);
+            return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+        })
+        .catch(() => 0);
+}
+
+function getValidDanmuTimes(comments) {
+    return comments
+        .map(comment => parseFloat((comment.p || '0').split(',')[0]))
+        .filter(time => Number.isFinite(time) && time >= 0)
+        .sort((a, b) => a - b);
+}
+
+function getPercentileValue(sortedValues, percentile) {
+    if (!sortedValues.length) return 0;
+    const safePercentile = Math.min(Math.max(percentile, 0), 1);
+    const index = Math.floor((sortedValues.length - 1) * safePercentile);
+    return sortedValues[index] || 0;
+}
+
+function getMedian(values) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function buildTailGapThreshold(sortedValues) {
+    if (sortedValues.length < 2) return 45;
+
+    const gaps = [];
+    const startIndex = Math.max(1, sortedValues.length - 80);
+    for (let i = startIndex; i < sortedValues.length; i++) {
+        const gap = sortedValues[i] - sortedValues[i - 1];
+        if (gap > 0) {
+            gaps.push(gap);
+        }
+    }
+
+    if (!gaps.length) return 45;
+
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const medianGap = getMedian(sortedGaps);
+    const p90Gap = getPercentileValue(sortedGaps, 0.9);
+    return Math.min(240, Math.max(45, medianGap * 12, p90Gap * 3));
+}
+
+function estimateVideoDurationFromComments(comments) {
+    const validTimes = getValidDanmuTimes(comments);
+    if (!validTimes.length) return 0;
+    if (validTimes.length < 200) return validTimes[validTimes.length - 1];
+
+    const p995Time = getPercentileValue(validTimes, 0.995);
+    const p998Time = getPercentileValue(validTimes, 0.998);
+    const gapThreshold = buildTailGapThreshold(validTimes);
+    const trimBaseline = p998Time + Math.max(90, gapThreshold * 2);
+    let endIndex = validTimes.length - 1;
+
+    while (endIndex > 0) {
+        let tailStartIndex = endIndex;
+        while (tailStartIndex > 0) {
+            const gap = validTimes[tailStartIndex] - validTimes[tailStartIndex - 1];
+            if (gap > gapThreshold) break;
+            tailStartIndex--;
+        }
+
+        const tailClusterSize = endIndex - tailStartIndex + 1;
+        const tailClusterSpan = validTimes[endIndex] - validTimes[tailStartIndex];
+        const previousGap = tailStartIndex > 0 ? validTimes[tailStartIndex] - validTimes[tailStartIndex - 1] : 0;
+        const isIsolatedTail = tailStartIndex > 0
+            && tailClusterSize <= 2
+            && tailClusterSpan <= 15
+            && previousGap > gapThreshold;
+
+        if (!isIsolatedTail || validTimes[endIndex] <= trimBaseline) {
+            break;
+        }
+
+        endIndex = tailStartIndex - 1;
+    }
+
+    return Math.max(validTimes[Math.max(endIndex, 0)] || 0, p995Time);
+}
+
+/* ========================================
    加载弹幕数据
    ======================================== */
 function loadDanmuData(episodeId, title) {
@@ -1242,50 +1334,38 @@ function loadDanmuData(episodeId, title) {
     // 保存当前 episodeId 用于导出
     currentEpisodeId = episodeId;
 
-    // 构建查询参数：默认 format=json，如果有其他参数也一并携带
     const queryParams = new URLSearchParams({ format: 'json' });
     const commentUrl = buildApiUrl('/api/v2/comment/' + episodeId + '?' + queryParams.toString());
-
-    fetch(commentUrl)
+    const commentRequest = fetch(commentUrl)
         .then(response => {
             if (!response.ok) {
                 throw new Error(\`HTTP error! status: \${response.status}\`);
             }
             return response.json();
-        })
-        .then(data => {
-            // 如果期间又触发了新的加载，直接丢弃本次结果
+        });
+    const durationRequest = fetchDanmuDuration(episodeId);
+
+    Promise.all([commentRequest, durationRequest])
+        .then(([data, durationSeconds]) => {
             if (mySeq !== activeDanmuLoadSeq) {
                 return;
             }
 
-            // 兼容多种返回格式
-            // 格式1: {count: 123, comments: [{p: "...", m: "..."}, ...]}
-            // 格式2: {success: true, comments: [...]}
-            // 格式3: 直接是数组 [{p: "...", m: "..."}, ...]
-            // 格式4: {code: 0, data: [...]}
-
             let comments = null;
 
             if (Array.isArray(data)) {
-                // 直接是数组格式
                 comments = data;
             } else if (data.comments && Array.isArray(data.comments)) {
-                // 标准格式: {comments: [...]} 或 {count: x, comments: [...]}
                 comments = data.comments;
             } else if (data.data && Array.isArray(data.data)) {
-                // {code: 0, data: [...]} 格式
                 comments = data.data;
             } else if (data.success && data.comments) {
-                // {success: true, comments: [...]} 格式
                 comments = data.comments;
             }
 
             if (comments && Array.isArray(comments)) {
-                // 标准化弹幕格式，确保每条弹幕都有 p 和 m 属性
                 currentDanmuData = comments.map(item => {
                     if (typeof item === 'string') {
-                        // 如果是纯文本，转换为标准格式
                         return { p: '0,1,25,16777215,0', m: item };
                     }
                     return {
@@ -1296,13 +1376,12 @@ function loadDanmuData(episodeId, title) {
 
                 addLog(\`✅ 成功加载 \${currentDanmuData.length} 条弹幕\`, 'success');
                 setDanmuExportEnabled(true);
-                displayDanmuData(title, currentDanmuData);
+                displayDanmuData(title, currentDanmuData, durationSeconds);
             } else {
                 throw new Error('弹幕数据格式错误或无弹幕数据');
             }
         })
         .catch(error => {
-            // 如果期间又触发了新的加载，直接丢弃本次错误
             if (mySeq !== activeDanmuLoadSeq) {
                 return;
             }
@@ -1329,34 +1408,27 @@ function loadDanmuData(episodeId, title) {
                 hideLoading();
             }
 
-            // 加载完成后更新 subtitle（成功场景会在 displayDanmuData 中覆盖为真实数量）
             if (!currentDanmuData) {
                 document.getElementById('danmu-subtitle').textContent = '加载完成（无可用弹幕数据）';
             }
         });
 }
 
-
 /* ========================================
    显示弹幕数据
    ======================================== */
-function displayDanmuData(title, comments) {
-    // 更新标题
+function displayDanmuData(title, comments, durationSeconds = 0) {
     document.getElementById('danmu-subtitle').textContent = \`共 \${comments.length} 条弹幕\`;
 
-    // 计算统计数据
-    const stats = calculateDanmuStats(comments);
+    const stats = calculateDanmuStats(comments, durationSeconds);
 
-    // 更新统计信息
     document.getElementById('danmu-total-count').textContent = stats.totalCount;
     document.getElementById('danmu-duration').textContent = stats.duration;
     document.getElementById('danmu-density').textContent = stats.density;
     document.getElementById('danmu-peak-time').textContent = stats.peakTime;
 
-    // 绘制热力图
     drawHeatmap(comments, stats.maxTime);
 
-    // 显示弹幕列表
     filteredDanmuData = comments;
     renderDanmuList(comments);
 }
@@ -1364,23 +1436,13 @@ function displayDanmuData(title, comments) {
 /* ========================================
    计算弹幕统计数据
    ======================================== */
-function calculateDanmuStats(comments) {
+function calculateDanmuStats(comments, durationSeconds = 0) {
     const totalCount = comments.length;
-
-    // 用 P99 代替最大值，避免极少数异常时间戳拉高整体时长
-    const validTimes = comments
-        .map(c => parseFloat((c.p || '0').split(',')[0]))
-        .filter(t => Number.isFinite(t) && t >= 0)
-        .sort((a, b) => a - b);
-    const p99Index = validTimes.length > 0 ? Math.floor((validTimes.length - 1) * 0.99) : 0;
-    const maxTime = validTimes.length > 0 ? validTimes[p99Index] : 0;
+    const maxTime = durationSeconds > 0 ? durationSeconds : estimateVideoDurationFromComments(comments);
     const duration = formatTime(maxTime);
 
-    // 计算密度（每分钟）
     const durationMinutes = maxTime / 60;
     const density = durationMinutes > 0 ? Math.round(totalCount / durationMinutes) : 0;
-
-    // 找出高能时刻（弹幕最密集的时间段）
     const peakTime = findPeakTime(comments, maxTime);
 
     return {

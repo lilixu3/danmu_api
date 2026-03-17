@@ -72,6 +72,69 @@ const PENDING_DANMAKU_REQUESTS = new Map();
 const PENDING_COMMENT_REQUESTS = new Map();
 let nodeDnsLookup = null;
 
+function buildDurationResponse(videoDuration = 0) {
+  return { videoDuration };
+}
+
+function extractDurationFromSegments(segmentResult) {
+  const segmentList = Array.isArray(segmentResult?.segmentList) ? segmentResult.segmentList : [];
+  if (segmentList.length < 2) return 0;
+
+  let duration = 0;
+  segmentList.forEach((segment) => {
+    const rawValue = Number(segment?.segment_end || 0);
+    if (!Number.isFinite(rawValue) || rawValue <= 0) return;
+    const normalized = rawValue > 6 * 60 * 60 ? rawValue / 1000 : rawValue;
+    if (normalized > duration) duration = normalized;
+  });
+
+  return duration > 0 ? duration : 0;
+}
+
+async function resolveUrlDuration(url) {
+  if (!/^https?:\/\//i.test(url)) return 0;
+
+  const response = await getCommentByUrl(url, 'json', true);
+  if (!response?.ok) return 0;
+
+  const segmentResult = await response.json();
+  return extractDurationFromSegments(segmentResult);
+}
+
+function extractMergedUrls(url) {
+  return String(url || '')
+    .split(MERGE_DELIMITER)
+    .map((part) => {
+      const firstColonIndex = part.indexOf(':');
+      if (firstColonIndex === -1) return part.trim();
+      return part.slice(firstColonIndex + 1).trim();
+    })
+    .filter(Boolean);
+}
+
+export async function getCommentDuration(path) {
+  const parts = String(path || '').split('/');
+  const commentId = parseInt(parts[parts.length - 2], 10);
+  if (!Number.isFinite(commentId)) {
+    return jsonResponse(buildDurationResponse(), 400);
+  }
+
+  const url = findUrlById(commentId);
+  if (!url) {
+    return jsonResponse(buildDurationResponse(), 404);
+  }
+
+  try {
+    const targetUrls = url.includes(MERGE_DELIMITER) ? extractMergedUrls(url) : [url];
+    const durations = await Promise.all(targetUrls.map(resolveUrlDuration));
+    const videoDuration = durations.reduce((maxValue, currentValue) => Math.max(maxValue, currentValue || 0), 0);
+    return jsonResponse(buildDurationResponse(videoDuration));
+  } catch (error) {
+    log('warn', '[Duration] 获取时长失败: ' + error.message);
+    return jsonResponse(buildDurationResponse());
+  }
+}
+
 function buildUrlValidationError(errorMessage) {
   return jsonResponse(
     { errorCode: 400, success: false, errorMessage, count: 0, comments: [] },
