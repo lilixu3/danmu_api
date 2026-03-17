@@ -71,6 +71,200 @@ const PENDING_DANMAKU_REQUESTS = new Map();
 // 用于弹幕请求(按集ID/URL)的去重Map
 const PENDING_COMMENT_REQUESTS = new Map();
 let nodeDnsLookup = null;
+const TRUSTED_SEGMENT_DURATION_TYPES = new Set([
+  'qq',
+  'qiyi',
+  'imgo',
+  'youku',
+  'migu',
+  'xigua',
+  'maiduidui',
+  'leshi',
+  'acfun'
+]);
+
+const SEGMENT_DURATION_UNIT_DIVISOR = {
+  xigua: 1000,
+};
+
+const DURATION_SOURCE_ALIASES = {
+  tencent: 'qq',
+  qq: 'qq',
+  iqiyi: 'qiyi',
+  qiyi: 'qiyi',
+  imgo: 'imgo',
+  mango: 'imgo',
+  bilibili: 'bilibili',
+  bilibili1: 'bilibili',
+  bilibili2: 'bilibili',
+  youku: 'youku',
+  migu: 'migu',
+  sohu: 'sohu',
+  leshi: 'leshi',
+  xigua: 'xigua',
+  douyin: 'xigua',
+  ixigua: 'xigua',
+  maiduidui: 'maiduidui',
+  acfun: 'acfun',
+};
+
+function extractCommentPlatform(title) {
+  return title ? (title.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
+}
+
+function buildDurationResponse(videoDuration = 0, source = '', confidence = 'none') {
+  return { videoDuration, source, confidence };
+}
+
+function normalizeSegmentDuration(type, segmentEnd) {
+  const value = Number(segmentEnd || 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const divisor = SEGMENT_DURATION_UNIT_DIVISOR[type] || 1;
+  return value / divisor;
+}
+
+function extractDurationFromSegments(segmentResult, source) {
+  const directDuration = Number(segmentResult?.videoDuration || segmentResult?.meta?.videoDuration || 0);
+  if (Number.isFinite(directDuration) && directDuration > 0) {
+    return buildDurationResponse(directDuration, source || 'segment', 'exact');
+  }
+
+  const segmentList = Array.isArray(segmentResult?.segmentList) ? segmentResult.segmentList : [];
+  if (segmentList.length === 0) return buildDurationResponse();
+
+  const type = String(segmentResult?.type || segmentList[0]?.type || '').trim();
+  if (!TRUSTED_SEGMENT_DURATION_TYPES.has(type)) return buildDurationResponse();
+
+  let duration = 0;
+  segmentList.forEach(segment => {
+    const normalized = normalizeSegmentDuration(type, segment?.segment_end);
+    if (normalized > duration) duration = normalized;
+  });
+
+  if (!(duration > 0)) return buildDurationResponse();
+  return buildDurationResponse(duration, source || `segment:${type}`, 'high');
+}
+
+function normalizeDurationSource(explicitSource, url, plat) {
+  const normalizedSource = DURATION_SOURCE_ALIASES[String(explicitSource || '').trim().toLowerCase()];
+  if (normalizedSource) return normalizedSource;
+
+  if (url.includes('.qq.com')) return 'qq';
+  if (url.includes('.iqiyi.com')) return 'qiyi';
+  if (url.includes('.mgtv.com')) return 'imgo';
+  if (url.includes('.bilibili.com') || url.includes('b23.tv')) return 'bilibili';
+  if (url.includes('.youku.com')) return 'youku';
+  if (url.includes('.miguvideo.com')) return 'migu';
+  if (url.includes('.sohu.com')) return 'sohu';
+  if (url.includes('.le.com')) return 'leshi';
+  if (url.includes('.douyin.com') || url.includes('.ixigua.com')) return 'xigua';
+  if (url.includes('.mddcloud.com.cn')) return 'maiduidui';
+  if (url.startsWith('acfun://') || plat === 'acfun') return 'acfun';
+  return '';
+}
+
+async function resolveMergedCommentDurationInfo(url, plat) {
+  const parts = String(url || '').split(MERGE_DELIMITER);
+  const durationTasks = parts.map(async (part) => {
+    const firstColonIndex = part.indexOf(':');
+    if (firstColonIndex === -1) return buildDurationResponse();
+
+    const sourceName = part.substring(0, firstColonIndex).trim().toLowerCase();
+    const realId = part.substring(firstColonIndex + 1).trim();
+    if (!sourceName || !realId) return buildDurationResponse();
+
+    const normalizedSource = normalizeDurationSource(sourceName, realId, plat);
+    return resolveCommentDurationInfo(realId, normalizedSource || plat, normalizedSource);
+  });
+
+  const durationResults = (await Promise.all(durationTasks)).filter(item => Number(item?.videoDuration || 0) > 0);
+  if (durationResults.length === 0) return buildDurationResponse();
+
+  const mergedDuration = durationResults.reduce((maxItem, currentItem) => {
+    if (currentItem.videoDuration > maxItem.videoDuration) return currentItem;
+    return maxItem;
+  }, durationResults[0]);
+
+  return buildDurationResponse(
+    mergedDuration.videoDuration,
+    `merge:max(${mergedDuration.source})`,
+    mergedDuration.confidence || 'high'
+  );
+}
+
+async function resolveCommentDurationInfo(url, plat, explicitSource = '') {
+  if (!url) return buildDurationResponse();
+  if (url.includes(MERGE_DELIMITER)) {
+    return resolveMergedCommentDurationInfo(url, plat);
+  }
+
+  const durationSource = normalizeDurationSource(explicitSource, url, plat);
+
+  try {
+    if (durationSource === 'qq') {
+      return extractDurationFromSegments(await tencentSource.getComments(url, plat, true), 'segment:qq');
+    }
+    if (durationSource === 'qiyi') {
+      return extractDurationFromSegments(await iqiyiSource.getComments(url, plat, true), 'segment:qiyi');
+    }
+    if (durationSource === 'imgo') {
+      return extractDurationFromSegments(await mangoSource.getComments(url, plat, true), 'segment:imgo');
+    }
+    if (durationSource === 'bilibili') {
+      let resolvedUrl = url;
+      if (resolvedUrl.includes('b23.tv')) {
+        resolvedUrl = await bilibiliSource.resolveB23Link(resolvedUrl);
+      }
+      const videoInfo = await bilibiliSource._extractVideoInfo(resolvedUrl);
+      const duration = Number(videoInfo?.duration || 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        return buildDurationResponse(duration, 'bilibili.duration', 'exact');
+      }
+      return buildDurationResponse();
+    }
+    if (durationSource === 'youku') {
+      return extractDurationFromSegments(await youkuSource.getComments(url, plat, true), 'segment:youku');
+    }
+    if (durationSource === 'migu') {
+      return extractDurationFromSegments(await miguSource.getComments(url, plat, true), 'segment:migu');
+    }
+    if (durationSource === 'leshi') {
+      return extractDurationFromSegments(await leshiSource.getComments(url, plat, true), 'segment:leshi');
+    }
+    if (durationSource === 'xigua') {
+      return extractDurationFromSegments(await xiguaSource.getComments(url, plat, true), 'segment:xigua');
+    }
+    if (durationSource === 'maiduidui') {
+      return extractDurationFromSegments(await maiduiduiSource.getComments(url, plat, true), 'segment:maiduidui');
+    }
+    if (durationSource === 'acfun') {
+      return extractDurationFromSegments(await acfunSource.getComments(url, plat, true), 'segment:acfun');
+    }
+  } catch (error) {
+    log('warn', `[Duration] 获取时长失败: ${error.message}`);
+  }
+
+  return buildDurationResponse();
+}
+
+export async function getCommentDuration(path) {
+  const parts = String(path || '').split('/');
+  const commentId = parseInt(parts[parts.length - 2], 10);
+  if (!Number.isFinite(commentId)) {
+    return jsonResponse(buildDurationResponse(), 400);
+  }
+
+  const url = findUrlById(commentId);
+  const title = findTitleById(commentId);
+  const plat = extractCommentPlatform(title);
+
+  if (!url) {
+    return jsonResponse(buildDurationResponse(), 404);
+  }
+
+  const durationInfo = await resolveCommentDurationInfo(url, plat);
+  return jsonResponse(durationInfo);
+}
 
 function buildUrlValidationError(errorMessage) {
   return jsonResponse(
