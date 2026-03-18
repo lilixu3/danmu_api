@@ -38,6 +38,244 @@ function parseCacheContent(raw) {
     return v;
 }
 
+
+function ensureDetailCaches() {
+    if (!(globals.animeDetailsCache instanceof Map)) {
+        globals.animeDetailsCache = new Map();
+    }
+    if (!(globals.episodeDetailsCache instanceof Map)) {
+        globals.episodeDetailsCache = new Map();
+    }
+}
+
+function getDetailCacheMinutes() {
+    const cacheMinutes = Number(globals.searchCacheMinutes);
+    return Number.isFinite(cacheMinutes) && cacheMinutes > 0 ? cacheMinutes : 3;
+}
+
+function normalizeAnimeId(idParam) {
+    const rawId = String(idParam ?? '');
+    if (!/^\d+$/.test(rawId)) {
+        return null;
+    }
+
+    return String(parseInt(rawId, 10));
+}
+
+function getAnimeLookupKeys(idParam) {
+    const rawId = String(idParam ?? '');
+    const keys = [];
+    const normalizedAnimeId = normalizeAnimeId(rawId);
+
+    if (normalizedAnimeId !== null) {
+        keys.push(`anime:${normalizedAnimeId}`);
+    }
+
+    if (rawId !== '') {
+        keys.push(`bangumi:${rawId}`);
+    }
+
+    return [...new Set(keys)];
+}
+
+function getAnimePrimaryCacheKey(anime) {
+    if (anime?.bangumiId !== undefined && anime?.bangumiId !== null && anime?.bangumiId !== '') {
+        return `bangumi:${String(anime.bangumiId)}`;
+    }
+
+    return `anime:${String(anime?.animeId)}`;
+}
+
+function isDetailEntryValid(cacheMap, cacheKey) {
+    const entry = cacheMap.get(cacheKey);
+    if (!entry) {
+        return null;
+    }
+
+    const cacheAgeMinutes = (Date.now() - entry.timestamp) / (1000 * 60);
+    if (cacheAgeMinutes > getDetailCacheMinutes()) {
+        cacheMap.delete(cacheKey);
+        return null;
+    }
+
+    return entry;
+}
+
+function cacheAnimeDetail(anime, timestamp = Date.now()) {
+    if (!anime) {
+        return null;
+    }
+
+    ensureDetailCaches();
+
+    const animeCopy = Anime.fromJson(anime);
+    const entry = { anime: animeCopy, timestamp };
+
+    globals.animeDetailsCache.set(`anime:${String(animeCopy.animeId)}`, entry);
+    if (animeCopy.bangumiId !== undefined && animeCopy.bangumiId !== null && animeCopy.bangumiId !== '') {
+        globals.animeDetailsCache.set(`bangumi:${String(animeCopy.bangumiId)}`, entry);
+    }
+
+    (animeCopy.links || []).forEach((link, linkIndex) => {
+        globals.episodeDetailsCache.set(String(link.id), {
+            anime: animeCopy,
+            link,
+            linkIndex,
+            timestamp
+        });
+    });
+
+    return animeCopy;
+}
+
+function cacheAnimeDetails(animes, timestamp = Date.now()) {
+    if (!Array.isArray(animes)) {
+        return;
+    }
+
+    animes.forEach(anime => {
+        cacheAnimeDetail(anime, timestamp);
+    });
+}
+
+function getAnimeFromDetailCache(idParam) {
+    ensureDetailCaches();
+
+    for (const cacheKey of getAnimeLookupKeys(idParam)) {
+        const entry = isDetailEntryValid(globals.animeDetailsCache, cacheKey);
+        if (entry?.anime) {
+            return entry.anime;
+        }
+    }
+
+    return null;
+}
+
+function getEpisodeDetailFromCache(commentId) {
+    ensureDetailCaches();
+    const entry = isDetailEntryValid(globals.episodeDetailsCache, String(commentId));
+    return entry || null;
+}
+
+function matchesAnimeId(anime, targetId) {
+    if (!anime) {
+        return false;
+    }
+
+    const rawId = String(targetId ?? '');
+    const normalizedAnimeId = normalizeAnimeId(rawId);
+    if (normalizedAnimeId !== null && String(anime.animeId) === normalizedAnimeId) {
+        return true;
+    }
+
+    return String(anime.bangumiId) === rawId;
+}
+
+function findAnimeByIdFromRuntime(idParam) {
+    const cachedAnime = getAnimeFromDetailCache(idParam);
+    if (cachedAnime) {
+        return cachedAnime;
+    }
+
+    for (const anime of globals.animes) {
+        if (matchesAnimeId(anime, idParam)) {
+            return cacheAnimeDetail(anime);
+        }
+    }
+
+    return null;
+}
+
+function findAnimeByIdFromSearchCache(idParam) {
+    for (const [keyword] of globals.searchCache.entries()) {
+        if (!isSearchCacheValid(keyword)) {
+            continue;
+        }
+
+        const cached = globals.searchCache.get(keyword);
+        if (!cached || !Array.isArray(cached.details)) {
+            continue;
+        }
+
+        const matchedAnime = cached.details.find(anime => matchesAnimeId(anime, idParam));
+        if (matchedAnime) {
+            return cacheAnimeDetail(matchedAnime, cached.timestamp);
+        }
+    }
+
+    return null;
+}
+
+function collectMatchedSearchDetails(results) {
+    if (!Array.isArray(results) || results.length === 0) {
+        return [];
+    }
+
+    const matchedDetails = new Map();
+    for (const anime of results) {
+        if (!anime) {
+            continue;
+        }
+
+        const detailAnime = findAnimeByIdFromRuntime(anime.bangumiId) || findAnimeByIdFromRuntime(anime.animeId);
+        if (!detailAnime) {
+            continue;
+        }
+
+        matchedDetails.set(getAnimePrimaryCacheKey(detailAnime), detailAnime);
+    }
+
+    return Array.from(matchedDetails.values());
+}
+
+function findCachedAnimeLinkByCommentId(commentId) {
+    const cachedDetail = getEpisodeDetailFromCache(commentId);
+    if (cachedDetail) {
+        return cachedDetail;
+    }
+
+    for (const anime of globals.animes) {
+        if (!anime || !Array.isArray(anime.links)) {
+            continue;
+        }
+
+        const linkIndex = anime.links.findIndex(link => String(link.id) === String(commentId));
+        if (linkIndex !== -1) {
+            const animeCopy = cacheAnimeDetail(anime);
+            return { anime: animeCopy, link: animeCopy.links[linkIndex], linkIndex, timestamp: Date.now() };
+        }
+    }
+
+    for (const [keyword] of globals.searchCache.entries()) {
+        if (!isSearchCacheValid(keyword)) {
+            continue;
+        }
+
+        const cached = globals.searchCache.get(keyword);
+        if (!cached || !Array.isArray(cached.details)) {
+            continue;
+        }
+
+        for (const anime of cached.details) {
+            if (!anime || !Array.isArray(anime.links)) {
+                continue;
+            }
+
+            const linkIndex = anime.links.findIndex(link => String(link.id) === String(commentId));
+            if (linkIndex !== -1) {
+                const animeCopy = cacheAnimeDetail(anime, cached.timestamp);
+                return { anime: animeCopy, link: animeCopy.links[linkIndex], linkIndex, timestamp: cached.timestamp };
+            }
+        }
+    }
+
+    return null;
+}
+
+export function findAnimeById(idParam) {
+    return findAnimeByIdFromRuntime(idParam) || findAnimeByIdFromSearchCache(idParam);
+}
+
 // 检查搜索缓存是否有效（未过期）
 export function isSearchCacheValid(keyword) {
     if (!globals.searchCache.has(keyword)) {
@@ -62,7 +300,9 @@ export function isSearchCacheValid(keyword) {
 export function getSearchCache(keyword) {
     if (isSearchCacheValid(keyword)) {
         log("info", `Using search cache for "${keyword}"`);
-        return globals.searchCache.get(keyword).results;
+        const cached = globals.searchCache.get(keyword);
+        cacheAnimeDetails(cached.details, cached.timestamp);
+        return cached.results;
     }
     return null;
 }
@@ -79,6 +319,10 @@ function enforceCacheMaxItems(cacheMap, maxItems, cacheName) {
 
 // 设置搜索缓存
 export function setSearchCache(keyword, results) {
+    const timestamp = Date.now();
+    const details = collectMatchedSearchDetails(results);
+    cacheAnimeDetails(details, timestamp);
+
     // 先删除再写入，确保命中的 key 会刷新到最新顺序
     if (globals.searchCache.has(keyword)) {
         globals.searchCache.delete(keyword);
@@ -86,7 +330,8 @@ export function setSearchCache(keyword, results) {
 
     globals.searchCache.set(keyword, {
         results: results,
-        timestamp: Date.now()
+        details: details,
+        timestamp
     });
     enforceCacheMaxItems(globals.searchCache, Number(globals.searchCacheMaxItems), 'search');
 
@@ -173,23 +418,61 @@ export function removeEpisodeByUrl(url) {
 
 // 根据 ID 查找 URL
 export function findUrlById(id) {
-    const episode = globals.episodeIds.find(episode => episode.id === id);
+    const episode = globals.episodeIds.find(episode => String(episode.id) === String(id));
     if (episode) {
         log("info", `Found URL for ID ${id}: ${episode.url}`);
         return episode.url;
     }
+
+    const cachedDetail = findCachedAnimeLinkByCommentId(id);
+    if (cachedDetail?.link?.url) {
+        log("info", `Found URL for ID ${id} from detail cache: ${cachedDetail.link.url}`);
+        return cachedDetail.link.url;
+    }
+
     log("error", `No URL found for ID: ${id}`);
     return null;
 }
 
 // 根据 ID 查找 TITLE
 export function findTitleById(id) {
-    const episode = globals.episodeIds.find(episode => episode.id === id);
+    const episode = globals.episodeIds.find(episode => String(episode.id) === String(id));
     if (episode) {
         log("info", `Found TITLE for ID ${id}: ${episode.title}`);
         return episode.title;
     }
+
+    const cachedDetail = findCachedAnimeLinkByCommentId(id);
+    if (cachedDetail?.link?.title) {
+        log("info", `Found TITLE for ID ${id} from detail cache: ${cachedDetail.link.title}`);
+        return cachedDetail.link.title;
+    }
+
     log("error", `No TITLE found for ID: ${id}`);
+    return null;
+}
+
+// 根据 ID 查找 animeTitle
+export function findAnimeTitleById(id) {
+    for (const anime of globals.animes) {
+        if (!anime.links || !Array.isArray(anime.links)) {
+            continue;
+        }
+
+        const match = anime.links.find(link => String(link.id) === String(id));
+        if (match) {
+            log("info", `Found animeTitle for ID ${id}: ${anime.animeTitle}`);
+            return anime.animeTitle;
+        }
+    }
+
+    const cachedDetail = findCachedAnimeLinkByCommentId(id);
+    if (cachedDetail?.anime?.animeTitle) {
+        log("info", `Found animeTitle for ID ${id} from detail cache: ${cachedDetail.anime.animeTitle}`);
+        return cachedDetail.anime.animeTitle;
+    }
+
+    log("error", `No animeTitle found for ID: ${id}`);
     return null;
 }
 
@@ -218,6 +501,9 @@ export function addAnime(anime) {
 
         // 创建新的 anime 副本
         const animeCopy = Anime.fromJson({ ...anime, links: newLinks });
+
+        // 统一写入详情索引，避免依赖全局热缓存是否被裁剪
+        cacheAnimeDetail(animeCopy);
 
         // 检查是否已存在相同 animeId 的 anime
         const existingAnimeIndex = globals.animes.findIndex(a => a.animeId === anime.animeId);
@@ -306,9 +592,14 @@ export function storeAnimeIdsToMap(curAnimes, key) {
 
 // 根据给定的 commentId 查找对应的 animeId
 export function findAnimeIdByCommentId(commentId) {
+  const cachedDetail = findCachedAnimeLinkByCommentId(commentId);
+  if (cachedDetail?.anime) {
+    return [cachedDetail.anime.animeId, cachedDetail.anime.source];
+  }
+
   for (const anime of globals.animes) {
     for (const link of anime.links) {
-      if (link.id === commentId) {
+      if (String(link.id) === String(commentId)) {
         return [anime.animeId, anime.source];
       }
     }

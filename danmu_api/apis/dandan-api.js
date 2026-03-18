@@ -5,9 +5,9 @@ import { simplized } from '../utils/zh-util.js';
 import { setRedisKey, updateRedisCaches } from "../utils/redis-util.js";
 import { setLocalRedisKey, updateLocalRedisCaches } from "../utils/local-redis-util.js";
 import {
-    setCommentCache, addAnime, findAnimeIdByCommentId, findTitleById, findUrlById, getCommentCache, getPreferAnimeId,
-    getSearchCache, removeEarliestAnime, setPreferByAnimeId, setSearchCache, storeAnimeIdsToMap, writeCacheToFile,
-    updateLocalCaches
+    setCommentCache, addAnime, findAnimeById, findAnimeIdByCommentId, findAnimeTitleById, findTitleById, findUrlById,
+    getCommentCache, getPreferAnimeId, getSearchCache, removeEarliestAnime, setPreferByAnimeId, setSearchCache,
+    storeAnimeIdsToMap, writeCacheToFile, updateLocalCaches
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
@@ -327,6 +327,7 @@ function buildEpisodesFromAnimeLinks(anime) {
 
   if (globals.enableAnimeEpisodeFilter) {
     episodesList = episodesList.filter(ep => !globals.episodeTitleFilter.test(ep.episodeTitle));
+    log("info", `[getBangumi] Episode filter enabled. Filtered episodes: ${episodesList.length}/${anime.links.length}`);
     episodesList = episodesList.map((ep, index) => ({
       ...ep,
       episodeNumber: `${index + 1}`
@@ -336,15 +337,58 @@ function buildEpisodesFromAnimeLinks(anime) {
   return filterSameEpisodeTitle(episodesList);
 }
 
+function buildBangumiData(anime, idParam = "") {
+  const targetId = idParam || anime?.bangumiId || anime?.animeId;
+  log("info", `Fetched details for anime ID: ${targetId}`);
+
+  const episodesList = buildEpisodesFromAnimeLinks(anime);
+  if (episodesList.length === 0) {
+    log("warn", `[getBangumi] No valid episodes after filtering for anime ID ${targetId}`);
+    return {
+      errorCode: 404,
+      success: false,
+      errorMessage: "No valid episodes after filtering",
+      bangumi: null
+    };
+  }
+
+  const bangumi = Bangumi.fromJson({
+    animeId: anime.animeId,
+    bangumiId: anime.bangumiId,
+    animeTitle: anime.animeTitle,
+    imageUrl: anime.imageUrl,
+    isOnAir: true,
+    airDay: 1,
+    isFavorited: anime.isFavorited,
+    rating: anime.rating,
+    type: anime.type,
+    typeDescription: anime.typeDescription,
+    seasons: [
+      {
+        id: `season-${anime.animeId}`,
+        airDate: anime.startDate,
+        name: "Season 1",
+        episodeCount: anime.episodeCount,
+      },
+    ],
+    episodes: episodesList,
+  });
+
+  return {
+    errorCode: 0,
+    success: true,
+    errorMessage: "",
+    bangumi
+  };
+}
+
 function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnimeId, preferSource, preferredPlatform }) {
   if (!preferAnimeId || !globals.rememberLastSelect) return { resAnime: null, resEpisode: null };
 
-  const targetAnime = (globals.animes || []).find((anime) => {
-    const idMatched = String(anime.animeId) === String(preferAnimeId) || String(anime.bangumiId) === String(preferAnimeId);
-    if (!idMatched) return false;
-    if (preferSource && anime.source && anime.source !== preferSource) return false;
-    return true;
-  });
+  const targetAnime = findAnimeById(preferAnimeId);
+  if (targetAnime && preferSource && targetAnime.source && targetAnime.source !== preferSource) {
+    return { resAnime: null, resEpisode: null };
+  }
 
   if (!targetAnime || !Array.isArray(targetAnime.links) || targetAnime.links.length === 0) {
     return { resAnime: null, resEpisode: null };
@@ -687,7 +731,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
         continue; // 跳过该动漫
       }
 
-      const animeData = globals.animes.find(a => a.animeId === anime.animeId);
+      const animeData = findAnimeById(anime.animeId) || findAnimeById(anime.bangumiId);
       if (animeData && animeData.links) {
         let episodesList = animeData.links.map((link, index) => ({
           episodeId: link.id,
@@ -1379,13 +1423,9 @@ export async function matchAnime(url, req) {
       const rawAnimes = Array.isArray(searchData?.animes) ? searchData.animes : [];
       log("info", `[matchAnime] 搜索候选数量: ${rawAnimes.length}`);
 
-      // 过滤失效候选，避免列表里有条目但全局池中已不存在
-      const globalAnimeIds = new Set((globals.animes || []).map(item => String(item?.animeId)));
-      const globalBangumiIds = new Set((globals.animes || []).map(item => String(item?.bangumiId)));
+      // 过滤失效候选，避免列表里有条目但详情索引已不存在
       const validAnimes = rawAnimes.filter(anime => {
-        const animeId = String(anime?.animeId ?? '');
-        const bangumiId = String(anime?.bangumiId ?? '');
-        return globalAnimeIds.has(animeId) || globalBangumiIds.has(bangumiId);
+        return Boolean(findAnimeById(anime?.animeId) || findAnimeById(anime?.bangumiId));
       });
       if (validAnimes.length !== rawAnimes.length) {
         log("info", `[matchAnime] 已过滤失效候选: ${rawAnimes.length} -> ${validAnimes.length}`);
@@ -1527,9 +1567,16 @@ export async function searchEpisodes(url) {
 
   // 遍历所有找到的动漫，获取它们的集数信息
   for (const animeItem of searchData.animes) {
-    const bangumiUrl = new URL(`/bangumi/${animeItem.bangumiId}`, url.origin);
-    const bangumiRes = await getBangumi(bangumiUrl.pathname);
-    const bangumiData = await bangumiRes.json();
+    const detailAnime = findAnimeById(animeItem.bangumiId) || findAnimeById(animeItem.animeId);
+
+    let bangumiData = null;
+    if (detailAnime) {
+      bangumiData = buildBangumiData(detailAnime, animeItem.bangumiId || animeItem.animeId);
+    } else {
+      const bangumiUrl = new URL(`/bangumi/${animeItem.bangumiId || animeItem.animeId}`, url.origin);
+      const bangumiRes = await getBangumi(bangumiUrl.pathname);
+      bangumiData = await bangumiRes.json();
+    }
 
     if (bangumiData.success && bangumiData.bangumi && bangumiData.bangumi.episodes) {
       let filteredEpisodes = bangumiData.bangumi.episodes;
@@ -1584,19 +1631,7 @@ export async function searchEpisodes(url) {
 // Extracted function for GET /api/v2/bangumi/:animeId
 export async function getBangumi(path) {
   const idParam = path.split("/").pop();
-  const animeId = parseInt(idParam);
-
-  // 尝试通过 animeId(数字) 或 bangumiId(字符串) 查找
-  let anime;
-  if (!isNaN(animeId)) {
-    // 如果是有效数字,先尝试通过 animeId 查找
-    anime = globals.animes.find((a) => a.animeId.toString() === animeId.toString());
-  }
-
-  // 如果通过 animeId 未找到,尝试通过 bangumiId 查找
-  if (!anime) {
-    anime = globals.animes.find((a) => a.bangumiId === idParam);
-  }
+  const anime = findAnimeById(idParam);
 
   if (!anime) {
     log("error", `Anime with ID ${idParam} not found`);
@@ -1605,72 +1640,13 @@ export async function getBangumi(path) {
       404
     );
   }
-  log("info", `Fetched details for anime ID: ${idParam}`);
 
-  // 构建 episodes 列表
-  let episodesList = [];
-  for (let i = 0; i < anime.links.length; i++) {
-    const link = anime.links[i];
-    episodesList.push({
-      seasonId: `season-${anime.animeId}`,
-      episodeId: link.id,
-      episodeTitle: `${link.title}`,
-      episodeNumber: `${i+1}`,
-      airDate: anime.startDate,
-    });
+  const bangumiData = buildBangumiData(anime, idParam);
+  if (!bangumiData.success && bangumiData.errorCode === 404) {
+    return jsonResponse(bangumiData, 404);
   }
 
-  // 如果启用了集标题过滤，则应用过滤
-  if (globals.enableAnimeEpisodeFilter) {
-    episodesList = episodesList.filter(episode => {
-      return !globals.episodeTitleFilter.test(episode.episodeTitle);
-    });
-    log("info", `[getBangumi] Episode filter enabled. Filtered episodes: ${episodesList.length}/${anime.links.length}`);
-
-    // 如果过滤后没有有效剧集，返回错误
-    if (episodesList.length === 0) {
-      log("warn", `[getBangumi] No valid episodes after filtering for anime ID ${idParam}`);
-      return jsonResponse(
-        { errorCode: 404, success: false, errorMessage: "No valid episodes after filtering", bangumi: null },
-        404
-      );
-    }
-
-    // 重新排序episodeNumber
-    episodesList = episodesList.map((episode, index) => ({
-      ...episode,
-      episodeNumber: `${index+1}`
-    }));
-  }
-
-  const bangumi = Bangumi.fromJson({
-    animeId: anime.animeId,
-    bangumiId: anime.bangumiId,
-    animeTitle: anime.animeTitle,
-    imageUrl: anime.imageUrl,
-    isOnAir: true,
-    airDay: 1,
-    isFavorited: anime.isFavorited,
-    rating: anime.rating,
-    type: anime.type,
-    typeDescription: anime.typeDescription,
-    seasons: [
-      {
-        id: `season-${anime.animeId}`,
-        airDate: anime.startDate,
-        name: "Season 1",
-        episodeCount: anime.episodeCount,
-      },
-    ],
-    episodes: episodesList,
-  });
-
-  return jsonResponse({
-    errorCode: 0,
-    success: true,
-    errorMessage: "",
-    bangumi: bangumi
-  });
+  return jsonResponse(bangumiData);
 }
 
 /**
@@ -1833,7 +1809,7 @@ export async function getComment(path, queryFormat, segmentFlag) {
   let title = findTitleById(commentId);
   let plat = title ? (title.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
   const [animeId, source] = findAnimeIdByCommentId(commentId);
-  const animeTitle = animeId ? (globals.animes.find(anime => anime.animeId === animeId)?.animeTitle || '') : '';
+  const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeById(animeId)?.animeTitle || '') : '');
   const offsetSeconds = resolveTimelineOffsetSeconds({
     animeTitle,
     episodeTitle: title,

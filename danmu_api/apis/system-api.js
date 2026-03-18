@@ -184,9 +184,11 @@ export async function handleClearCache() {
     globals.reqRecords = []; // 清空请求记录
     globals.todayReqNum = 0; // 重置今日请求次数
     
-    // 清理搜索和弹幕缓存
+    // 清理搜索、详情和弹幕缓存
     globals.searchCache = new Map();
     globals.commentCache = new Map();
+    globals.animeDetailsCache = new Map();
+    globals.episodeDetailsCache = new Map();
     globals.requestHistory = new Map();
     
     log("info", `[server] Memory cache cleared successfully`);
@@ -233,6 +235,8 @@ export async function handleClearCache() {
       lastSelectMap: 0,
       searchCache: 0,
       commentCache: 0,
+      animeDetailsCache: 0,
+      episodeDetailsCache: 0,
       requestHistory: 0,
       reqRecords: 0,
       todayReqNum: 0

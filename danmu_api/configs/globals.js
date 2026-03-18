@@ -13,7 +13,7 @@ export const Globals = {
   accessedEnvVars: {},
 
   // 静态常量
-  VERSION: '1.17.1',
+  VERSION: '1.17.2',
   MAX_LOGS: 1000, // 日志存储，最多保存 1000 行
   MAX_ANIMES: 100,
   MAX_RECORDS: 100, // 请求记录最大数量
@@ -24,6 +24,8 @@ export const Globals = {
   episodeNum: 10001, // 全局变量，用于自增 ID
   logBuffer: [],
   requestHistory: new Map(), // 记录每个 IP 地址的请求历史
+  animeDetailsCache: new Map(), // 番剧详情索引缓存，按 animeId 和 bangumiId 查找
+  episodeDetailsCache: new Map(), // 剧集详情索引缓存，按 commentId 查找
   localCacheValid: false, // 本地缓存是否生效
   localCacheInitialized: false, // 本地缓存是否已初始化
   localRedisCacheInitialized: false, // 本地Redis缓存是否已初始化
@@ -42,7 +44,7 @@ export const Globals = {
     reqRecords: null,
     todayReqNum: null
   },
-  searchCache: new Map(), // 搜索结果缓存，存储格式：{ keyword: { results, timestamp } }
+  searchCache: new Map(), // 搜索结果缓存，存储格式：{ keyword: { results, details, timestamp } }
   commentCache: new Map(), // 弹幕缓存，存储格式：{ videoUrl: { comments, timestamp } }
   deployPlatform: '', // 部署平台配置
   currentToken: '', // 标识当前可用token
