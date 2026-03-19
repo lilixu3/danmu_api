@@ -22,6 +22,40 @@ function linkSignal(externalSignal, internalController) {
   }
 }
 
+let cachedNodeFetchPromise = null;
+let cachedPakoPromise = null;
+
+async function getFetchImpl() {
+  if (typeof WebAssembly !== 'undefined' && typeof globalThis.fetch === 'function') {
+    return globalThis.fetch.bind(globalThis);
+  }
+
+  if (!cachedNodeFetchPromise) {
+    cachedNodeFetchPromise = import('node-fetch').then(mod => mod.default ?? mod);
+  }
+
+  return cachedNodeFetchPromise;
+}
+
+async function inflateDeflateBuffer(arrayBuffer) {
+  if (!cachedPakoPromise) {
+    cachedPakoPromise = import('pako').then(mod => mod.default ?? mod);
+  }
+
+  const pako = await cachedPakoPromise;
+  const inflated = pako.inflate(new Uint8Array(arrayBuffer));
+
+  if (typeof TextDecoder !== 'undefined') {
+    return new TextDecoder('utf-8').decode(inflated);
+  }
+
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(inflated).toString('utf-8');
+  }
+
+  throw new Error('TextDecoder is not available for pako decompression output');
+}
+
 function getHttpStatusFromError(error) {
   if (!error || typeof error.message !== 'string') return null;
   const match = error.message.match(/HTTP error!\s*status:\s*(\d+)/i);
@@ -106,7 +140,8 @@ export async function httpGet(url, options = {}) {
         fetchOptions.redirect = options.redirect;
       }
 
-      const response = await fetch(url, fetchOptions);
+      const fetchImpl = await getFetchImpl();
+      const response = await fetchImpl(url, fetchOptions);
 
       clearTimeout(timeoutId);
 
@@ -159,6 +194,15 @@ export async function httpGet(url, options = {}) {
             decodedData = await decompressedStream.text();
           } catch (e) {
             log("error", "[请求模拟] 解压缩失败", e);
+            throw e;
+          }
+        } else if (typeof WebAssembly === 'undefined') {
+          // iOS 本地构建环境：使用纯 JS 解压
+          log("info", "iOS环境降级使用pako解压");
+          try {
+            decodedData = await inflateDeflateBuffer(arrayBuffer);
+          } catch (e) {
+            log("error", "[请求模拟] pako解压缩失败", e);
             throw e;
           }
         } else {
@@ -283,7 +327,8 @@ export async function httpPost(url, body, options = {}) {
     }
 
     try {
-      const response = await fetch(url, fetchOptions);
+      const fetchImpl = await getFetchImpl();
+      const response = await fetchImpl(url, fetchOptions);
 
       clearTimeout(timeoutId);
 
@@ -370,7 +415,8 @@ async function httpRequestMethod(method, url, body, options = {}) {
   }
 
   try {
-    const response = await fetch(url, fetchOptions);
+    const fetchImpl = await getFetchImpl();
+    const response = await fetchImpl(url, fetchOptions);
     const textData = await response.text();
 
     if (!response.ok) {
@@ -608,7 +654,8 @@ export async function httpGetWithStreamCheck(url, options = {}, checkCallback) {
   try {
     log("info", `[流式请求] HTTP GET: ${url}`);
 
-    const response = await fetch(url, {
+    const fetchImpl = await getFetchImpl();
+    const response = await fetchImpl(url, {
       method: 'GET',
       headers: headers,
       signal: controller.signal
