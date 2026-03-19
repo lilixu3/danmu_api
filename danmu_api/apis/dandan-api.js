@@ -5,9 +5,10 @@ import { simplized } from '../utils/zh-util.js';
 import { setRedisKey, updateRedisCaches } from "../utils/redis-util.js";
 import { setLocalRedisKey, updateLocalRedisCaches } from "../utils/local-redis-util.js";
 import {
-    setCommentCache, addAnime, findAnimeById, findAnimeIdByCommentId, findAnimeTitleById, findTitleById, findUrlById,
-    getCommentCache, getPreferAnimeId, getSearchCache, removeEarliestAnime, setPreferByAnimeId, setSearchCache,
-    storeAnimeIdsToMap, writeCacheToFile, updateLocalCaches
+    setCommentCache, addAnime, findAnimeByAnimeId, findAnimeByBangumiId, findAnimeById, findAnimeIdByCommentId,
+    findAnimeTitleById, findTitleById, findUrlById, getCommentCache, getPreferAnimeId, getSearchCache,
+    removeEarliestAnime, setPreferByAnimeId, setSearchCache, storeAnimeIdsToMap, writeCacheToFile,
+    updateLocalCaches
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
@@ -385,7 +386,7 @@ function buildBangumiData(anime, idParam = "") {
 function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnimeId, preferSource, preferredPlatform }) {
   if (!preferAnimeId || !globals.rememberLastSelect) return { resAnime: null, resEpisode: null };
 
-  const targetAnime = findAnimeById(preferAnimeId);
+  const targetAnime = findAnimeByAnimeId(preferAnimeId);
   if (targetAnime && preferSource && targetAnime.source && targetAnime.source !== preferSource) {
     return { resAnime: null, resEpisode: null };
   }
@@ -731,7 +732,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
         continue; // 跳过该动漫
       }
 
-      const animeData = findAnimeById(anime.animeId) || findAnimeById(anime.bangumiId);
+      const animeData = findAnimeByAnimeId(anime.animeId) || findAnimeByBangumiId(anime.bangumiId);
       if (animeData && animeData.links) {
         let episodesList = animeData.links.map((link, index) => ({
           episodeId: link.id,
@@ -1425,7 +1426,7 @@ export async function matchAnime(url, req) {
 
       // 过滤失效候选，避免列表里有条目但详情索引已不存在
       const validAnimes = rawAnimes.filter(anime => {
-        return Boolean(findAnimeById(anime?.animeId) || findAnimeById(anime?.bangumiId));
+        return Boolean(findAnimeByAnimeId(anime?.animeId) || findAnimeByBangumiId(anime?.bangumiId));
       });
       if (validAnimes.length !== rawAnimes.length) {
         log("info", `[matchAnime] 已过滤失效候选: ${rawAnimes.length} -> ${validAnimes.length}`);
@@ -1567,7 +1568,7 @@ export async function searchEpisodes(url) {
 
   // 遍历所有找到的动漫，获取它们的集数信息
   for (const animeItem of searchData.animes) {
-    const detailAnime = findAnimeById(animeItem.bangumiId) || findAnimeById(animeItem.animeId);
+    const detailAnime = findAnimeByBangumiId(animeItem.bangumiId) || findAnimeByAnimeId(animeItem.animeId);
 
     let bangumiData = null;
     if (detailAnime) {
@@ -1809,7 +1810,7 @@ export async function getComment(path, queryFormat, segmentFlag) {
   let title = findTitleById(commentId);
   let plat = title ? (title.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
   const [animeId, source] = findAnimeIdByCommentId(commentId);
-  const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeById(animeId)?.animeTitle || '') : '');
+  const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeByAnimeId(animeId)?.animeTitle || '') : '');
   const offsetSeconds = resolveTimelineOffsetSeconds({
     animeTitle,
     episodeTitle: title,
