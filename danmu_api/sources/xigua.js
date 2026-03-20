@@ -184,7 +184,7 @@ class XiguaSource extends BaseSource {
     }
   }
 
-  async handleAnimes(sourceAnimes, queryTitle, curAnimes) {
+  async handleAnimes(sourceAnimes, queryTitle, curAnimes, detailStore = null) {
     const tmpAnimes = [];
 
     // 添加错误处理，确保sourceAnimes是数组
@@ -227,7 +227,7 @@ class XiguaSource extends BaseSource {
 
             tmpAnimes.push(transformedAnime);
 
-            addAnime({...transformedAnime, links: links});
+            addAnime({...transformedAnime, links: links}, detailStore);
 
             if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
           }

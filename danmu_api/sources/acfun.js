@@ -529,7 +529,7 @@ export default class AcfunSource extends BaseSource {
     log("info", `[AcFun] 上游未返回时长，改用弹幕探测: videoId=${key}`);
   }
 
-  async handleAnimes(sourceAnimes, queryTitle, curAnimes) {
+  async handleAnimes(sourceAnimes, queryTitle, curAnimes, detailStore = null) {
     const tmpAnimes = [];
 
     if (!sourceAnimes || !Array.isArray(sourceAnimes)) {
@@ -574,7 +574,7 @@ export default class AcfunSource extends BaseSource {
           };
 
           tmpAnimes.push(transformedAnime);
-          addAnime({ ...transformedAnime, links });
+          addAnime({ ...transformedAnime, links }, detailStore);
           if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
         } catch (error) {
           log("warn", `[AcFun] 处理动漫失败: ${error.message}`);

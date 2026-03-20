@@ -641,73 +641,73 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       try {
         if (key === '360') {
           // 等待处理360来源
-          await kan360Source.handleAnimes(animes360, queryTitle, curAnimes);
+          await kan360Source.handleAnimes(animes360, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'vod') {
           // 等待处理Vod来源（遍历所有VOD服务器的结果）
           if (animesVodResults && Array.isArray(animesVodResults)) {
             for (const vodResult of animesVodResults) {
               if (vodResult && vodResult.list && vodResult.list.length > 0) {
-                await vodSource.handleAnimes(vodResult.list, queryTitle, curAnimes, vodResult.serverName);
+                await vodSource.handleAnimes(vodResult.list, queryTitle, curAnimes, vodResult.serverName, requestAnimeDetailsMap);
               }
             }
           }
         } else if (key === 'tmdb') {
           // 等待处理TMDB来源
-          await tmdbSource.handleAnimes(animesTmdb, queryTitle, curAnimes);
+          await tmdbSource.handleAnimes(animesTmdb, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'douban') {
           // 等待处理Douban来源
-          await doubanSource.handleAnimes(animesDouban, queryTitle, curAnimes);
+          await doubanSource.handleAnimes(animesDouban, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'renren') {
           // 等待处理Renren来源
-          await renrenSource.handleAnimes(animesRenren, queryTitle, curAnimes);
+          await renrenSource.handleAnimes(animesRenren, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'hanjutv') {
           // 等待处理Hanjutv来源
-          await hanjutvSource.handleAnimes(animesHanjutv, queryTitle, curAnimes);
+          await hanjutvSource.handleAnimes(animesHanjutv, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'bahamut') {
           // 等待处理Bahamut来源
-          await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes);
+          await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'dandan') {
           // 等待处理弹弹play来源
-          await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes);
+          await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'custom') {
           // 等待处理自定义弹幕源来源
-          await customSource.handleAnimes(animesCustom, queryTitle, curAnimes);
+          await customSource.handleAnimes(animesCustom, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'tencent') {
           // 等待处理Tencent来源
-          await tencentSource.handleAnimes(animesTencent, queryTitle, curAnimes);
+          await tencentSource.handleAnimes(animesTencent, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'youku') {
           // 等待处理Youku来源
-          await youkuSource.handleAnimes(animesYouku, queryTitle, curAnimes);
+          await youkuSource.handleAnimes(animesYouku, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'iqiyi') {
           // 等待处理iQiyi来源
-          await iqiyiSource.handleAnimes(animesIqiyi, queryTitle, curAnimes);
+          await iqiyiSource.handleAnimes(animesIqiyi, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'imgo') {
           // 等待处理Mango来源
-          await mangoSource.handleAnimes(animesImgo, queryTitle, curAnimes);
+          await mangoSource.handleAnimes(animesImgo, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'bilibili') {
           // 等待处理Bilibili来源
-          await bilibiliSource.handleAnimes(animesBilibili, queryTitle, curAnimes);
+          await bilibiliSource.handleAnimes(animesBilibili, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'migu') {
           // 等待处理Migu来源
-          await miguSource.handleAnimes(animesMigu, queryTitle, curAnimes);
+          await miguSource.handleAnimes(animesMigu, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'acfun') {
           // 等待处理AcFun来源
-          await acfunSource.handleAnimes(animesAcfun, queryTitle, curAnimes);
+          await acfunSource.handleAnimes(animesAcfun, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'sohu') {
           // 等待处理Sohu来源
-          await sohuSource.handleAnimes(animesSohu, queryTitle, curAnimes);
+          await sohuSource.handleAnimes(animesSohu, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'leshi') {
           // 等待处理Leshi来源
-          await leshiSource.handleAnimes(animesLeshi, queryTitle, curAnimes);
+          await leshiSource.handleAnimes(animesLeshi, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'xigua') {
           // 等待处理Xigua来源
-          await xiguaSource.handleAnimes(animesXigua, queryTitle, curAnimes);
+          await xiguaSource.handleAnimes(animesXigua, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'maiduidui') {
           // 等待处理Maiduidui来源
-          await maiduiduiSource.handleAnimes(animesMaiduidui, queryTitle, curAnimes);
+          await maiduiduiSource.handleAnimes(animesMaiduidui, queryTitle, curAnimes, requestAnimeDetailsMap);
         } else if (key === 'animeko') {
           // 等待处理Animeko来源
-          await animekoSource.handleAnimes(animesAnimeko, queryTitle, curAnimes);
+          await animekoSource.handleAnimes(animesAnimeko, queryTitle, curAnimes, requestAnimeDetailsMap);
         }
       } catch (sourceError) {
         const reason = sourceError?.message || String(sourceError || "unknown error");
@@ -720,7 +720,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
 
   // 执行源合并逻辑
   if (globals.mergeSourcePairs.length > 0) {
-    await applyMergeLogic(curAnimes);
+    await applyMergeLogic(curAnimes, requestAnimeDetailsMap);
   }
 
   storeAnimeIdsToMap(curAnimes, queryTitle);
