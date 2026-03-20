@@ -33,7 +33,7 @@ function resetGlobals(overrides = {}) {
   Object.assign(Globals, overrides);
 }
 
-function buildAnime({ animeId, bangumiId, animeTitle, urls }) {
+function buildAnime({ animeId, bangumiId, animeTitle, urls, source = 'test' }) {
   return Anime.fromJson({
     animeId,
     bangumiId,
@@ -45,7 +45,7 @@ function buildAnime({ animeId, bangumiId, animeTitle, urls }) {
     episodeCount: urls.length,
     rating: 0,
     isFavorited: false,
-    source: 'test',
+    source,
     links: urls.map((url, index) => ({
       url,
       title: `${animeTitle}-EP${index + 1}`,
@@ -165,7 +165,39 @@ test('anime detail cache evicts whole anime entries instead of leaving orphan ke
     urls: ['https://example.com/a3'],
   }));
 
-  assert.deepEqual([...globals.animeDetailsCache.keys()].sort(), ['anime:3', 'bangumi:b3']);
+  assert.deepEqual([...globals.animeDetailsCache.keys()].sort(), ['anime:test:3', 'bangumi:test:b3']);
   assert.equal(findAnimeByAnimeId(1)?.animeTitle, 'Anime 1');
-  assert.deepEqual([...globals.animeDetailsCache.keys()].sort(), ['anime:1', 'bangumi:b1']);
+  assert.deepEqual([...globals.animeDetailsCache.keys()].sort(), ['anime:test:1', 'bangumi:test:b1']);
+});
+
+
+test('same source-colliding ids stay isolated in runtime and detail cache', () => {
+  resetGlobals();
+
+  addAnime(buildAnime({
+    animeId: 100,
+    bangumiId: 'shared-id',
+    animeTitle: 'Source A Anime',
+    source: 'source-a',
+    urls: ['https://example.com/source-a-1'],
+  }));
+  addAnime(buildAnime({
+    animeId: 100,
+    bangumiId: 'shared-id',
+    animeTitle: 'Source B Anime',
+    source: 'source-b',
+    urls: ['https://example.com/source-b-1'],
+  }));
+
+  assert.equal(globals.animes.length, 2);
+  assert.equal(findAnimeByAnimeId(100, 'source-a')?.animeTitle, 'Source A Anime');
+  assert.equal(findAnimeByAnimeId(100, 'source-b')?.animeTitle, 'Source B Anime');
+  assert.equal(findAnimeByBangumiId('shared-id', 'source-a')?.animeTitle, 'Source A Anime');
+  assert.equal(findAnimeByBangumiId('shared-id', 'source-b')?.animeTitle, 'Source B Anime');
+  assert.deepEqual([...globals.animeDetailsCache.keys()].sort(), [
+    'anime:source-a:100',
+    'anime:source-b:100',
+    'bangumi:source-a:shared-id',
+    'bangumi:source-b:shared-id'
+  ]);
 });

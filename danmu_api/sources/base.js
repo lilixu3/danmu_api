@@ -2,6 +2,19 @@ import { log } from "../utils/log-util.js";
 import { convertToDanmakuJson } from "../utils/danmu-util.js";
 import { extractAnimeTitle, extractYear } from "../utils/common-util.js";
 
+function getAnimeIdentityKey(anime) {
+  if (!anime || typeof anime !== 'object') return '';
+
+  const sourcePrefix = anime.source ? `${String(anime.source)}:` : '';
+  if (anime.bangumiId !== undefined && anime.bangumiId !== null && String(anime.bangumiId) !== '') {
+    return `bangumi:${sourcePrefix}${String(anime.bangumiId)}`;
+  }
+  if (anime.animeId !== undefined && anime.animeId !== null && String(anime.animeId) !== '') {
+    return `anime:${sourcePrefix}${String(anime.animeId)}`;
+  }
+  return '';
+}
+
 // =====================
 // 源基类
 // =====================
@@ -108,7 +121,13 @@ export default class BaseSource {
       })
       .forEach(anime => {
         // 检查 curAnimes 中是否已存在相同 animeId 的动漫
-        const existingIndex = curAnimes.findIndex(a => a.animeId === anime.animeId);
+        const animeIdentityKey = getAnimeIdentityKey(anime);
+        const existingIndex = curAnimes.findIndex(a => {
+          if (!animeIdentityKey) {
+            return a.animeId === anime.animeId;
+          }
+          return getAnimeIdentityKey(a) === animeIdentityKey;
+        });
         if (existingIndex === -1) {
           // 不存在则添加
           curAnimes.push(anime);

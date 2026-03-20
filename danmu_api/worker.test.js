@@ -262,6 +262,104 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(globals.commentCache.size, 0);
   });
 
+  await t.test('GET /api/v2/search/episodes should keep same-id cached details separated by source', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const sourceAAnime = {
+      animeId: 900001,
+      bangumiId: 'shared-source-id',
+      animeTitle: '同ID番剧A',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: 'https://example.com/a.jpg',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 41001, url: 'https://v.qq.com/x/cover/source-a/ep1.html', title: '【qq】 A第1集' }
+      ]
+    };
+
+    const sourceBAnime = {
+      animeId: 900001,
+      bangumiId: 'shared-source-id',
+      animeTitle: '同ID番剧B',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: 'https://example.com/b.jpg',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'iqiyi',
+      links: [
+        { id: 41002, url: 'https://www.iqiyi.com/v_source_b.html', title: '【qiyi】 B第1集' }
+      ]
+    };
+
+    Globals.searchCache.set('同ID测试', {
+      results: [
+        {
+          animeId: sourceAAnime.animeId,
+          bangumiId: sourceAAnime.bangumiId,
+          animeTitle: sourceAAnime.animeTitle,
+          type: sourceAAnime.type,
+          typeDescription: sourceAAnime.typeDescription,
+          imageUrl: sourceAAnime.imageUrl,
+          startDate: sourceAAnime.startDate,
+          episodeCount: sourceAAnime.episodeCount,
+          rating: sourceAAnime.rating,
+          isFavorited: sourceAAnime.isFavorited,
+          source: sourceAAnime.source
+        },
+        {
+          animeId: sourceBAnime.animeId,
+          bangumiId: sourceBAnime.bangumiId,
+          animeTitle: sourceBAnime.animeTitle,
+          type: sourceBAnime.type,
+          typeDescription: sourceBAnime.typeDescription,
+          imageUrl: sourceBAnime.imageUrl,
+          startDate: sourceBAnime.startDate,
+          episodeCount: sourceBAnime.episodeCount,
+          rating: sourceBAnime.rating,
+          isFavorited: sourceBAnime.isFavorited,
+          source: sourceBAnime.source
+        }
+      ],
+      details: [sourceAAnime, sourceBAnime],
+      timestamp: Date.now()
+    });
+
+    const req = new MockRequest(urlPrefix + '/api/v2/search/episodes?anime=' + encodeURIComponent('同ID测试'), { method: 'GET' });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.animes.length, 2);
+
+    const sourceAResult = body.animes.find(item => item.animeTitle === sourceAAnime.animeTitle);
+    const sourceBResult = body.animes.find(item => item.animeTitle === sourceBAnime.animeTitle);
+
+    assert.ok(sourceAResult);
+    assert.ok(sourceBResult);
+    assert.equal(sourceAResult.episodes[0].episodeId, sourceAAnime.links[0].id);
+    assert.equal(sourceAResult.episodes[0].episodeTitle, sourceAAnime.links[0].title);
+    assert.equal(sourceBResult.episodes[0].episodeId, sourceBAnime.links[0].id);
+    assert.equal(sourceBResult.episodes[0].episodeTitle, sourceBAnime.links[0].title);
+  });
+
   // await t.test('Test ai cilent', async () => {
   //   const ai = new AIClient({
   //     apiKey: 'xxxxxxxxxxxxxxxxxxxxx',
