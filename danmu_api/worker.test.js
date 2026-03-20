@@ -33,7 +33,7 @@ import { NetlifyHandler } from "./configs/handlers/netlify-handler.js";
 import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
 import { Globals, globals } from "./configs/globals.js";
-import { addEpisode } from "./utils/cache-util.js";
+import { addAnime, addEpisode, setSearchCache } from "./utils/cache-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -358,6 +358,88 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(sourceAResult.episodes[0].episodeTitle, sourceAAnime.links[0].title);
     assert.equal(sourceBResult.episodes[0].episodeId, sourceBAnime.links[0].id);
     assert.equal(sourceBResult.episodes[0].episodeTitle, sourceBAnime.links[0].title);
+  });
+
+
+  await t.test('GET /api/v2/search/anime should not drop early results after runtime eviction', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.requestAnimeDetailsMap = null;
+    Globals.MAX_ANIMES = 2;
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const keyword = '你好';
+    const detailA = {
+      animeId: 101,
+      bangumiId: 'a-101',
+      animeTitle: '你好A',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'tencent',
+      links: [{ id: 51001, url: 'https://example.com/a1', title: '【qq】A1' }]
+    };
+    const detailB = {
+      animeId: 102,
+      bangumiId: 'b-102',
+      animeTitle: '你好B',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'iqiyi',
+      links: [{ id: 51002, url: 'https://example.com/b1', title: '【qiyi】B1' }]
+    };
+    const detailC = {
+      animeId: 103,
+      bangumiId: 'c-103',
+      animeTitle: '你好C',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: [{ id: 51003, url: 'https://example.com/c1', title: '【youku】C1' }]
+    };
+
+    const detailStore = new Map();
+    addAnime(detailA, detailStore);
+    addAnime(detailB, detailStore);
+    addAnime(detailC, detailStore);
+
+    const results = [
+      { animeId: detailA.animeId, bangumiId: detailA.bangumiId, animeTitle: detailA.animeTitle, source: detailA.source },
+      { animeId: detailB.animeId, bangumiId: detailB.bangumiId, animeTitle: detailB.animeTitle, source: detailB.source },
+      { animeId: detailC.animeId, bangumiId: detailC.bangumiId, animeTitle: detailC.animeTitle, source: detailC.source }
+    ];
+
+    setSearchCache(keyword, results, detailStore);
+
+    const searchUrl = new URL('/api/v2/search/anime?keyword=' + encodeURIComponent(keyword), urlPrefix);
+    const res = await searchAnime(searchUrl, null, null, new Map());
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.animes.length, 3);
+    assert.deepEqual(body.animes.map(item => item.animeTitle), ['你好A', '你好B', '你好C']);
   });
 
   // await t.test('Test ai cilent', async () => {
@@ -1087,3 +1169,4 @@ test('worker.js API endpoints', async (t) => {
 //     }
 //   });
 // });
+
