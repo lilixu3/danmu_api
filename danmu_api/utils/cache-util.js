@@ -8,6 +8,28 @@ let fs, path;
 // cache数据结构处理函数
 // =====================
 
+// 用于存储最后一次搜索的上下文 (IP -> Context)
+const lastSearchMap = new Map();
+
+export function setLastSearch(ip, data) {
+    if (!ip) {
+        return;
+    }
+
+    lastSearchMap.set(ip, { ...data, timestamp: Date.now() });
+    if (lastSearchMap.size > 200) {
+        for (const [key, value] of lastSearchMap) {
+            if (Date.now() - value.timestamp > 3600 * 1000) {
+                lastSearchMap.delete(key);
+            }
+        }
+    }
+}
+
+export function getLastSearch(ip) {
+    return ip ? lastSearchMap.get(ip) : null;
+}
+
 function parseCacheContent(raw) {
     if (raw === null || raw === undefined) return null;
     let v = raw;
@@ -113,6 +135,21 @@ function getAnimeDetailCacheKeys(anime) {
         getAnimeCacheKeyByAnimeId(anime?.animeId, anime?.source),
         getAnimeCacheKeyByBangumiId(anime?.bangumiId, anime?.source)
     ].filter((cacheKey, index, keys) => cacheKey && keys.indexOf(cacheKey) === index);
+}
+
+function getEpisodeDetailCacheKeys(anime) {
+    return [
+        ...new Set(
+            (anime?.links || [])
+                .map(link => {
+                    if (link?.id === undefined || link?.id === null) {
+                        return null;
+                    }
+                    return String(link.id);
+                })
+                .filter(Boolean)
+        )
+    ];
 }
 
 function getAnimePrimaryCacheKey(anime) {
@@ -274,6 +311,12 @@ function clearAnimeDetailCacheEntries(anime) {
     episodeIds.forEach(episodeId => globals.episodeDetailsCache.delete(episodeId));
 }
 
+function clearEpisodeDetailCacheEntries(anime) {
+    getEpisodeDetailCacheKeys(anime).forEach(cacheKey => {
+        globals.episodeDetailsCache.delete(cacheKey);
+    });
+}
+
 function enforceAnimeDetailCacheMaxItems() {
     const maxItems = getDetailCacheMaxItems('anime');
     if (!Number.isFinite(maxItems) || maxItems <= 0) {
@@ -294,6 +337,43 @@ function enforceAnimeDetailCacheMaxItems() {
 
         log("debug", `anime-detail cache exceeded max items (${maxItems}), evicted oldest anime: ${oldestKey}`);
         clearAnimeDetailCacheEntries(oldestValue.anime);
+    }
+}
+
+function enforceEpisodeDetailCacheMaxItems() {
+    const maxItems = getDetailCacheMaxItems('episode');
+    if (!Number.isFinite(maxItems) || maxItems <= 0) {
+        return;
+    }
+
+    while (globals.episodeDetailsCache.size > maxItems) {
+        const oldestEntry = globals.episodeDetailsCache.entries().next().value;
+        if (!oldestEntry) {
+            break;
+        }
+
+        const [oldestKey, oldestValue] = oldestEntry;
+        if (!oldestValue?.anime) {
+            globals.episodeDetailsCache.delete(oldestKey);
+            continue;
+        }
+
+        const animeEpisodeKeys = getEpisodeDetailCacheKeys(oldestValue.anime)
+            .filter(cacheKey => globals.episodeDetailsCache.has(cacheKey));
+
+        if (animeEpisodeKeys.length === 0) {
+            globals.episodeDetailsCache.delete(oldestKey);
+            continue;
+        }
+
+        // 单个番剧的剧集数超过上限时，宁可软超限也不拆散同一番剧的上下文。
+        if (animeEpisodeKeys.length === globals.episodeDetailsCache.size) {
+            log("debug", `episode-detail cache size ${globals.episodeDetailsCache.size} exceeds max items (${maxItems}), keeping newest anime episode set intact`);
+            break;
+        }
+
+        log("debug", `episode-detail cache exceeded max items (${maxItems}), evicted oldest anime episodes: ${oldestKey}`);
+        clearEpisodeDetailCacheEntries(oldestValue.anime);
     }
 }
 
@@ -334,7 +414,7 @@ function cacheAnimeDetail(anime, timestamp = Date.now()) {
     });
 
     enforceAnimeDetailCacheMaxItems();
-    enforceCacheMaxItems(globals.episodeDetailsCache, getDetailCacheMaxItems('episode'), 'episode-detail');
+    enforceEpisodeDetailCacheMaxItems();
 
     return animeCopy;
 }
@@ -391,6 +471,33 @@ function getEpisodeDetailFromCache(commentId) {
     ensureDetailCaches();
     const entry = isDetailEntryValid(globals.episodeDetailsCache, String(commentId));
     return entry || null;
+}
+
+function getEpisodeDetailFromAnimeCache(commentId) {
+    const rawCommentId = String(commentId ?? '');
+    if (rawCommentId === '') {
+        return null;
+    }
+
+    const entry = getLatestAnimeDetailEntryByMatcher(
+        anime => Array.isArray(anime?.links) && anime.links.some(link => String(link?.id) === rawCommentId)
+    );
+    if (!entry?.anime || !Array.isArray(entry.anime.links)) {
+        return null;
+    }
+
+    const linkIndex = entry.anime.links.findIndex(link => String(link?.id) === rawCommentId);
+    if (linkIndex === -1) {
+        return null;
+    }
+
+    const animeCopy = cacheAnimeDetail(entry.anime, entry.timestamp);
+    return {
+        anime: animeCopy,
+        link: animeCopy.links[linkIndex],
+        linkIndex,
+        timestamp: entry.timestamp
+    };
 }
 
 function matchesAnimeId(anime, targetId) {
@@ -542,6 +649,11 @@ function findCachedAnimeLinkByCommentId(commentId) {
     const cachedDetail = getEpisodeDetailFromCache(commentId);
     if (cachedDetail) {
         return cachedDetail;
+    }
+
+    const animeCachedDetail = getEpisodeDetailFromAnimeCache(commentId);
+    if (animeCachedDetail) {
+        return animeCachedDetail;
     }
 
     let latestMatch = null;
@@ -946,20 +1058,35 @@ export function storeAnimeIdsToMap(curAnimes, key) {
         uniqueAnimeIds.add(anime.animeId);
     }
 
-    // 保存旧的prefer值
+    // 保存旧的 prefer/source/offsets（兼容旧结构）
     const oldValue = globals.lastSelectMap.get(key);
     const oldPrefer = oldValue?.prefer;
     const oldSource = oldValue?.source;
+    const oldPreferBySeason = oldValue?.preferBySeason;
+    const oldSourceBySeason = oldValue?.sourceBySeason;
+    const oldOffsets = oldValue?.offsets;
+
+    const preferBySeason = oldPreferBySeason ? { ...oldPreferBySeason } : {};
+    const sourceBySeason = oldSourceBySeason ? { ...oldSourceBySeason } : {};
+
+    if (oldPrefer !== undefined) {
+        preferBySeason.default = oldPrefer;
+    }
+    if (oldSource !== undefined) {
+        sourceBySeason.default = oldSource;
+    }
 
     // 如果key已存在，先删除它（为了更新顺序，保证 FIFO）
     if (globals.lastSelectMap.has(key)) {
         globals.lastSelectMap.delete(key);
     }
 
-    // 添加新记录，保留prefer字段
+    // 添加新记录，保留 prefer/source/offsets 结构
     globals.lastSelectMap.set(key, {
         animeIds: [...uniqueAnimeIds],
-        ...(oldPrefer !== undefined && { prefer: oldPrefer, source: oldSource })
+        ...(Object.keys(preferBySeason).length > 0 && { preferBySeason }),
+        ...(Object.keys(sourceBySeason).length > 0 && { sourceBySeason }),
+        ...(oldOffsets !== undefined && { offsets: oldOffsets })
     });
 
     // 检查是否超过 MAX_LAST_SELECT_MAP，超过则删除最早的
@@ -974,7 +1101,7 @@ export function storeAnimeIdsToMap(curAnimes, key) {
 export function findAnimeIdByCommentId(commentId) {
   const cachedDetail = findCachedAnimeLinkByCommentId(commentId);
   if (cachedDetail?.anime) {
-    return [cachedDetail.anime.animeId, cachedDetail.anime.source];
+    return [cachedDetail.anime.animeId, cachedDetail.anime.source, cachedDetail.link?.title || null];
   }
 
   for (const anime of globals.animes) {
@@ -983,19 +1110,26 @@ export function findAnimeIdByCommentId(commentId) {
     }
     for (const link of anime.links) {
       if (String(link.id) === String(commentId)) {
-        return [anime.animeId, anime.source];
+        return [anime.animeId, anime.source, link?.title || null];
       }
     }
   }
-  return [null, null];
+  return [null, null, null];
 }
 
 // 通过 animeId 查找 lastSelectMap 中 animeIds 包含该 animeId 的 key，并设置其 prefer 为 animeId
-export function setPreferByAnimeId(animeId, source) {
+export function setPreferByAnimeId(animeId, source, season = null, offset = null) {
   for (const [key, value] of globals.lastSelectMap.entries()) {
     if (value.animeIds && value.animeIds.includes(animeId)) {
-      value.prefer = animeId;
-      value.source = source;
+      const seasonKey = season === null ? 'default' : String(season);
+      value.preferBySeason = value.preferBySeason || {};
+      value.sourceBySeason = value.sourceBySeason || {};
+      value.preferBySeason[seasonKey] = animeId;
+      value.sourceBySeason[seasonKey] = source;
+      if (season !== null && offset !== null) {
+        value.offsets = value.offsets || {};
+        value.offsets[seasonKey] = offset;
+      }
       globals.lastSelectMap.set(key, value); // 确保更新被保存
       return key; // 返回被修改的 key
     }
@@ -1003,13 +1137,22 @@ export function setPreferByAnimeId(animeId, source) {
   return null; // 如果没有找到匹配的 key，返回 null
 }
 
-// 通过title查询优选animeId
-export function getPreferAnimeId(title) {
+// 通过 title 查询优选 animeId（按 season 维度）
+export function getPreferAnimeId(title, season = null) {
   const value = globals.lastSelectMap.get(title);
-  if (!value || !value.prefer) {
-    return [null, null];
+  if (!value) {
+    return [null, null, null];
   }
-  return [value.prefer, value.source];
+
+  const seasonKey = season === null ? 'default' : String(season);
+  const preferBySeason = value.preferBySeason || {};
+  const sourceBySeason = value.sourceBySeason || {};
+
+  const prefer = preferBySeason[seasonKey] ?? preferBySeason.default ?? value.prefer ?? null;
+  const source = sourceBySeason[seasonKey] ?? sourceBySeason.default ?? value.source ?? null;
+  const offsets = value.offsets || null;
+
+  return [prefer, source, offsets];
 }
 
 // 清理所有过期的 IP 记录（超过 1 分钟没有请求的 IP）

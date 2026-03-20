@@ -8,11 +8,11 @@ import {
     setCommentCache, addAnime, findAnimeByAnimeId, findAnimeByBangumiId, findAnimeById, findAnimeIdByCommentId,
     findAnimeTitleById, findTitleById, findUrlById, getCommentCache, getPreferAnimeId, getSearchCache,
     removeEarliestAnime, setPreferByAnimeId, setSearchCache, storeAnimeIdsToMap, writeCacheToFile,
-    updateLocalCaches
+    updateLocalCaches, setLastSearch, getLastSearch
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear } from "../utils/common-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear, titleMatches } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import AIClient from '../utils/ai-util.js';
@@ -383,7 +383,7 @@ function buildBangumiData(anime, idParam = "") {
   };
 }
 
-function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnimeId, preferSource, preferredPlatform }) {
+function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnimeId, preferSource, preferredPlatform, offsets = null }) {
   if (!preferAnimeId || !globals.rememberLastSelect) return { resAnime: null, resEpisode: null };
 
   const targetAnime = preferSource
@@ -415,7 +415,11 @@ function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnime
 
   let matchedEpisode = null;
   if (season && episode) {
-    matchedEpisode = findEpisodeByNumber(episodes, episode, preferredPlatform || null);
+    let targetEpisode = episode;
+    if (offsets && offsets[String(season)] !== undefined) {
+      targetEpisode = computeTargetEpisode(offsets, season, episode, episodes, targetEpisode);
+    }
+    matchedEpisode = findEpisodeByNumber(episodes, targetEpisode, preferredPlatform || null);
   } else {
     if (preferredPlatform) {
       matchedEpisode = episodes.find((ep) => {
@@ -942,7 +946,7 @@ function shouldSkipFallbackByAiResult(aiMatchResult) {
   return trustedNoFallbackReasons.has(reason);
 }
 
-async function matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, preferredPlatform = null) {
+async function matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, preferredPlatform = null, offsets = null) {
   const aiBaseUrl = globals.aiBaseUrl;
   const aiModel = globals.aiModel;
   const aiApiKey = globals.aiApiKey;
@@ -1035,8 +1039,13 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
 
         log("debug", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
 
+        let targetEpisode = episode;
+        if (offsets && offsets[String(season)] !== undefined) {
+          targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
+        }
+
         // 匹配集数（优先沿用请求中的平台偏好）
-        filteredEpisode = findEpisodeByNumber(filteredEpisodes, episode, aiPreferredPlatform);
+        filteredEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, aiPreferredPlatform);
     } else {
         // 电影模式逻辑
         if (bangumiEpisodes.length > 0) {
@@ -1063,7 +1072,35 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
   }
 }
 
-async function matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId) {
+function computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode) {
+  const seasonKey = String(season);
+  const offsetValue = offsets?.[seasonKey];
+  if (typeof offsetValue !== "string") {
+    return targetEpisode;
+  }
+
+  const match = offsetValue.match(/^([^:]+):(.+)$/);
+  if (!match) {
+    return targetEpisode;
+  }
+
+  const offsetEpisode = Number(match[1]);
+  const offsetEpisodeTitle = match[2];
+  if (!Number.isFinite(offsetEpisode) || !offsetEpisodeTitle) {
+    return targetEpisode;
+  }
+
+  const offset = episode - offsetEpisode;
+  const offsetIndex = filteredEpisodes.findIndex(candidate => candidate.episodeTitle === offsetEpisodeTitle);
+  if (offsetIndex !== -1) {
+    targetEpisode = offsetIndex + offset + 1;
+    log("info", `Applying offset "${offsetValue}" for S${season}E${episode} -> ${targetEpisode}`);
+  }
+
+  return targetEpisode;
+}
+
+async function matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets) {
   // 定义最佳匹配结果容器
   let bestRes = {
     anime: null,
@@ -1151,8 +1188,13 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
 
         log("info", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
 
+        let targetEpisode = episode;
+        if (offsets && offsets[String(season)] !== undefined) {
+          targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
+        }
+
         // 匹配集数 (注意：findEpisodeByNumber 已增强支持模糊平台匹配)
-        matchedEpisode = findEpisodeByNumber(filteredEpisodes, episode, platform);
+        matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, platform);
     } else {
         // 电影模式逻辑
         if (bangumiEpisodes.length > 0) {
@@ -1209,7 +1251,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
   return { resEpisode: bestRes.episode, resAnime: bestRes.anime };
 }
 
-async function fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime) {
+async function fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets) {
   for (const anime of searchData.animes) {
     // 年份匹配优先（如果提供了年份）
     if (year && !matchYear(anime, year)) {
@@ -1240,8 +1282,13 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
       // 过滤集标题一致的 episode，且保留首次出现的集标题的 episode
       const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
 
+      let targetEpisode = episode;
+      if (offsets && offsets[String(season)] !== undefined) {
+        targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
+      }
+
       // 使用新的集数匹配策略
-      const matchedEpisode = findEpisodeByNumber(filteredEpisodes, episode, null);
+      const matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, null);
       if (matchedEpisode) {
         resEpisode = matchedEpisode;
         resAnime = anime;
@@ -1335,7 +1382,7 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
 }
 
 // Extracted function for POST /api/v2/match
-export async function matchAnime(url, req) {
+export async function matchAnime(url, req, clientIp = null) {
   let body;
   try {
     // 获取请求体
@@ -1392,8 +1439,12 @@ export async function matchAnime(url, req) {
       title = simplifiedTitle;
     }
 
-    // 获取prefer animeIdgetPreferAnimeId
-    const [preferAnimeId, preferSource] = getPreferAnimeId(title);
+    if (clientIp) {
+      setLastSearch(clientIp, { title, season, episode });
+    }
+
+    // 获取 prefer animeId（按 season 维度）
+    const [preferAnimeId, preferSource, offsets] = getPreferAnimeId(title, season);
     log("info", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
 
     // 根据指定平台创建动态平台顺序
@@ -1413,7 +1464,8 @@ export async function matchAnime(url, req) {
       year,
       preferAnimeId,
       preferSource,
-      preferredPlatform: preferredPlatform || dynamicPlatformOrder[0] || null
+      preferredPlatform: preferredPlatform || dynamicPlatformOrder[0] || null,
+      offsets
     });
     if (fastMatched.resAnime && fastMatched.resEpisode) {
       resAnime = fastMatched.resAnime;
@@ -1443,7 +1495,7 @@ export async function matchAnime(url, req) {
         const aiPreferredPlatform = preferredPlatform || dynamicPlatformOrder.find(Boolean) || null;
         log("info", `[AI匹配] 开始请求：候选数=${searchData.animes.length}；偏好平台=${aiPreferredPlatform || "无"}`);
         const aiStartTime = Date.now();
-        const aiMatchResult = await matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, aiPreferredPlatform);
+        const aiMatchResult = await matchAniAndEpByAi(season, episode, year, searchData, title, req, dynamicPlatformOrder, preferAnimeId, aiPreferredPlatform, offsets);
         const aiLatencyMs = Date.now() - aiStartTime;
         const aiMatched = Boolean(aiMatchResult.resAnime && aiMatchResult.resEpisode);
         const aiReasonText = getAiReasonText(aiMatchResult.reason);
@@ -1463,7 +1515,7 @@ export async function matchAnime(url, req) {
             // AI匹配失败或未配置，使用传统匹配方式
             log("info", `[常规匹配] 平台尝试顺序: ${JSON.stringify(dynamicPlatformOrder)}`);
             for (const platform of dynamicPlatformOrder) {
-              const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId);
+              const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets);
               resEpisode = __ret.resEpisode;
               resAnime = __ret.resAnime;
 
@@ -1476,7 +1528,7 @@ export async function matchAnime(url, req) {
             // 如果都没有找到则返回第一个满足剧集数的剧集
             if (!resAnime) {
               log("info", `[常规匹配] 未命中，进入最终兜底匹配`);
-              const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime);
+              const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets);
               resEpisode = __ret.resEpisode;
               resAnime = __ret.resAnime;
               if (resAnime) {
@@ -1809,21 +1861,21 @@ async function fetchMergedComments(url, offsetContext = {}) {
 }
 
 // Extracted function for GET /api/v2/comment/:commentId
-export async function getComment(path, queryFormat, segmentFlag) {
+export async function getComment(path, queryFormat, segmentFlag, clientIp = null) {
   const commentId = parseInt(path.split("/").pop());
+  const [animeId, source, cachedEpisodeTitle] = findAnimeIdByCommentId(commentId);
   let url = findUrlById(commentId);
-  let title = findTitleById(commentId);
-  let plat = title ? (title.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
-  const [animeId, source] = findAnimeIdByCommentId(commentId);
+  const episodeTitle = findTitleById(commentId) || cachedEpisodeTitle || null;
+  let plat = episodeTitle ? (episodeTitle.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
   const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeByAnimeId(animeId, source)?.animeTitle || '') : '');
   const offsetSeconds = resolveTimelineOffsetSeconds({
     animeTitle,
-    episodeTitle: title,
+    episodeTitle,
     platform: plat,
     source
   });
   log("debug", "comment url...", url);
-  log("debug", "comment title...", title);
+  log("debug", "comment title...", episodeTitle);
   log("debug", "comment platform...", plat);
   if (!url) {
     log("error", `Comment with ID ${commentId} not found`);
@@ -1844,7 +1896,7 @@ export async function getComment(path, queryFormat, segmentFlag) {
     let fetchedDanmus = [];
 
     if (url && url.includes(MERGE_DELIMITER)) {
-      fetchedDanmus = await fetchMergedComments(url, { animeTitle, episodeTitle: title });
+      fetchedDanmus = await fetchMergedComments(url, { animeTitle, episodeTitle });
     } else {
       if (url.includes('.qq.com')) {
         fetchedDanmus = await tencentSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
@@ -1903,15 +1955,40 @@ export async function getComment(path, queryFormat, segmentFlag) {
     return fetchedDanmus;
   });
 
+  let updatedPreferKey = null;
   if (animeId && source) {
-    setPreferByAnimeId(animeId, source);
-    if (globals.localCacheValid && animeId) {
+    let lastTitle = null;
+    let lastSeason = null;
+    let offset = null;
+
+    if (clientIp) {
+      const lastSearch = getLastSearch(clientIp);
+      if (lastSearch?.title) {
+        lastTitle = lastSearch.title;
+        lastSeason = lastSearch.season ?? null;
+        if (lastSearch.season && lastSearch.episode && episodeTitle) {
+          offset = `${lastSearch.episode}:${episodeTitle}`;
+          log("info", `Calculated episode offset for IP ${clientIp}: Query E${lastSearch.episode}, Selected ${episodeTitle} -> Offset ${offset} (Season ${lastSeason})`);
+        }
+      }
+    }
+
+    const shouldUpdatePrefer = Boolean(lastTitle) && titleMatches(animeTitle, lastTitle);
+    log("info", `animeTitle：${animeTitle}; lastTitle：${lastTitle}; titleMatches：${shouldUpdatePrefer}`);
+
+    if (shouldUpdatePrefer) {
+      updatedPreferKey = setPreferByAnimeId(animeId, source, lastSeason, offset);
+    }
+  }
+
+  if (updatedPreferKey !== null) {
+    if (globals.localCacheValid) {
         writeCacheToFile('lastSelectMap', Object.fromEntries(globals.lastSelectMap));
     }
-    if (globals.redisValid && animeId) {
+    if (globals.redisValid) {
         setRedisKey('lastSelectMap', globals.lastSelectMap).catch(e => log("error", "Redis set error", e));
     }
-    if (globals.localRedisValid && animeId) {
+    if (globals.localRedisValid) {
         setLocalRedisKey('lastSelectMap', globals.lastSelectMap);
     }
   }

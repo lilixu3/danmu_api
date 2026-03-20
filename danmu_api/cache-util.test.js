@@ -8,8 +8,11 @@ import {
   findAnimeByBangumiId,
   findAnimeById,
   findUrlById,
+  getPreferAnimeId,
   getSearchCache,
+  setPreferByAnimeId,
   setSearchCache,
+  storeAnimeIdsToMap,
 } from './utils/cache-util.js';
 
 function resetGlobals(overrides = {}) {
@@ -200,4 +203,50 @@ test('same source-colliding ids stay isolated in runtime and detail cache', () =
     'bangumi:source-a:shared-id',
     'bangumi:source-b:shared-id'
   ]);
+});
+
+test('season-aware last select preferences survive search refresh and keep offsets', () => {
+  resetGlobals();
+
+  globals.lastSelectMap.set('Demo Title', {
+    animeIds: [9],
+    prefer: 9,
+    source: 'legacy-source',
+    preferBySeason: { 2: 2 },
+    sourceBySeason: { 2: 'season-source' },
+    offsets: { 2: '3:Demo Title-EP3' },
+  });
+
+  storeAnimeIdsToMap([{ animeId: 9 }, { animeId: 2 }, { animeId: 2 }], 'Demo Title');
+
+  assert.deepEqual(globals.lastSelectMap.get('Demo Title'), {
+    animeIds: [9, 2],
+    preferBySeason: { 2: 2, default: 9 },
+    sourceBySeason: { 2: 'season-source', default: 'legacy-source' },
+    offsets: { 2: '3:Demo Title-EP3' },
+  });
+  assert.deepEqual(getPreferAnimeId('Demo Title', 2), [2, 'season-source', { 2: '3:Demo Title-EP3' }]);
+  assert.deepEqual(getPreferAnimeId('Demo Title'), [9, 'legacy-source', { 2: '3:Demo Title-EP3' }]);
+
+  setPreferByAnimeId(9, 'legacy-source', 3, '4:Demo Title-EP4');
+
+  assert.deepEqual(getPreferAnimeId('Demo Title', 3), [9, 'legacy-source', { 2: '3:Demo Title-EP3', 3: '4:Demo Title-EP4' }]);
+});
+
+test('episode detail cache keeps all episode links reachable for a cached anime', () => {
+  resetGlobals({ animeDetailCacheMaxItems: 100, episodeDetailCacheMaxItems: 1, MAX_ANIMES: 1 });
+
+  addAnime(buildAnime({
+    animeId: 11,
+    bangumiId: 'b11',
+    animeTitle: 'Episode Cache Anime',
+    urls: ['https://example.com/ec-1', 'https://example.com/ec-2'],
+  }));
+
+  const [episodeId1, episodeId2] = globals.animes[0].links.map(link => link.id);
+  globals.animes = [];
+  globals.episodeIds = [];
+
+  assert.equal(findUrlById(episodeId1), 'https://example.com/ec-1');
+  assert.equal(findUrlById(episodeId2), 'https://example.com/ec-2');
 });
