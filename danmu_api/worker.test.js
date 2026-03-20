@@ -361,6 +361,45 @@ test('worker.js API endpoints', async (t) => {
   });
 
 
+
+  await t.test('GET /api/v2/search/anime should not leak request detail store across requests', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.MAX_ANIMES = 1;
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const leakedDetailStore = new Map();
+    addAnime({
+      animeId: 201,
+      bangumiId: 'leak-201',
+      animeTitle: '旧请求番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'tencent',
+      links: [{ url: 'https://example.com/leak-1', title: '【qq】旧请求第1集' }]
+    }, leakedDetailStore);
+
+    const freshUrl = new URL('/api/v2/search/anime?keyword=' + encodeURIComponent('不存在的关键字'), urlPrefix);
+    const res = await searchAnime(freshUrl);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.deepEqual(body.animes, []);
+  });
+
   await t.test('GET /api/v2/search/anime should not drop early results after runtime eviction', async () => {
     Globals.init({});
     Globals.animes = [];
@@ -371,7 +410,6 @@ test('worker.js API endpoints', async (t) => {
     Globals.animeDetailsCache = new Map();
     Globals.episodeDetailsCache = new Map();
     Globals.requestHistory = new Map();
-    Globals.requestAnimeDetailsMap = null;
     Globals.MAX_ANIMES = 2;
     Globals.envs.rateLimitMaxRequests = 0;
 

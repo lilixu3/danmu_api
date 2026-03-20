@@ -125,15 +125,7 @@ function getAnimePrimaryCacheKey(anime) {
 }
 
 function getAnimeDetailStore(detailStore = null) {
-    if (detailStore instanceof Map) {
-        return detailStore;
-    }
-
-    if (globals.requestAnimeDetailsMap instanceof Map) {
-        return globals.requestAnimeDetailsMap;
-    }
-
-    return null;
+    return detailStore instanceof Map ? detailStore : null;
 }
 
 function storeAnimeInDetailStore(detailStore, anime) {
@@ -633,12 +625,14 @@ export function isSearchCacheValid(keyword) {
 }
 
 // 获取搜索缓存
-export function getSearchCache(keyword) {
+export function getSearchCache(keyword, detailStore = null) {
     if (isSearchCacheValid(keyword)) {
         log("info", `Using search cache for "${keyword}"`);
         const cached = globals.searchCache.get(keyword);
+        const details = Array.isArray(cached.details) ? cached.details : [];
+        details.forEach(anime => storeAnimeInDetailStore(detailStore, anime));
         // 命中搜索缓存时顺带预热详情索引，确保被 MAX_ANIMES 裁剪后的详情仍可回填。
-        cacheAnimeDetails(cached.details, cached.timestamp);
+        cacheAnimeDetails(details, cached.timestamp);
         return cached.results;
     }
     return null;

@@ -495,13 +495,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
     queryTitle = simplifiedTitle;
   }
 
-  const requestAnimeDetailsMap = detailStore instanceof Map
-    ? detailStore
-    : (globals.requestAnimeDetailsMap instanceof Map ? globals.requestAnimeDetailsMap : new Map());
-
-  if (!(detailStore instanceof Map) && !(globals.requestAnimeDetailsMap instanceof Map)) {
-    globals.requestAnimeDetailsMap = requestAnimeDetailsMap;
-  }
+  const requestAnimeDetailsMap = detailStore instanceof Map ? detailStore : new Map();
 
   // 检查搜索缓存
   const cachedResults = getSearchCache(queryTitle, requestAnimeDetailsMap);
