@@ -262,6 +262,60 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(globals.commentCache.size, 0);
   });
 
+  await t.test('cloud platforms should clear transient runtime search/comment caches at request entry', async () => {
+    Globals.init({});
+    Globals.searchCache = new Map([
+      ['云缓存测试', { results: [{ animeId: 1, animeTitle: '旧搜索结果' }], details: [], timestamp: Date.now() }]
+    ]);
+    Globals.commentCache = new Map([
+      ['https://example.com/stale', { comments: [{ m: 'stale' }], timestamp: Date.now() }]
+    ]);
+
+    const req = new MockRequest(urlPrefix, { method: 'GET' });
+    const res = await handleRequest(req, {}, 'vercel');
+
+    assert.equal(res.status, 200);
+    assert.equal(Globals.searchCache.size, 0);
+    assert.equal(Globals.commentCache.size, 0);
+  });
+
+  await t.test('GET /api/v2/comment/:id should ignore transient runtime comment cache on cloud platforms', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [
+      { id: 43011, url: 'https://v.qq.com/x/cover/a/cloud-test.html', title: '【qq】云平台缓存测试' }
+    ];
+    Globals.episodeNum = 43012;
+    Globals.commentCache = new Map([
+      ['https://v.qq.com/x/cover/a/cloud-test.html', { comments: [{ m: 'stale-comment' }], timestamp: Date.now() }]
+    ]);
+    Globals.requestHistory = new Map();
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(url, 'https://v.qq.com/x/cover/a/cloud-test.html');
+      assert.equal(plat, 'qq');
+      assert.equal(segmentFlag, false);
+      return [
+        { p: '1.00,1,16777215,[qq]', m: 'fresh-comment' }
+      ];
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/43011', { method: 'GET' });
+      const res = await handleRequest(req, {}, 'vercel');
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.equal(body.comments[0].m, 'fresh-comment');
+      assert.equal(Globals.commentCache.size, 0);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.commentCache = new Map();
+    }
+  });
+
   await t.test('legacy hanjutv cache urls should be migrated from xw prefix', async () => {
     Globals.init({});
     Globals.animes = [];

@@ -60,6 +60,36 @@ function parseCacheContent(raw) {
     return v;
 }
 
+
+function shouldUseRuntimeResponseCache() {
+    const platform = String(globals.deployPlatform || '').trim().toLowerCase();
+    return platform === '' || platform === 'node';
+}
+
+export function clearDisabledRuntimeResponseCaches() {
+    if (shouldUseRuntimeResponseCache()) {
+        return false;
+    }
+
+    let changed = false;
+
+    if (globals.searchCache instanceof Map && globals.searchCache.size > 0) {
+        globals.searchCache = new Map();
+        changed = true;
+    }
+
+    if (globals.commentCache instanceof Map && globals.commentCache.size > 0) {
+        globals.commentCache = new Map();
+        changed = true;
+    }
+
+    if (changed) {
+        log('info', '[cache] 非 node 平台已清空搜索/弹幕运行时缓存');
+    }
+
+    return changed;
+}
+
 function normalizeLegacyHanjutvEpisodeUrl(url, source = '', title = '') {
     const rawUrl = String(url ?? '').trim();
     if (!rawUrl.startsWith('xw:')) {
@@ -705,6 +735,10 @@ function findRuntimeAnime(matchFn, sourceParam = null) {
 }
 
 function findAnimeInSearchCache(matchFn, sourceParam = null) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return null;
+    }
+
     let latestMatch = null;
 
     for (const [keyword] of globals.searchCache.entries()) {
@@ -808,25 +842,27 @@ function findCachedAnimeLinkByCommentId(commentId) {
     }
 
     let latestMatch = null;
-    for (const [keyword] of globals.searchCache.entries()) {
-        if (!isSearchCacheValid(keyword)) {
-            continue;
-        }
-
-        const cached = globals.searchCache.get(keyword);
-        if (!cached || !Array.isArray(cached.details)) {
-            continue;
-        }
-
-        for (const anime of cached.details) {
-            if (!anime || !Array.isArray(anime.links)) {
+    if (shouldUseRuntimeResponseCache()) {
+        for (const [keyword] of globals.searchCache.entries()) {
+            if (!isSearchCacheValid(keyword)) {
                 continue;
             }
 
-            const linkIndex = anime.links.findIndex(link => String(link.id) === String(commentId));
-            if (linkIndex !== -1) {
-                if (!latestMatch || cached.timestamp > latestMatch.timestamp) {
-                    latestMatch = { anime, linkIndex, timestamp: cached.timestamp };
+            const cached = globals.searchCache.get(keyword);
+            if (!cached || !Array.isArray(cached.details)) {
+                continue;
+            }
+
+            for (const anime of cached.details) {
+                if (!anime || !Array.isArray(anime.links)) {
+                    continue;
+                }
+
+                const linkIndex = anime.links.findIndex(link => String(link.id) === String(commentId));
+                if (linkIndex !== -1) {
+                    if (!latestMatch || cached.timestamp > latestMatch.timestamp) {
+                        latestMatch = { anime, linkIndex, timestamp: cached.timestamp };
+                    }
                 }
             }
         }
@@ -869,6 +905,10 @@ export function findAnimeById(idParam, sourceParam = null, detailStore = null) {
 
 // 检查搜索缓存是否有效（未过期）
 export function isSearchCacheValid(keyword) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return false;
+    }
+
     if (!globals.searchCache.has(keyword)) {
         return false;
     }
@@ -889,6 +929,10 @@ export function isSearchCacheValid(keyword) {
 
 // 获取搜索缓存
 export function getSearchCache(keyword, detailStore = null) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return null;
+    }
+
     if (isSearchCacheValid(keyword)) {
         log("info", `Using search cache for "${keyword}"`);
         const cached = globals.searchCache.get(keyword);
@@ -913,6 +957,10 @@ function enforceCacheMaxItems(cacheMap, maxItems, cacheName) {
 
 // 设置搜索缓存
 export function setSearchCache(keyword, results, detailStore = null) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return;
+    }
+
     const timestamp = Date.now();
     const details = collectMatchedSearchDetails(results, detailStore);
     cacheAnimeDetails(details, timestamp);
@@ -934,6 +982,10 @@ export function setSearchCache(keyword, results, detailStore = null) {
 
 // 检查弹幕缓存是否有效（未过期）
 export function isCommentCacheValid(videoUrl) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return false;
+    }
+
     if (!globals.commentCache.has(videoUrl)) {
         return false;
     }
@@ -954,6 +1006,10 @@ export function isCommentCacheValid(videoUrl) {
 
 // 获取弹幕缓存
 export function getCommentCache(videoUrl) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return null;
+    }
+
     if (isCommentCacheValid(videoUrl)) {
         log("info", `Using comment cache for "${videoUrl}"`);
         return globals.commentCache.get(videoUrl).comments;
@@ -963,6 +1019,10 @@ export function getCommentCache(videoUrl) {
 
 // 设置弹幕缓存
 export function setCommentCache(videoUrl, comments) {
+    if (!shouldUseRuntimeResponseCache()) {
+        return;
+    }
+
     // 先删除再写入，确保命中的 key 会刷新到最新顺序
     if (globals.commentCache.has(videoUrl)) {
         globals.commentCache.delete(videoUrl);

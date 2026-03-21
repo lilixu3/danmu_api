@@ -2,7 +2,7 @@ import { Globals } from './configs/globals.js';
 import { jsonResponse } from './utils/http-util.js';
 import { log, formatLogMessage } from './utils/log-util.js'
 import { getRedisCaches, judgeRedisValid, updateRedisCaches } from "./utils/redis-util.js";
-import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid, migrateLegacyRuntimeCaches, updateLocalCaches } from "./utils/cache-util.js";
+import { cleanupExpiredIPs, clearDisabledRuntimeResponseCaches, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid, migrateLegacyRuntimeCaches, updateLocalCaches } from "./utils/cache-util.js";
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
@@ -90,6 +90,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   const method = req.method;
 
   globals.deployPlatform = deployPlatform;
+  clearDisabledRuntimeResponseCaches();
   if (deployPlatform === "node") {
     await judgeLocalCacheValid(path, deployPlatform);
     const { judgeLocalRedisValid } = await import("./utils/local-redis-util.js");
