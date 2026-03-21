@@ -505,8 +505,8 @@ export default class HanjutvSource extends BaseSource {
   async getEpisodeDanmu(id) {
     let allDanmus = [];
 
+    // 尝试旧弹幕接口（分页轮询）
     try {
-      // 尝试旧弹幕接口（分页轮询）
       let fromAxis = 0;
       while (fromAxis < MAX_AXIS) {
         const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${id}&toAxis=${MAX_AXIS}`, {
@@ -520,38 +520,38 @@ export default class HanjutvSource extends BaseSource {
         if (nextAxis >= MAX_AXIS || nextAxis <= fromAxis) break;
         fromAxis = nextAxis;
       }
+    } catch (error) {
+      this.logError("fetchHanjutvEpisodeDanmu(旧接口)", error);
+    }
 
-      // 若旧接口无数据，降级到 TV 端弹幕接口
-      if (allDanmus.length === 0) {
-        let prevId = 0;
-        fromAxis = 0;
-        let pageCount = 0;
-        const maxPages = 120;
+    // 若旧接口无数据（含请求失败），降级到 TV 端弹幕接口
+    if (allDanmus.length === 0) {
+      let prevId = 0;
+      let fromAxis = 0;
+      let pageCount = 0;
+      const maxPages = 120;
 
-        while (fromAxis < MAX_AXIS && pageCount < maxPages) {
-          try {
-            const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${id}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
+      while (fromAxis < MAX_AXIS && pageCount < maxPages) {
+        try {
+          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${id}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
 
-            pageCount++;
-            allDanmus.push(...data.bulletchats);
+          pageCount++;
+          allDanmus.push(...data.bulletchats);
 
-            const hasMore = Number(data.more ?? 0) === 1 || data.more === true || data.more === "1";
-            const nextAxis = Number(data.nextAxis ?? MAX_AXIS);
-            const lastId = Number(data.lastId ?? prevId);
+          const hasMore = Number(data.more ?? 0) === 1 || data.more === true || data.more === "1";
+          const nextAxis = Number(data.nextAxis ?? MAX_AXIS);
+          const lastId = Number(data.lastId ?? prevId);
 
-            if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-            if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
+          if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
+          if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
 
-            fromAxis = nextAxis;
-            if (!hasMore) prevId = 0;
-          } catch (error) {
-            this.logError("fetchHanjutvEpisodeDanmu", error);
-            break;
-          }
+          fromAxis = nextAxis;
+          if (!hasMore) prevId = 0;
+        } catch (error) {
+          this.logError("fetchHanjutvEpisodeDanmu(TV端)", error);
+          break;
         }
       }
-    } catch (error) {
-      this.logError("fetchHanjutvEpisodeDanmu error", error);
     }
 
     return allDanmus;
