@@ -532,6 +532,7 @@ function switchSection(section) {
     // 检查是否尝试访问受token保护的section
     if (section === 'logs' || section === 'api' || section === 'env' || section === 'push' || section === 'cookie' || section === 'request-records') {
         const urlToken = getUrlTokenFromLocation();
+        const _reverseProxy = customBaseUrl;
 
         if (!urlToken && originalToken !== "87654321") {
             setTimeout(() => {
