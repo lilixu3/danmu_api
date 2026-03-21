@@ -64,6 +64,21 @@ export default class HanjutvSource extends BaseSource {
     return CATE_MAP[key] || "其他";
   }
 
+  normalizeEpisodeDanmuId(rawId) {
+    const idText = String(rawId || "").trim();
+    if (!idText) return { id: "", preferTv: false, isLegacyTvCache: false };
+
+    if (idText.startsWith("xw:")) {
+      return {
+        id: idText.slice(3),
+        preferTv: true,
+        isLegacyTvCache: true,
+      };
+    }
+
+    return { id: idText, preferTv: false, isLegacyTvCache: false };
+  }
+
   /**
    * 构建 TV 端请求头，返回 { headers, uid }
    */
@@ -503,25 +518,33 @@ export default class HanjutvSource extends BaseSource {
   // ── 弹幕 ─────────────────────────────────────────────────────
 
   async getEpisodeDanmu(id) {
+    const episodeRef = this.normalizeEpisodeDanmuId(id);
+    if (!episodeRef.id) return [];
+
+    const episodeId = episodeRef.id;
     let allDanmus = [];
 
     // 尝试旧弹幕接口（分页轮询）
-    try {
-      let fromAxis = 0;
-      while (fromAxis < MAX_AXIS) {
-        const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${id}&toAxis=${MAX_AXIS}`, {
-          headers: this.getWebHeaders(),
-          retries: 1,
-        });
+    if (!episodeRef.preferTv) {
+      try {
+        let fromAxis = 0;
+        while (fromAxis < MAX_AXIS) {
+          const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${episodeId}&toAxis=${MAX_AXIS}`, {
+            headers: this.getWebHeaders(),
+            retries: 1,
+          });
 
-        if (resp?.data?.danmus) allDanmus.push(...resp.data.danmus);
+          if (resp?.data?.danmus) allDanmus.push(...resp.data.danmus);
 
-        const nextAxis = resp?.data?.nextAxis ?? MAX_AXIS;
-        if (nextAxis >= MAX_AXIS || nextAxis <= fromAxis) break;
-        fromAxis = nextAxis;
+          const nextAxis = resp?.data?.nextAxis ?? MAX_AXIS;
+          if (nextAxis >= MAX_AXIS || nextAxis <= fromAxis) break;
+          fromAxis = nextAxis;
+        }
+      } catch (error) {
+        this.logError("fetchHanjutvEpisodeDanmu(旧接口)", error);
       }
-    } catch (error) {
-      this.logError("fetchHanjutvEpisodeDanmu(旧接口)", error);
+    } else {
+      log("info", `[Hanjutv] 命中旧缓存 xw: 前缀，直接走 TV 弹幕接口: ${episodeId}`);
     }
 
     // 若旧接口无数据（含请求失败），降级到 TV 端弹幕接口
@@ -533,7 +556,7 @@ export default class HanjutvSource extends BaseSource {
 
       while (fromAxis < MAX_AXIS && pageCount < maxPages) {
         try {
-          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${id}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
+          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
 
           pageCount++;
           allDanmus.push(...data.bulletchats);

@@ -33,7 +33,7 @@ import { NetlifyHandler } from "./configs/handlers/netlify-handler.js";
 import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
 import { Globals, globals } from "./configs/globals.js";
-import { addAnime, addEpisode, setSearchCache } from "./utils/cache-util.js";
+import { addAnime, addEpisode, migrateLegacyRuntimeCaches, setSearchCache } from "./utils/cache-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -260,6 +260,147 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(res.status, 200);
     assert(Math.abs(body.videoDuration - 720.41) < 0.001, `Expected 720.41, but got ${body.videoDuration}`);
     assert.equal(globals.commentCache.size, 0);
+  });
+
+  await t.test('legacy hanjutv cache urls should be migrated from xw prefix', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+
+    const legacyAnime = {
+      animeId: 930001,
+      bangumiId: 'hanju-legacy',
+      animeTitle: '韩剧TV旧缓存样例',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'hanjutv',
+      links: [
+        { id: 43001, url: 'xw:legacy-eid', title: '【hanjutv】 第1集' }
+      ]
+    };
+
+    Globals.animes = [legacyAnime];
+    Globals.episodeIds = [
+      { id: 43001, url: 'xw:legacy-eid', title: '【hanjutv】 第1集' }
+    ];
+    Globals.animeDetailsCache = new Map([
+      ['anime:hanjutv:930001', { anime: legacyAnime, timestamp: Date.now() }]
+    ]);
+    Globals.episodeDetailsCache = new Map([
+      ['43001', { anime: legacyAnime, link: legacyAnime.links[0], linkIndex: 0, timestamp: Date.now() }]
+    ]);
+    Globals.searchCache = new Map([
+      ['韩剧TV旧缓存样例', {
+        results: [
+          {
+            animeId: legacyAnime.animeId,
+            bangumiId: legacyAnime.bangumiId,
+            animeTitle: legacyAnime.animeTitle,
+            source: legacyAnime.source
+          }
+        ],
+        details: [legacyAnime],
+        timestamp: Date.now()
+      }]
+    ]);
+
+    const migrated = migrateLegacyRuntimeCaches();
+
+    assert.equal(migrated, true);
+    assert.equal(Globals.animes[0].links[0].url, 'legacy-eid');
+    assert.equal(Globals.episodeIds[0].url, 'legacy-eid');
+    assert.equal(Globals.animeDetailsCache.get('anime:hanjutv:930001').anime.links[0].url, 'legacy-eid');
+    assert.equal(Globals.episodeDetailsCache.get('43001').link.url, 'legacy-eid');
+    assert.equal(Globals.searchCache.get('韩剧TV旧缓存样例').details[0].links[0].url, 'legacy-eid');
+  });
+
+  await t.test('hanjutv should support legacy xw episode ids when fetching danmu', async () => {
+    const source = new HanjutvSource();
+    const originalFetch = globalThis.fetch;
+    const originalTvGet = source.tvGet;
+    let unexpectedFetch = false;
+
+    globalThis.fetch = async (url) => {
+      unexpectedFetch = true;
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+
+    source.tvGet = async (path) => {
+      assert(path.includes('eid=legacy-eid'), `Expected TV danmu path to include legacy-eid, but got ${path}`);
+      return {
+        bulletchats: [{ did: 1, t: 1000, tp: 1, sc: 16777215, con: 'legacy-ok', lc: 0 }],
+        more: 0,
+        nextAxis: 100000000,
+        lastId: 0,
+      };
+    };
+
+    try {
+      const danmus = await source.getEpisodeDanmu('xw:legacy-eid');
+      assert.equal(unexpectedFetch, false, 'Expected legacy xw url to bypass old Web danmu endpoint');
+      assert.equal(danmus.length, 1);
+      assert.equal(danmus[0].con, 'legacy-ok');
+    } finally {
+      source.tvGet = originalTvGet;
+      if (originalFetch === undefined) {
+        delete globalThis.fetch;
+      } else {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  });
+
+
+  await t.test('GET /api/v2/comment/:id should auto-migrate legacy hanjutv xw cache before fetching danmu', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [
+      { id: 43001, url: 'xw:legacy-eid', title: '【hanjutv】 第1集' }
+    ];
+    Globals.episodeNum = 43002;
+    Globals.commentCache = new Map();
+    Globals.searchCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.cacheSchemaVersion = 1;
+    Globals.lastHashes.cacheSchemaVersion = null;
+
+    const originalHanjutvGetComments = HanjutvSource.prototype.getComments;
+    HanjutvSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(url, 'legacy-eid');
+      assert.equal(plat, 'hanjutv');
+      assert.equal(segmentFlag, false);
+      return [
+        { p: '1.00,1,16777215,[hanjutv]', m: 'legacy-ok' }
+      ];
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/43001', { method: 'GET' });
+      const res = await handleRequest(req);
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.equal(body.comments[0].m, 'legacy-ok');
+      assert.equal(Globals.episodeIds[0].url, 'legacy-eid');
+      assert.equal(Globals.cacheSchemaVersion, Globals.CACHE_SCHEMA_VERSION);
+    } finally {
+      HanjutvSource.prototype.getComments = originalHanjutvGetComments;
+      Globals.commentCache = new Map();
+      Globals.searchCache = new Map();
+      Globals.animeDetailsCache = new Map();
+      Globals.episodeDetailsCache = new Map();
+    }
   });
 
   await t.test('GET /api/v2/search/episodes should keep same-id cached details separated by source', async () => {

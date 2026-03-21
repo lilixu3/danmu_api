@@ -60,6 +60,157 @@ function parseCacheContent(raw) {
     return v;
 }
 
+function normalizeLegacyHanjutvEpisodeUrl(url, source = '', title = '') {
+    const rawUrl = String(url ?? '').trim();
+    if (!rawUrl.startsWith('xw:')) {
+        return rawUrl;
+    }
+
+    const sourceName = String(source || '').trim().toLowerCase();
+    const titleText = String(title || '');
+    const isHanjutvLink = sourceName === 'hanjutv' || titleText.includes('【hanjutv】');
+
+    return isHanjutvLink ? rawUrl.slice(3) : rawUrl;
+}
+
+function migrateLegacyAnimeLinks(anime) {
+    if (!anime || !Array.isArray(anime.links)) {
+        return { anime, changed: false };
+    }
+
+    let changed = false;
+    const nextLinks = anime.links.map((link) => {
+        if (!link || typeof link !== 'object') {
+            return link;
+        }
+
+        const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(link.url, anime.source, link.title);
+        if (normalizedUrl === link.url) {
+            return link;
+        }
+
+        changed = true;
+        return { ...link, url: normalizedUrl };
+    });
+
+    if (!changed) {
+        return { anime, changed: false };
+    }
+
+    return {
+        anime: Anime.fromJson({ ...anime, links: nextLinks }),
+        changed: true,
+    };
+}
+
+export function migrateLegacyRuntimeCaches() {
+    let changed = false;
+
+    if (Array.isArray(globals.episodeIds)) {
+        globals.episodeIds = globals.episodeIds.map((episode) => {
+            if (!episode || typeof episode !== 'object') {
+                return episode;
+            }
+
+            const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(episode.url, 'hanjutv', episode.title);
+            if (normalizedUrl === episode.url) {
+                return episode;
+            }
+
+            changed = true;
+            return { ...episode, url: normalizedUrl };
+        });
+    }
+
+    if (Array.isArray(globals.animes)) {
+        globals.animes = globals.animes.map((anime) => {
+            const result = migrateLegacyAnimeLinks(anime);
+            if (result.changed) {
+                changed = true;
+            }
+            return result.anime;
+        });
+    }
+
+    if (globals.animeDetailsCache instanceof Map) {
+        globals.animeDetailsCache = new Map(
+            Array.from(globals.animeDetailsCache.entries()).map(([key, entry]) => {
+                if (!entry?.anime) {
+                    return [key, entry];
+                }
+
+                const result = migrateLegacyAnimeLinks(entry.anime);
+                if (!result.changed) {
+                    return [key, entry];
+                }
+
+                changed = true;
+                return [key, { ...entry, anime: result.anime }];
+            })
+        );
+    }
+
+    if (globals.episodeDetailsCache instanceof Map) {
+        globals.episodeDetailsCache = new Map(
+            Array.from(globals.episodeDetailsCache.entries()).map(([key, entry]) => {
+                if (!entry || typeof entry !== 'object') {
+                    return [key, entry];
+                }
+
+                const animeResult = migrateLegacyAnimeLinks(entry.anime);
+                const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(entry?.link?.url, entry?.anime?.source, entry?.link?.title);
+                const linkChanged = normalizedUrl !== entry?.link?.url;
+
+                if (!animeResult.changed && !linkChanged) {
+                    return [key, entry];
+                }
+
+                changed = true;
+                return [
+                    key,
+                    {
+                        ...entry,
+                        anime: animeResult.anime,
+                        link: linkChanged ? { ...entry.link, url: normalizedUrl } : entry.link,
+                    },
+                ];
+            })
+        );
+    }
+
+    if (globals.searchCache instanceof Map) {
+        globals.searchCache = new Map(
+            Array.from(globals.searchCache.entries()).map(([key, entry]) => {
+                if (!entry || !Array.isArray(entry.details)) {
+                    return [key, entry];
+                }
+
+                let entryChanged = false;
+                const nextDetails = entry.details.map((anime) => {
+                    const result = migrateLegacyAnimeLinks(anime);
+                    if (result.changed) {
+                        entryChanged = true;
+                    }
+                    return result.anime;
+                });
+
+                if (!entryChanged) {
+                    return [key, entry];
+                }
+
+                changed = true;
+                return [key, { ...entry, details: nextDetails }];
+            })
+        );
+    }
+
+    if (changed) {
+        log('info', '[cache] 已迁移旧版 hanjutv xw: 剧集链接格式');
+    }
+
+    return changed;
+}
+
 
 function ensureDetailCaches() {
     if (!(globals.animeDetailsCache instanceof Map)) {
@@ -1212,6 +1363,7 @@ export async function getLocalCaches() {
       const animes = parseCacheContent(readCacheFromFile('animes'));
       const episodeIds = parseCacheContent(readCacheFromFile('episodeIds'));
       let episodeNum = parseCacheContent(readCacheFromFile('episodeNum'));
+      let cacheSchemaVersion = parseCacheContent(readCacheFromFile('cacheSchemaVersion'));
       const reqRecords = parseCacheContent(readCacheFromFile('reqRecords'));
       let todayReqNum = parseCacheContent(readCacheFromFile('todayReqNum'));
 
@@ -1223,6 +1375,11 @@ export async function getLocalCaches() {
       if (animes !== null && animes !== undefined) globals.animes = animes;
       if (episodeIds !== null && episodeIds !== undefined) globals.episodeIds = episodeIds;
       if (episodeNum !== null && episodeNum !== undefined) globals.episodeNum = episodeNum;
+      if (typeof cacheSchemaVersion === 'string') {
+        const n = Number(cacheSchemaVersion);
+        if (Number.isFinite(n)) cacheSchemaVersion = n;
+      }
+      if (cacheSchemaVersion !== null && cacheSchemaVersion !== undefined) globals.cacheSchemaVersion = cacheSchemaVersion;
       if (reqRecords !== null && reqRecords !== undefined) globals.reqRecords = reqRecords;
       if (typeof todayReqNum === 'string') {
         const n = Number(todayReqNum);
@@ -1247,6 +1404,7 @@ export async function getLocalCaches() {
       globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
+      globals.lastHashes.cacheSchemaVersion = simpleHash(JSON.stringify(globals.cacheSchemaVersion));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
 
       globals.localCacheInitialized = true;
@@ -1271,7 +1429,8 @@ export async function updateLocalCaches() {
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
-      { key: 'todayReqNum', value: globals.todayReqNum }
+      { key: 'todayReqNum', value: globals.todayReqNum },
+      { key: 'cacheSchemaVersion', value: globals.cacheSchemaVersion }
     ];
 
     for (const { key, value } of variables) {

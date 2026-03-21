@@ -1,8 +1,8 @@
 import { Globals } from './configs/globals.js';
 import { jsonResponse } from './utils/http-util.js';
 import { log, formatLogMessage } from './utils/log-util.js'
-import { getRedisCaches, judgeRedisValid } from "./utils/redis-util.js";
-import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid } from "./utils/cache-util.js";
+import { getRedisCaches, judgeRedisValid, updateRedisCaches } from "./utils/redis-util.js";
+import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid, migrateLegacyRuntimeCaches, updateLocalCaches } from "./utils/cache-util.js";
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
@@ -163,6 +163,34 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   if (deployPlatform === "node" && globals.localRedisValid && path !== "/favicon.ico" && path !== "/robots.txt") {
     const { getLocalRedisCaches } = await import("./utils/local-redis-util.js");
     await getLocalRedisCaches();
+  }
+
+  let cacheSchemaChanged = false;
+  const currentCacheSchemaVersion = Number(globals.cacheSchemaVersion);
+  if (!Number.isFinite(currentCacheSchemaVersion) || currentCacheSchemaVersion < Globals.CACHE_SCHEMA_VERSION) {
+    globals.cacheSchemaVersion = Globals.CACHE_SCHEMA_VERSION;
+    globals.lastHashes.cacheSchemaVersion = null;
+    cacheSchemaChanged = true;
+  }
+
+  const migratedLegacyCache = migrateLegacyRuntimeCaches();
+  if (migratedLegacyCache) {
+    globals.lastHashes.animes = null;
+    globals.lastHashes.episodeIds = null;
+    globals.lastHashes.cacheSchemaVersion = null;
+  }
+
+  if ((migratedLegacyCache || cacheSchemaChanged) && path !== "/favicon.ico" && path !== "/robots.txt") {
+    if (deployPlatform === "node" && globals.localCacheValid) {
+      await updateLocalCaches();
+    }
+    if (globals.redisValid) {
+      await updateRedisCaches();
+    }
+    if (deployPlatform === "node" && globals.localRedisValid) {
+      const { updateLocalRedisCaches } = await import("./utils/local-redis-util.js");
+      await updateLocalRedisCaches();
+    }
   }
 
   // 检查路径是否包含指定的接口关键字
