@@ -9,7 +9,6 @@ import { titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
 import {
   HANJUTV_APP_PROFILE,
-  HANJUTV_APP_PROFILES,
   loadHanjutvSearchContext,
   createHanjutvSearchHeaders,
   decodeHanjutvEncryptedPayload,
@@ -253,11 +252,6 @@ export default class HanjutvSource extends BaseSource {
     return items;
   }
 
-  shouldRetryWithFreshIdentity(error) {
-    const message = String(error?.message || "");
-    return message.includes("无有效结果") || message.includes("解密失败");
-  }
-
   async warmupMobileIdentity(context, headers) {
     if (this.mobileWarmupUid === context.uid) return;
     this.mobileWarmupPromise = (this.mobileWarmupPromise || Promise.resolve()).then(async () => {
@@ -272,9 +266,9 @@ export default class HanjutvSource extends BaseSource {
     await this.mobileWarmupPromise;
   }
 
-  async searchWithS5ApiForProfile(keyword, profile) {
-    const runSearch = async (options = {}) => {
-      const context = this.getMobileSearchContext(profile, options);
+  async searchWithS5Api(keyword) {
+    const doSearch = async (options = {}) => {
+      const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE, options);
       const headers = await createHanjutvSearchHeaders(context);
       await this.warmupMobileIdentity(context, headers);
       const q = encodeURIComponent(keyword);
@@ -283,48 +277,18 @@ export default class HanjutvSource extends BaseSource {
         timeout: 10000,
         retries: 1,
       });
-      return this.extractFromPayload(resp?.data, context.uid, `s5:${profile.id}`);
+      return this.extractFromPayload(resp?.data, context.uid, "s5");
     };
 
     try {
-      return await runSearch();
+      return await doSearch();
     } catch (error) {
-      if (!this.shouldRetryWithFreshIdentity(error)) throw error;
-      log("warn", `[Hanjutv] s5(${profile.id}) 当前身份失败，刷新临时身份重试: ${error.message}`);
+      const msg = String(error?.message || "");
+      if (!msg.includes("无有效结果") && !msg.includes("解密失败")) throw error;
+      log("warn", `[Hanjutv] s5 当前身份失败，刷新重试: ${error.message}`);
       this.mobileWarmupUid = null;
-      return runSearch({ refresh: true, forceRandom: true });
+      return doSearch({ refresh: true, forceRandom: true });
     }
-  }
-
-  async searchWithS5Api(keyword) {
-    let fallbackItems = [];
-    let fallbackProfile = null;
-    let lastError = null;
-
-    for (const profile of HANJUTV_APP_PROFILES) {
-      try {
-        const items = await this.searchWithS5ApiForProfile(keyword, profile);
-        const matched = this.countMatchedItems(items, keyword);
-        if (matched > 0) {
-          if (profile.id !== HANJUTV_APP_PROFILE.id) log("info", `[Hanjutv] s5 使用备用画像 ${profile.id} 命中 ${matched} 条`);
-          return items;
-        }
-        if (fallbackItems.length === 0) {
-          fallbackItems = items;
-          fallbackProfile = profile;
-        }
-      } catch (error) {
-        lastError = error;
-        log("warn", `[Hanjutv] s5(${profile.id}) 请求失败: ${error.message}`);
-      }
-    }
-
-    if (fallbackItems.length > 0) {
-      log("warn", `[Hanjutv] 所有画像标题零命中，回退使用 ${fallbackProfile?.id || "unknown"} 画像结果`);
-      return fallbackItems;
-    }
-    if (lastError) throw lastError;
-    return [];
   }
 
   async searchWithLegacyApi(keyword) {

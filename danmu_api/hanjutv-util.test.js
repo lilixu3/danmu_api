@@ -4,7 +4,6 @@ import crypto from "node:crypto";
 import HanjutvSource from "./sources/hanjutv.js";
 import {
   HANJUTV_APP_PROFILE,
-  HANJUTV_APP_PROFILES,
   clearHanjutvIdentityStateCache,
   createHanjutvSearchContext,
   createHanjutvSearchHeaders,
@@ -106,7 +105,6 @@ test("decodeHanjutvEncryptedPayload should decode response body derived from uid
 test("stable platform seed should keep mobile and tv identities reusable across cold starts", async () => {
   const sourceA = new HanjutvSource();
   const mobileA = sourceA.getMobileSearchContext();
-  const legacyA = sourceA.getMobileSearchContext(HANJUTV_APP_PROFILES[1]);
   const appHeadersA = sourceA.getAppHeaders();
   const tvHeadersA = await sourceA.buildTvHeaders();
 
@@ -120,8 +118,6 @@ test("stable platform seed should keep mobile and tv identities reusable across 
   assert.equal(mobileA.said, mobileB.said);
   assert.equal(mobileA.oa, mobileB.oa);
   assert.equal(mobileA.installTs, mobileB.installTs);
-  assert.equal(legacyA.uid, mobileA.uid);
-  assert.equal(legacyA.profile.id, "legacy");
   assert.equal(appHeadersA.said, mobileA.said);
   assert.equal(appHeadersA["User-Agent"], HANJUTV_APP_PROFILE.userAgent);
   assert.equal(tvHeadersA.uid, tvHeadersB.uid);
@@ -137,21 +133,4 @@ test("loadHanjutvSearchContext should allow refreshing to a temporary new runtim
   assert.notEqual(refreshed.oa, stable.oa);
   assert.equal(reusedRefreshed.uid, refreshed.uid);
   assert.equal(reusedRefreshed.said, refreshed.said);
-});
-
-test("HanjutvSource should fallback to legacy profile when current profile has zero matched items", async () => {
-  const source = new HanjutvSource();
-  const tried = [];
-
-  source.searchWithS5ApiForProfile = async (keyword, profile) => {
-    tried.push(profile.id);
-    if (profile.id === "current") return [{ sid: "1", name: "完全不相关" }];
-    return [{ sid: "2", name: keyword }];
-  };
-
-  const items = await source.searchWithS5Api("春夜");
-  assert.deepEqual(tried, ["current", "legacy"]);
-  assert.equal(items.length, 1);
-  assert.equal(items[0].sid, "2");
-  assert.equal(items[0].name, "春夜");
 });
