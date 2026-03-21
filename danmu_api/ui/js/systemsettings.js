@@ -355,7 +355,7 @@ function checkDeploymentStatus() {
         updateLoadingText('🔍 检查服务状态...', \`第 \${checkCount}/\${maxChecks} 次检查\`);
         addLog(\`📡 服务检查中 - 第 \${checkCount} 次尝试\`, 'info');
 
-        fetch(buildApiUrl('/api/logs'))
+        fetch(buildApiUrl('/api/config', true))
             .then(response => {
                 if (response.ok || checkCount >= maxChecks) {
                     clearInterval(checkInterval);

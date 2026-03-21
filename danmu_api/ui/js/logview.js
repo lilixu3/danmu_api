@@ -365,6 +365,10 @@ async function copyVisibleLogs() {
    从API获取真实日志
    ======================================== */
 async function fetchRealLogs() {
+    if (typeof hasProtectedUiAccessToken === 'function' && !hasProtectedUiAccessToken()) {
+        return;
+    }
+
     try {
         const response = await fetch(buildApiUrl('/api/logs'));
         if (!response.ok) {

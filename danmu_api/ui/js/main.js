@@ -531,35 +531,8 @@ function toggleSidebar() {
 function switchSection(section) {
     // 检查是否尝试访问受token保护的section
     if (section === 'logs' || section === 'api' || section === 'env' || section === 'push' || section === 'cookie' || section === 'request-records') {
-        let _reverseProxy = customBaseUrl; // 使用全局配置
+        const urlToken = getUrlTokenFromLocation();
 
-        // 获取URL路径并提取token
-        let urlPath = window.location.pathname;
-        if(_reverseProxy) {
-            // 严谨地移除BaseUrl中的path部分
-            try {
-                // 如果_reverseProxy包含完整URL，提取pathname
-                // 如果只是相对路径，直接使用
-                let proxyPath = _reverseProxy.startsWith('http') 
-                    ? new URL(_reverseProxy).pathname 
-                    : _reverseProxy;
-                
-                // 确保移除尾部斜杠，防止匹配失败
-                if (proxyPath.endsWith('/')) {
-                    proxyPath = proxyPath.slice(0, -1);
-                }
-                
-                if(proxyPath && urlPath.startsWith(proxyPath)) {
-                    urlPath = urlPath.substring(proxyPath.length);
-                }
-            } catch(e) {
-                console.error("解析反代路径失败", e);
-            }
-        }
-        
-        const pathParts = urlPath.split('/').filter(part => part !== '');
-        const urlToken = pathParts.length > 0 ? pathParts[0] : '';
-        
         if (!urlToken && originalToken !== "87654321") {
             setTimeout(() => {
                 // 获取当前页面的协议、主机和端口
@@ -871,6 +844,47 @@ function buildApiUrl(path, isSystemPath = false) {
     }
 
     return res;
+}
+
+function getUrlTokenFromLocation() {
+    let urlPath = window.location.pathname;
+    if (customBaseUrl) {
+        try {
+            let proxyPath = customBaseUrl.startsWith('http')
+                ? new URL(customBaseUrl).pathname
+                : customBaseUrl;
+
+            if (proxyPath.endsWith('/')) {
+                proxyPath = proxyPath.slice(0, -1);
+            }
+
+            if (proxyPath && urlPath.startsWith(proxyPath)) {
+                urlPath = urlPath.substring(proxyPath.length);
+            }
+        } catch (e) {
+            console.error('解析反代路径失败', e);
+        }
+    }
+
+    const pathParts = urlPath.split('/').filter(part => part !== '');
+    return pathParts.length > 0 ? pathParts[0] : '';
+}
+
+function hasProtectedUiAccessToken() {
+    if (currentToken && currentToken !== 'globals.currentToken') {
+        return true;
+    }
+
+    if (originalToken === '87654321') {
+        return true;
+    }
+
+    const urlToken = getUrlTokenFromLocation();
+    if (!urlToken) {
+        return false;
+    }
+
+    return urlToken === originalToken || (currentAdminToken && currentAdminToken.trim() !== '' && urlToken === currentAdminToken);
 }
 
 /* ========================================
@@ -1316,7 +1330,9 @@ async function init() {
         renderEnvList();
         renderPreview();
         addLog('🎉 系统初始化完成', 'success');
-        fetchRealLogs();
+        if (hasProtectedUiAccessToken()) {
+            fetchRealLogs();
+        }
     } catch (error) {
         console.error('初始化失败:', error);
         addLog('❌ 系统初始化失败: ' + error.message, 'error');
@@ -1330,8 +1346,10 @@ async function init() {
             }
         }
         
-        // 即使初始化失败，也要尝试获取日志
-        fetchRealLogs();
+        // 即使初始化失败，也只在已鉴权时尝试获取日志
+        if (hasProtectedUiAccessToken()) {
+            fetchRealLogs();
+        }
     }
     // 初始化弹幕测试相关功能
     if (document.getElementById('danmu-heatmap-canvas')) {
@@ -1362,9 +1380,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 2. 无闪烁页面恢复逻辑 (核心优化)
     let savedSection = sessionStorage.getItem('activeSection') || localStorage.getItem('activeSection');
     // 没有 URL token 时，避免恢复到受保护页面（例如 /ADMIN_TOKEN 进入后直接关闭导致下次仍停留在管理页）
-    const urlPath = window.location.pathname;
-    const pathParts = urlPath.split('/').filter(part => part !== '');
-    const urlToken = pathParts.length > 0 ? pathParts[0] : '';
+    const urlToken = getUrlTokenFromLocation();
     const protectedSections = ['logs', 'api', 'env', 'push', 'request-records'];
     if (!urlToken && savedSection && protectedSections.includes(savedSection)) {
         try {
