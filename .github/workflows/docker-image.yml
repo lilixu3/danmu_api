@@ -19,7 +19,11 @@ jobs:
       - name: Read version from globals.js
         id: version
         run: |
-          VERSION=$(grep "VERSION:" danmu_api/configs/globals.js | sed -E "s/.*VERSION: '(.*)'.*/\1/")
+          VERSION=$(sed -nE "s/^  VERSION: '([^']+)'.*/\1/p" danmu_api/configs/globals.js | head -n 1)
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read VERSION from danmu_api/configs/globals.js" >&2
+            exit 1
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       # 设置 Docker 镜像缓存（可选,加速构建）
