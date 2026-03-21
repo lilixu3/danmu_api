@@ -1,29 +1,24 @@
-import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, aesCbcEncryptPure, aesCbcDecryptPure } from "./codec-util.js";
+import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, aesCbcEncryptPure, aesCbcDecryptPure } from "./crypto-util.js";
 
-export const HANJUTV_APP_PROFILES = Object.freeze([
-  Object.freeze({
-    id: "current",
-    version: "6.8.2",
-    vc: "a_8280",
-    ch: "xiaomi",
-    model: "23127PN0CC",
-    maker: "Xiaomi",
-    osv: "16",
-    userAgent: "HanjuTV/6.8.2 (23127PN0CC; Android 16; Scale/2.00)",
-  }),
-  Object.freeze({
-    id: "legacy",
-    version: "6.8.2",
-    vc: "a_8280",
-    ch: "xiaomi",
-    model: "Redmi Note 12",
-    maker: "Xiaomi",
-    osv: "14",
-    userAgent: "HanjuTV/6.8.2 (Redmi Note 12; Android 14; Scale/2.00)",
-  }),
+export const HANJUTV_APP_PROFILE = Object.freeze({
+  version: "6.8.2",
+  vc: "a_8280",
+  ch: "xiaomi",
+  model: "23127PN0CC",
+  maker: "Xiaomi",
+  osv: "16",
+  userAgent: "HanjuTV/6.8.2 (23127PN0CC; Android 16; Scale/2.00)",
+});
+
+const HANJUTV_APP_PROFILE_KEYS = Object.freeze([
+  "version",
+  "vc",
+  "ch",
+  "model",
+  "maker",
+  "osv",
+  "userAgent",
 ]);
-
-export const HANJUTV_APP_PROFILE = HANJUTV_APP_PROFILES[0];
 
 const HANJUTV_INSTALL_SEED_EPOCH = Date.UTC(2024, 0, 1);
 const HANJUTV_INSTALL_SEED_WINDOW_MS = 540 * 24 * 60 * 60 * 1000;
@@ -151,11 +146,12 @@ function normalizePositiveTimestamp(value, fallbackValue) {
 
 function normalizeAppProfile(profile = null) {
   if (!profile || typeof profile !== "object") return HANJUTV_APP_PROFILE;
-  if (isNonEmptyString(profile.id)) {
-    const matched = HANJUTV_APP_PROFILES.find((item) => item.id === profile.id);
-    if (matched) return matched;
+
+  const nextProfile = { ...HANJUTV_APP_PROFILE };
+  for (const key of HANJUTV_APP_PROFILE_KEYS) {
+    if (isNonEmptyString(profile[key])) nextProfile[key] = profile[key];
   }
-  return HANJUTV_APP_PROFILE;
+  return nextProfile;
 }
 
 function getStableDeploymentSeed() {
