@@ -425,8 +425,6 @@ test('worker.js API endpoints', async (t) => {
     Globals.searchCache = new Map();
     Globals.animeDetailsCache = new Map();
     Globals.episodeDetailsCache = new Map();
-    Globals.cacheSchemaVersion = 1;
-    Globals.lastHashes.cacheSchemaVersion = null;
 
     const originalHanjutvGetComments = HanjutvSource.prototype.getComments;
     HanjutvSource.prototype.getComments = async function(url, plat, segmentFlag) {
@@ -447,7 +445,6 @@ test('worker.js API endpoints', async (t) => {
       assert.equal(body.count, 1);
       assert.equal(body.comments[0].m, 'legacy-ok');
       assert.equal(Globals.episodeIds[0].url, 'legacy-eid');
-      assert.equal(Globals.cacheSchemaVersion, Globals.CACHE_SCHEMA_VERSION);
     } finally {
       HanjutvSource.prototype.getComments = originalHanjutvGetComments;
       Globals.commentCache = new Map();

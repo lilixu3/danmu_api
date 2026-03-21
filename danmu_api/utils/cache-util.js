@@ -1423,7 +1423,6 @@ export async function getLocalCaches() {
       const animes = parseCacheContent(readCacheFromFile('animes'));
       const episodeIds = parseCacheContent(readCacheFromFile('episodeIds'));
       let episodeNum = parseCacheContent(readCacheFromFile('episodeNum'));
-      let cacheSchemaVersion = parseCacheContent(readCacheFromFile('cacheSchemaVersion'));
       const reqRecords = parseCacheContent(readCacheFromFile('reqRecords'));
       let todayReqNum = parseCacheContent(readCacheFromFile('todayReqNum'));
 
@@ -1435,11 +1434,6 @@ export async function getLocalCaches() {
       if (animes !== null && animes !== undefined) globals.animes = animes;
       if (episodeIds !== null && episodeIds !== undefined) globals.episodeIds = episodeIds;
       if (episodeNum !== null && episodeNum !== undefined) globals.episodeNum = episodeNum;
-      if (typeof cacheSchemaVersion === 'string') {
-        const n = Number(cacheSchemaVersion);
-        if (Number.isFinite(n)) cacheSchemaVersion = n;
-      }
-      if (cacheSchemaVersion !== null && cacheSchemaVersion !== undefined) globals.cacheSchemaVersion = cacheSchemaVersion;
       if (reqRecords !== null && reqRecords !== undefined) globals.reqRecords = reqRecords;
       if (typeof todayReqNum === 'string') {
         const n = Number(todayReqNum);
@@ -1464,7 +1458,6 @@ export async function getLocalCaches() {
       globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
-      globals.lastHashes.cacheSchemaVersion = simpleHash(JSON.stringify(globals.cacheSchemaVersion));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
 
       globals.localCacheInitialized = true;
@@ -1489,8 +1482,7 @@ export async function updateLocalCaches() {
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
-      { key: 'todayReqNum', value: globals.todayReqNum },
-      { key: 'cacheSchemaVersion', value: globals.cacheSchemaVersion }
+      { key: 'todayReqNum', value: globals.todayReqNum }
     ];
 
     for (const { key, value } of variables) {

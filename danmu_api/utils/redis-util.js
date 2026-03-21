@@ -156,7 +156,7 @@ export async function getRedisCaches() {
   if (!globals.redisCacheInitialized) {
     try {
       log("info", 'getRedisCaches start.');
-      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum', 'cacheSchemaVersion'];
+      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum'];
       const commands = keys.map(key => ['GET', key]); // 构造 pipeline 命令
       const results = await runPipeline(commands);
 
@@ -173,7 +173,6 @@ export async function getRedisCaches() {
         log("info", `Restored lastSelectMap from Redis with ${globals.lastSelectMap.size} entries`);
       }
       globals.todayReqNum = results[5].result ? parseInt(results[5].result, 10) : globals.todayReqNum;
-      globals.cacheSchemaVersion = results[6].result ? parseInt(results[6].result, 10) : globals.cacheSchemaVersion;
 
       // 更新哈希值
       globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
@@ -182,7 +181,6 @@ export async function getRedisCaches() {
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
-      globals.lastHashes.cacheSchemaVersion = simpleHash(JSON.stringify(globals.cacheSchemaVersion));
 
       globals.redisCacheInitialized = true;
       log("info", 'getRedisCaches completed successfully.');
@@ -207,8 +205,7 @@ export async function updateRedisCaches() {
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
-      { key: 'todayReqNum', value: globals.todayReqNum },
-      { key: 'cacheSchemaVersion', value: globals.cacheSchemaVersion }
+      { key: 'todayReqNum', value: globals.todayReqNum }
     ];
 
     for (const { key, value } of variables) {

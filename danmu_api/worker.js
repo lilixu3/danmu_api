@@ -166,22 +166,13 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     await getLocalRedisCaches();
   }
 
-  let cacheSchemaChanged = false;
-  const currentCacheSchemaVersion = Number(globals.cacheSchemaVersion);
-  if (!Number.isFinite(currentCacheSchemaVersion) || currentCacheSchemaVersion < Globals.CACHE_SCHEMA_VERSION) {
-    globals.cacheSchemaVersion = Globals.CACHE_SCHEMA_VERSION;
-    globals.lastHashes.cacheSchemaVersion = null;
-    cacheSchemaChanged = true;
-  }
-
   const migratedLegacyCache = migrateLegacyRuntimeCaches();
   if (migratedLegacyCache) {
     globals.lastHashes.animes = null;
     globals.lastHashes.episodeIds = null;
-    globals.lastHashes.cacheSchemaVersion = null;
   }
 
-  if ((migratedLegacyCache || cacheSchemaChanged) && path !== "/favicon.ico" && path !== "/robots.txt") {
+  if (migratedLegacyCache && path !== "/favicon.ico" && path !== "/robots.txt") {
     if (deployPlatform === "node" && globals.localCacheValid) {
       await updateLocalCaches();
     }

@@ -170,7 +170,7 @@ export async function getLocalRedisCaches() {
         throw new Error('本地 Redis 客户端未初始化');
       }
 
-      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum', 'cacheSchemaVersion'];
+      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum'];
       const results = await Promise.all(keys.map(key => getLocalRedisKey(key)));
 
       // 解析结果，按顺序赋值
@@ -186,7 +186,6 @@ export async function getLocalRedisCaches() {
         log("info", `Restored lastSelectMap from Local Redis with ${globals.lastSelectMap.size} entries`);
       }
       globals.todayReqNum = results[5] ? parseInt(results[5], 10) : globals.todayReqNum;
-      globals.cacheSchemaVersion = results[6] ? parseInt(results[6], 10) : globals.cacheSchemaVersion;
 
       // 更新哈希值
       globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
@@ -195,7 +194,6 @@ export async function getLocalRedisCaches() {
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
-      globals.lastHashes.cacheSchemaVersion = simpleHash(JSON.stringify(globals.cacheSchemaVersion));
 
       globals.localRedisCacheInitialized = true;
       log("info", 'getLocalRedisCaches completed successfully.');
@@ -228,8 +226,7 @@ export async function updateLocalRedisCaches() {
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
-      { key: 'todayReqNum', value: globals.todayReqNum },
-      { key: 'cacheSchemaVersion', value: globals.cacheSchemaVersion }
+      { key: 'todayReqNum', value: globals.todayReqNum }
     ];
 
     for (const { key, value } of variables) {
