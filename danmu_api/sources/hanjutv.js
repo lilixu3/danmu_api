@@ -31,7 +31,6 @@ export default class HanjutvSource extends BaseSource {
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
     this.tvHeaderFactoryPromise = null;
-    this.mobileWarmupPromise = null;
     this.mobileWarmupUid = null;
   }
 
@@ -185,39 +184,43 @@ export default class HanjutvSource extends BaseSource {
   }
 
   mergeSearchCandidates(keyword, s5List = [], webList = []) {
-    const partition = (candidates) => {
+    const s5Unique = this.dedupeBySid(s5List);
+    const webUnique = this.dedupeBySid(webList);
+
+    const partition = (items) => {
       const matched = [], unmatched = [];
-      for (const item of this.dedupeBySid(candidates)) {
+      for (const item of items)
         (titleMatches(item?.name || "", keyword) ? matched : unmatched).push(item);
-      }
       return { matched, unmatched };
     };
 
-    const s5 = partition(s5List);
-    const web = partition(webList);
+    const s5 = partition(s5Unique);
+    const web = partition(webUnique);
 
-    const hasMatched = (s5.matched.length + web.matched.length) > 0;
-    const orderedCandidates = hasMatched
+    // s5 优先：命中项中 s5 在前，未命中项中 s5 也在前
+    const hasMatched = s5.matched.length + web.matched.length > 0;
+    const ordered = hasMatched
       ? [...s5.matched, ...web.matched, ...s5.unmatched, ...web.unmatched]
-      : [...this.dedupeBySid(s5List), ...this.dedupeBySid(webList)];
+      : [...s5Unique, ...webUnique];
 
+    // 跨源去重（保留先出现的，即 s5 优先）
     const resultList = [];
-    const sidSet = new Set();
-    for (const item of orderedCandidates) {
-      const sid = item?.sid ? String(item.sid) : "";
-      if (!sid || sidSet.has(sid)) continue;
-      sidSet.add(sid);
+    const seen = new Set();
+    for (const item of ordered) {
+      const sid = String(item.sid);
+      if (seen.has(sid)) continue;
+      seen.add(sid);
       resultList.push(item);
     }
 
-    const names = (list) => list?.map(item => item.name) || [];
+    const names = (list) => list.map(item => item.name);
 
     return {
       resultList,
       stats: {
-        s5Total: s5.matched.length + s5.unmatched.length,
+        s5Total: s5Unique.length,
         s5Matched: s5.matched.length,
-        webTotal: web.matched.length + web.unmatched.length,
+        webTotal: webUnique.length,
         webMatched: web.matched.length,
         s5MatchedList: names(s5.matched),
         s5UnmatchedList: names(s5.unmatched),
@@ -254,7 +257,8 @@ export default class HanjutvSource extends BaseSource {
 
   async warmupMobileIdentity(context, headers) {
     if (this.mobileWarmupUid === context.uid) return;
-    this.mobileWarmupPromise = (this.mobileWarmupPromise || Promise.resolve()).then(async () => {
+    // 串行化：多个并发调用只执行一次暖身请求
+    this._warmupLock = (this._warmupLock || Promise.resolve()).then(async () => {
       if (this.mobileWarmupUid === context.uid) return;
       try {
         await httpGet("https://hxqapi.hiyun.tv/api/common/configs", { headers, timeout: 8000, retries: 0 });
@@ -263,7 +267,7 @@ export default class HanjutvSource extends BaseSource {
         // 暖身失败不阻断搜索
       }
     });
-    await this.mobileWarmupPromise;
+    return this._warmupLock;
   }
 
   async searchWithS5Api(keyword) {
@@ -448,7 +452,7 @@ export default class HanjutvSource extends BaseSource {
 
     const tmpAnimes = [];
 
-    const processHanjutvAnimes = await Promise.all(
+    await Promise.all(
       sourceAnimes
         .filter(s => titleMatches(s.name, queryTitle))
         .map(async (anime) => {
@@ -493,7 +497,7 @@ export default class HanjutvSource extends BaseSource {
     );
 
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
-    return processHanjutvAnimes;
+    return tmpAnimes;
   }
 
   // ── 弹幕 ─────────────────────────────────────────────────────

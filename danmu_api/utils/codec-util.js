@@ -295,9 +295,8 @@ export function convertToAsciiSum(sid) {
   return hash < 10000 ? hash + 10000 : hash;
 }
 
-// ====================== AES-128-ECB 完整实现 ======================
+// ====================== AES-128 完整实现 ======================
 
-// S盒
 const SBOX = [
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
   0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -314,126 +313,188 @@ const SBOX = [
   0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
   0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
   0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-  0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+  0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ];
 
-// 轮常量
-const RCON = [
-  0x00,0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36
-];
+// 逆S盒（预计算，避免每次解密调用重建）
+const INV_SBOX = new Uint8Array(256);
+for (let i = 0; i < 256; i++) INV_SBOX[SBOX[i]] = i;
 
-// 字节异或
-function xor(a,b) {
+const RCON = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+
+function gfMul(a, b) {
+  let p = 0;
+  for (let i = 0; i < 8; i++) {
+    if (b & 1) p ^= a;
+    const hi = a & 0x80;
+    a = (a << 1) & 0xff;
+    if (hi) a ^= 0x1b;
+    b >>= 1;
+  }
+  return p;
+}
+
+function xorBytes(a, b) {
   const out = new Uint8Array(a.length);
-  for(let i=0;i<a.length;i++) out[i]=a[i]^b[i];
+  for (let i = 0; i < a.length; i++) out[i] = a[i] ^ b[i];
   return out;
 }
 
-// 字循环左移
-function rotWord(word){
-  return Uint8Array.from([word[1],word[2],word[3],word[0]]);
+function rotWord(word) {
+  return Uint8Array.from([word[1], word[2], word[3], word[0]]);
 }
 
-// 字节代换
-export function subWord(word){
-  return Uint8Array.from(word.map(b=>SBOX[b]));
+export function subWord(word) {
+  return Uint8Array.from(word.map(b => SBOX[b]));
 }
 
-// 扩展密钥 16 字节 -> 176 字节
 export function keyExpansion(key) {
-  const Nk = 4, Nb=4, Nr=10;
-  const w = new Array(Nb*(Nr+1));
-  for(let i=0;i<Nk;i++){
-    w[i] = key.slice(4*i,4*i+4);
-  }
-  for(let i=Nk;i<Nb*(Nr+1);i++){
-    let temp = w[i-1];
-    if(i%Nk===0) temp = xor(subWord(rotWord(temp)), Uint8Array.from([RCON[i/Nk],0,0,0]));
-    w[i]=xor(w[i-Nk],temp);
+  const Nk = 4, Nb = 4, Nr = 10;
+  const w = new Array(Nb * (Nr + 1));
+  for (let i = 0; i < Nk; i++) w[i] = key.slice(4 * i, 4 * i + 4);
+  for (let i = Nk; i < Nb * (Nr + 1); i++) {
+    let temp = w[i - 1];
+    if (i % Nk === 0) temp = xorBytes(subWord(rotWord(temp)), Uint8Array.from([RCON[i / Nk], 0, 0, 0]));
+    w[i] = xorBytes(w[i - Nk], temp);
   }
   return w;
 }
 
-// AES-128 解密单块 (16 字节)
-function aesDecryptBlock(input, w) {
-  const Nb=4, Nr=10;
+function addRoundKey(state, w, round) {
+  const out = new Uint8Array(16);
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++)
+      out[r + 4 * c] = state[r + 4 * c] ^ w[round * 4 + c][r];
+  return out;
+}
+
+function shiftRows(state) {
+  const out = new Uint8Array(16);
+  for (let r = 0; r < 4; r++)
+    for (let c = 0; c < 4; c++)
+      out[r + 4 * c] = state[r + 4 * ((c + r) % 4)];
+  return out;
+}
+
+export function invShiftRows(state) {
+  const out = new Uint8Array(16);
+  for (let r = 0; r < 4; r++)
+    for (let c = 0; c < 4; c++)
+      out[r + 4 * c] = state[r + 4 * ((c - r + 4) % 4)];
+  return out;
+}
+
+function mixColumns(state) {
+  const out = new Uint8Array(16);
+  for (let c = 0; c < 4; c++) {
+    const col = state.slice(4 * c, 4 * c + 4);
+    out[4 * c + 0] = gfMul(col[0], 0x02) ^ gfMul(col[1], 0x03) ^ col[2] ^ col[3];
+    out[4 * c + 1] = col[0] ^ gfMul(col[1], 0x02) ^ gfMul(col[2], 0x03) ^ col[3];
+    out[4 * c + 2] = col[0] ^ col[1] ^ gfMul(col[2], 0x02) ^ gfMul(col[3], 0x03);
+    out[4 * c + 3] = gfMul(col[0], 0x03) ^ col[1] ^ col[2] ^ gfMul(col[3], 0x02);
+  }
+  return out;
+}
+
+function invMixColumns(state) {
+  const out = new Uint8Array(16);
+  for (let c = 0; c < 4; c++) {
+    const col = state.slice(4 * c, 4 * c + 4);
+    out[4 * c + 0] = gfMul(col[0], 0x0e) ^ gfMul(col[1], 0x0b) ^ gfMul(col[2], 0x0d) ^ gfMul(col[3], 0x09);
+    out[4 * c + 1] = gfMul(col[0], 0x09) ^ gfMul(col[1], 0x0e) ^ gfMul(col[2], 0x0b) ^ gfMul(col[3], 0x0d);
+    out[4 * c + 2] = gfMul(col[0], 0x0d) ^ gfMul(col[1], 0x09) ^ gfMul(col[2], 0x0e) ^ gfMul(col[3], 0x0b);
+    out[4 * c + 3] = gfMul(col[0], 0x0b) ^ gfMul(col[1], 0x0d) ^ gfMul(col[2], 0x09) ^ gfMul(col[3], 0x0e);
+  }
+  return out;
+}
+
+export function invSubBytes(state) {
+  return Uint8Array.from(state.map(b => INV_SBOX[b]));
+}
+
+function aesEncryptBlock(input, w) {
   let state = new Uint8Array(input);
-  state = addRoundKey(state, w.slice(Nr*Nb,(Nr+1)*Nb));
-  for(let round=Nr-1;round>=1;round--){
+  state = addRoundKey(state, w, 0);
+  for (let round = 1; round <= 9; round++) {
+    state = subWord(state);
+    state = shiftRows(state);
+    state = mixColumns(state);
+    state = addRoundKey(state, w, round);
+  }
+  state = subWord(state);
+  state = shiftRows(state);
+  return addRoundKey(state, w, 10);
+}
+
+function aesDecryptBlock(input, w) {
+  let state = new Uint8Array(input);
+  state = addRoundKey(state, w, 10);
+  for (let round = 9; round >= 1; round--) {
     state = invShiftRows(state);
     state = invSubBytes(state);
-    state = addRoundKey(state, w.slice(round*Nb,(round+1)*Nb));
+    state = addRoundKey(state, w, round);
     state = invMixColumns(state);
   }
   state = invShiftRows(state);
   state = invSubBytes(state);
-  state = addRoundKey(state, w.slice(0,Nb));
-  return state;
+  return addRoundKey(state, w, 0);
 }
 
-// AES 辅助函数
-export function addRoundKey(state, w){
-  const out = new Uint8Array(16);
-  for(let c=0;c<4;c++)
-    for(let r=0;r<4;r++)
-      out[r+4*c]=state[r+4*c]^w[c][r];
-  return out;
+// ====================== PKCS#7 填充/去填充 ======================
+
+export function pkcs7Pad(bytes, blockSize = 16) {
+  const padSize = blockSize - (bytes.length % blockSize);
+  const result = new Uint8Array(bytes.length + padSize);
+  result.set(bytes, 0);
+  result.fill(padSize, bytes.length);
+  return result;
 }
 
-export function invSubBytes(state){
-  const INV_SBOX = new Array(256);
-  for(let i=0;i<256;i++) INV_SBOX[SBOX[i]]=i;
-  return Uint8Array.from(state.map(b=>INV_SBOX[b]));
-}
-
-export function invShiftRows(state){
-  const out = new Uint8Array(16);
-  for(let r=0;r<4;r++)
-    for(let c=0;c<4;c++)
-      out[r+4*c]=state[r+4*((c-r+4)%4)];
-  return out;
-}
-
-function invMixColumns(state){
-  function mul(a,b){
-    let p=0;
-    for(let i=0;i<8;i++){
-      if(b&1) p^=a;
-      let hi=(a&0x80);
-      a=(a<<1)&0xFF;
-      if(hi) a^=0x1b;
-      b>>=1;
-    }
-    return p;
-  }
-  const out = new Uint8Array(16);
-  for(let c=0;c<4;c++){
-    const col = state.slice(4*c,4*c+4);
-    out[4*c+0]=mul(col[0],0x0e)^mul(col[1],0x0b)^mul(col[2],0x0d)^mul(col[3],0x09);
-    out[4*c+1]=mul(col[0],0x09)^mul(col[1],0x0e)^mul(col[2],0x0b)^mul(col[3],0x0d);
-    out[4*c+2]=mul(col[0],0x0d)^mul(col[1],0x09)^mul(col[2],0x0e)^mul(col[3],0x0b);
-    out[4*c+3]=mul(col[0],0x0b)^mul(col[1],0x0d)^mul(col[2],0x09)^mul(col[3],0x0e);
-  }
-  return out;
+export function pkcs7Unpad(data) {
+  if (data.length === 0) return data;
+  const pad = data[data.length - 1];
+  if (pad < 1 || pad > 16) return data;
+  return data.slice(0, data.length - pad);
 }
 
 // ====================== ECB 模式解密 ======================
-function aesDecryptECB(cipherBytes, keyBytes){
+
+function aesDecryptECB(cipherBytes, keyBytes) {
   const w = keyExpansion(keyBytes);
-  const blockSize = 16;
   const result = new Uint8Array(cipherBytes.length);
-  for(let i=0;i<cipherBytes.length;i+=blockSize){
-    const block = cipherBytes.slice(i,i+blockSize);
-    const decrypted = aesDecryptBlock(block,w);
-    result.set(decrypted,i);
+  for (let i = 0; i < cipherBytes.length; i += 16) {
+    const block = cipherBytes.slice(i, i + 16);
+    result.set(aesDecryptBlock(block, w), i);
   }
   return result;
 }
 
-// ====================== PKCS#7 去填充 ======================
-function pkcs7Unpad(data){
-  const pad = data[data.length-1];
-  return data.slice(0,data.length-pad);
+// ====================== CBC 模式加解密 ======================
+
+export function aesCbcEncryptPure(plainBytes, keyBytes, ivBytes) {
+  const padded = pkcs7Pad(plainBytes, 16);
+  const w = keyExpansion(keyBytes);
+  const out = new Uint8Array(padded.length);
+  let prev = new Uint8Array(ivBytes);
+  for (let i = 0; i < padded.length; i += 16) {
+    const cipherBlock = aesEncryptBlock(xorBytes(padded.slice(i, i + 16), prev), w);
+    out.set(cipherBlock, i);
+    prev = cipherBlock;
+  }
+  return out;
+}
+
+export function aesCbcDecryptPure(cipherBytes, keyBytes, ivBytes) {
+  if (cipherBytes.length % 16 !== 0) throw new Error(`密文长度不是16的倍数: ${cipherBytes.length}`);
+  const w = keyExpansion(keyBytes);
+  const out = new Uint8Array(cipherBytes.length);
+  let prev = new Uint8Array(ivBytes);
+  for (let i = 0; i < cipherBytes.length; i += 16) {
+    const block = cipherBytes.slice(i, i + 16);
+    out.set(xorBytes(aesDecryptBlock(block, w), prev), i);
+    prev = block;
+  }
+  return pkcs7Unpad(out);
 }
 
 // ====================== Base64 解码 ======================

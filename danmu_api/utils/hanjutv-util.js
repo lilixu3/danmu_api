@@ -1,4 +1,4 @@
-import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, invSubBytes, subWord, keyExpansion, invShiftRows } from "./codec-util.js";
+import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, aesCbcEncryptPure, aesCbcDecryptPure } from "./codec-util.js";
 
 export const HANJUTV_APP_PROFILES = Object.freeze([
   Object.freeze({
@@ -76,153 +76,6 @@ function utf8Decode(bytes) {
   return utf8BytesToString(bytes);
 }
 
-function xorBytes(a, b) {
-  const out = new Uint8Array(a.length);
-  for (let i = 0; i < a.length; i++) out[i] = a[i] ^ b[i];
-  return out;
-}
-
-function pkcs7Pad(bytes, blockSize = 16) {
-  const remain = bytes.length % blockSize;
-  const padSize = remain === 0 ? blockSize : blockSize - remain;
-  const result = new Uint8Array(bytes.length + padSize);
-  result.set(bytes, 0);
-  result.fill(padSize, bytes.length);
-  return result;
-}
-
-function stripControlChars(text) {
-  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
-}
-
-function addRoundKey(state, w, round) {
-  const out = new Uint8Array(16);
-  for (let c = 0; c < 4; c++) {
-    for (let r = 0; r < 4; r++) {
-      out[r + 4 * c] = state[r + 4 * c] ^ w[round * 4 + c][r];
-    }
-  }
-  return out;
-}
-
-function shiftRows(state) {
-  const out = new Uint8Array(16);
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      out[r + 4 * c] = state[r + 4 * ((c + r) % 4)];
-    }
-  }
-  return out;
-}
-
-function gfMul(a, b) {
-  let p = 0;
-  let aa = a;
-  let bb = b;
-  for (let i = 0; i < 8; i++) {
-    if (bb & 1) p ^= aa;
-    const hi = aa & 0x80;
-    aa = (aa << 1) & 0xff;
-    if (hi) aa ^= 0x1b;
-    bb >>= 1;
-  }
-  return p;
-}
-
-function mixColumns(state) {
-  const out = new Uint8Array(16);
-  for (let c = 0; c < 4; c++) {
-    const col = state.slice(4 * c, 4 * c + 4);
-    out[4 * c + 0] = gfMul(col[0], 0x02) ^ gfMul(col[1], 0x03) ^ col[2] ^ col[3];
-    out[4 * c + 1] = col[0] ^ gfMul(col[1], 0x02) ^ gfMul(col[2], 0x03) ^ col[3];
-    out[4 * c + 2] = col[0] ^ col[1] ^ gfMul(col[2], 0x02) ^ gfMul(col[3], 0x03);
-    out[4 * c + 3] = gfMul(col[0], 0x03) ^ col[1] ^ col[2] ^ gfMul(col[3], 0x02);
-  }
-  return out;
-}
-
-function invMixColumns(state) {
-  const out = new Uint8Array(16);
-  for (let c = 0; c < 4; c++) {
-    const col = state.slice(4 * c, 4 * c + 4);
-    out[4 * c + 0] = gfMul(col[0], 0x0e) ^ gfMul(col[1], 0x0b) ^ gfMul(col[2], 0x0d) ^ gfMul(col[3], 0x09);
-    out[4 * c + 1] = gfMul(col[0], 0x09) ^ gfMul(col[1], 0x0e) ^ gfMul(col[2], 0x0b) ^ gfMul(col[3], 0x0d);
-    out[4 * c + 2] = gfMul(col[0], 0x0d) ^ gfMul(col[1], 0x09) ^ gfMul(col[2], 0x0e) ^ gfMul(col[3], 0x0b);
-    out[4 * c + 3] = gfMul(col[0], 0x0b) ^ gfMul(col[1], 0x0d) ^ gfMul(col[2], 0x09) ^ gfMul(col[3], 0x0e);
-  }
-  return out;
-}
-
-function aesEncryptBlock(input, w) {
-  let state = new Uint8Array(input);
-  state = addRoundKey(state, w, 0);
-
-  for (let round = 1; round <= 9; round++) {
-    state = subWord(state);
-    state = shiftRows(state);
-    state = mixColumns(state);
-    state = addRoundKey(state, w, round);
-  }
-
-  state = subWord(state);
-  state = shiftRows(state);
-  state = addRoundKey(state, w, 10);
-  return state;
-}
-
-function aesDecryptBlock(input, w) {
-  let state = new Uint8Array(input);
-  state = addRoundKey(state, w, 10);
-
-  for (let round = 9; round >= 1; round--) {
-    state = invShiftRows(state);
-    state = invSubBytes(state);
-    state = addRoundKey(state, w, round);
-    state = invMixColumns(state);
-  }
-
-  state = invShiftRows(state);
-  state = invSubBytes(state);
-  state = addRoundKey(state, w, 0);
-  return state;
-}
-
-function aesCbcEncryptPure(plainBytes, keyBytes, ivBytes) {
-  const padded = pkcs7Pad(plainBytes, 16);
-  const w = keyExpansion(keyBytes);
-  const out = new Uint8Array(padded.length);
-  let prev = new Uint8Array(ivBytes);
-
-  for (let i = 0; i < padded.length; i += 16) {
-    const block = padded.slice(i, i + 16);
-    const mixed = xorBytes(block, prev);
-    const cipherBlock = aesEncryptBlock(mixed, w);
-    out.set(cipherBlock, i);
-    prev = cipherBlock;
-  }
-
-  return out;
-}
-
-function aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes) {
-  if (cipherBytes.length % 16 !== 0) {
-    throw new Error(`密文长度不是16的倍数: ${cipherBytes.length}`);
-  }
-
-  const w = keyExpansion(keyBytes);
-  const out = new Uint8Array(cipherBytes.length);
-  let prev = new Uint8Array(ivBytes);
-
-  for (let i = 0; i < cipherBytes.length; i += 16) {
-    const block = cipherBytes.slice(i, i + 16);
-    const plainBlock = xorBytes(aesDecryptBlock(block, w), prev);
-    out.set(plainBlock, i);
-    prev = block;
-  }
-
-  return out;
-}
-
 async function getNativeCryptoModule() {
   if (nativeCryptoModulePromise === undefined) {
     nativeCryptoModulePromise = import("node:crypto")
@@ -247,26 +100,28 @@ async function aesCbcEncryptToBase64(plainText, key, iv) {
   return bytesToBase64(cipherBytes);
 }
 
-async function aesCbcDecryptBase64NoPadding(cipherBase64, key, iv) {
+async function aesCbcDecryptBase64(cipherBase64, key, iv) {
   const native = await getNativeCryptoModule();
   if (native) {
     const decipher = native.createDecipheriv("aes-128-cbc", Buffer.from(key, "utf8"), Buffer.from(iv, "utf8"));
-    decipher.setAutoPadding(false);
     return Buffer.concat([decipher.update(cipherBase64, "base64"), decipher.final()]).toString("utf8");
   }
 
-  const keyBytes = utf8Encode(key);
-  const ivBytes = utf8Encode(iv);
   const cipherBytes = base64ToBytes(cipherBase64);
-  const plainBytes = aesCbcDecryptPureNoUnpad(cipherBytes, keyBytes, ivBytes);
+  const plainBytes = aesCbcDecryptPure(cipherBytes, utf8Encode(key), utf8Encode(iv));
   return utf8Decode(plainBytes);
 }
 
 function randomInt(max) {
   if (globalThis.crypto?.getRandomValues) {
-    const bytes = new Uint8Array(1);
-    globalThis.crypto.getRandomValues(bytes);
-    return bytes[0] % max;
+    const buf = new Uint8Array(1);
+    const limit = 256 - (256 % max); // rejection sampling 消除模偏差
+    let val;
+    do {
+      globalThis.crypto.getRandomValues(buf);
+      val = buf[0];
+    } while (val >= limit);
+    return val % max;
   }
   return Math.floor(Math.random() * max);
 }
@@ -391,37 +246,22 @@ function buildSearchSignPayload(context, timestamp) {
   const ts = Number(timestamp);
   const profile = context.profile || HANJUTV_APP_PROFILE;
 
+  // 模拟客户端设备指纹，字段值来自抓包，保持与真实客户端一致即可
   return JSON.stringify({
-    emu: 0,
-    ou: 0,
-    it: context.installTs,
-    iit: context.installTs,
-    bs: 0,
-    uid: context.uid,
-    pc: 0,
-    tm: 81,
-    d8m: "0,0,0,0,0,0,0,4",
-    md: profile.model,
-    maker: profile.maker,
-    osv: profile.osv,
-    br: 95,
-    rpc: 0,
-    scc: 2,
-    plc: 6,
-    toc: 19,
-    tsc: 10,
-    ts,
-    pa: 1,
-    crec: 0,
-    nw: 2,
-    px: "0",
-    isp: "",
-    ai: context.said,
-    oa: context.oa,
-    dpc: 0,
-    dsc: 0,
-    qpc: 0,
-    apad: 0,
+    emu: 0, ou: 0,
+    it: context.installTs, iit: context.installTs,
+    bs: 0, uid: context.uid, pc: 0,
+    tm: 81,                        // 总内存 (GB 级别的设备指标)
+    d8m: "0,0,0,0,0,0,0,4",       // 8 日活跃分布
+    md: profile.model, maker: profile.maker, osv: profile.osv,
+    br: 95,                        // 电量百分比
+    rpc: 0, scc: 2, plc: 6,       // 各类计数器
+    toc: 19, tsc: 10,             // 累计打开/搜索次数
+    ts, pa: 1, crec: 0,
+    nw: 2,                         // 网络类型 (2=WiFi)
+    px: "0", isp: "",
+    ai: context.said, oa: context.oa,
+    dpc: 0, dsc: 0, qpc: 0, apad: 0,
     pk: "com.babycloud.hanju",
   });
 }
@@ -536,7 +376,6 @@ export async function decodeHanjutvEncryptedPayload(payload, uid = "") {
   const mix = md5(`${key}${HANJUTV_CRYPTO.responseSecret}`);
   const aesKey = mix.slice(0, 16);
   const iv = mix.slice(16, 32);
-  const plainText = await aesCbcDecryptBase64NoPadding(payload.data, aesKey, iv);
-  const cleanedText = stripControlChars(plainText).trim();
-  return JSON.parse(cleanedText);
+  const plainText = await aesCbcDecryptBase64(payload.data, aesKey, iv);
+  return JSON.parse(plainText.trim());
 }
