@@ -7,7 +7,14 @@ import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
-import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload, buildLiteHeaders } from "../utils/hanjutv-util.js";
+import {
+  HANJUTV_APP_PROFILE,
+  HANJUTV_APP_PROFILES,
+  loadHanjutvSearchContext,
+  createHanjutvSearchHeaders,
+  decodeHanjutvEncryptedPayload,
+  buildLiteHeaders,
+} from "../utils/hanjutv-util.js";
 
 const CATE_MAP = { 1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧" };
 const MAX_AXIS = 100000000;
@@ -24,7 +31,9 @@ export default class HanjutvSource extends BaseSource {
     this.oldDanmuHost = "https://hxqapi.zmdcq.com";
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
-    this.appUserAgent = "HanjuTV/6.8.2 (Redmi Note 12; Android 14; Scale/2.00)";
+    this.tvHeaderFactoryPromise = null;
+    this.mobileWarmupPromise = null;
+    this.mobileWarmupUid = null;
   }
 
   getWebHeaders() {
@@ -34,14 +43,22 @@ export default class HanjutvSource extends BaseSource {
     };
   }
 
-  getAppHeaders() {
+  getMobileSearchContext(profile = HANJUTV_APP_PROFILE, options = {}) {
+    return loadHanjutvSearchContext(profile, { ...options, timestamp: Date.now() });
+  }
+
+  getAppHeaders(profile = HANJUTV_APP_PROFILE) {
+    const context = this.getMobileSearchContext(profile);
+    const pickedProfile = context.profile || profile;
     return {
-      vc: "a_8280",
-      vn: "6.8.2",
-      ch: "xiaomi",
+      vc: pickedProfile.vc,
+      vn: pickedProfile.version,
+      ch: pickedProfile.ch,
       app: "hj",
-      "User-Agent": this.appUserAgent,
+      said: context.said,
+      "User-Agent": pickedProfile.userAgent,
       "Accept-Encoding": "gzip",
+      Connection: "Keep-Alive",
     };
   }
 
@@ -53,7 +70,8 @@ export default class HanjutvSource extends BaseSource {
    * 构建 TV 端请求头，返回 { headers, uid }
    */
   async buildTvHeaders() {
-    const makeHeaders = await buildLiteHeaders(Date.now());
+    if (!this.tvHeaderFactoryPromise) this.tvHeaderFactoryPromise = buildLiteHeaders(Date.now());
+    const makeHeaders = await this.tvHeaderFactoryPromise;
     return makeHeaders(Date.now()); // { headers, uid }
   }
 
@@ -235,16 +253,78 @@ export default class HanjutvSource extends BaseSource {
     return items;
   }
 
-  async searchWithS5Api(keyword) {
-    const uid = createHanjutvUid();
-    const headers = await createHanjutvSearchHeaders(uid);
-    const q = encodeURIComponent(keyword);
-    const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
-      headers,
-      timeout: 10000,
-      retries: 1,
+  shouldRetryWithFreshIdentity(error) {
+    const message = String(error?.message || "");
+    return message.includes("无有效结果") || message.includes("解密失败");
+  }
+
+  async warmupMobileIdentity(context, headers) {
+    if (this.mobileWarmupUid === context.uid) return;
+    this.mobileWarmupPromise = (this.mobileWarmupPromise || Promise.resolve()).then(async () => {
+      if (this.mobileWarmupUid === context.uid) return;
+      try {
+        await httpGet("https://hxqapi.hiyun.tv/api/common/configs", { headers, timeout: 8000, retries: 0 });
+        this.mobileWarmupUid = context.uid;
+      } catch (_) {
+        // 暖身失败不阻断搜索
+      }
     });
-    return this.extractFromPayload(resp?.data, uid, "s5");
+    await this.mobileWarmupPromise;
+  }
+
+  async searchWithS5ApiForProfile(keyword, profile) {
+    const runSearch = async (options = {}) => {
+      const context = this.getMobileSearchContext(profile, options);
+      const headers = await createHanjutvSearchHeaders(context);
+      await this.warmupMobileIdentity(context, headers);
+      const q = encodeURIComponent(keyword);
+      const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
+        headers,
+        timeout: 10000,
+        retries: 1,
+      });
+      return this.extractFromPayload(resp?.data, context.uid, `s5:${profile.id}`);
+    };
+
+    try {
+      return await runSearch();
+    } catch (error) {
+      if (!this.shouldRetryWithFreshIdentity(error)) throw error;
+      log("warn", `[Hanjutv] s5(${profile.id}) 当前身份失败，刷新临时身份重试: ${error.message}`);
+      this.mobileWarmupUid = null;
+      return runSearch({ refresh: true, forceRandom: true });
+    }
+  }
+
+  async searchWithS5Api(keyword) {
+    let fallbackItems = [];
+    let fallbackProfile = null;
+    let lastError = null;
+
+    for (const profile of HANJUTV_APP_PROFILES) {
+      try {
+        const items = await this.searchWithS5ApiForProfile(keyword, profile);
+        const matched = this.countMatchedItems(items, keyword);
+        if (matched > 0) {
+          if (profile.id !== HANJUTV_APP_PROFILE.id) log("info", `[Hanjutv] s5 使用备用画像 ${profile.id} 命中 ${matched} 条`);
+          return items;
+        }
+        if (fallbackItems.length === 0) {
+          fallbackItems = items;
+          fallbackProfile = profile;
+        }
+      } catch (error) {
+        lastError = error;
+        log("warn", `[Hanjutv] s5(${profile.id}) 请求失败: ${error.message}`);
+      }
+    }
+
+    if (fallbackItems.length > 0) {
+      log("warn", `[Hanjutv] 所有画像标题零命中，回退使用 ${fallbackProfile?.id || "unknown"} 画像结果`);
+      return fallbackItems;
+    }
+    if (lastError) throw lastError;
+    return [];
   }
 
   async searchWithLegacyApi(keyword) {
@@ -525,7 +605,7 @@ export default class HanjutvSource extends BaseSource {
   formatComments(comments) {
     return comments.map(c => ({
       cid: Number(c.did),
-      p: `${(c.t / 1000).toFixed(2)},${c.tp === 2 ? 5 : c.tp},${Number(c.sc)},[hanjutv]`,
+      p: (c.t / 1000).toFixed(2) + "," + (c.tp === 2 ? 5 : c.tp) + "," + Number(c.sc) + ",[hanjutv]",
       m: c.con,
       t: Math.round(c.t / 1000),
       like: c.lc,
