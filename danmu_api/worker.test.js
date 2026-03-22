@@ -413,6 +413,265 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
+  await t.test('hanjutv tv danmu pagination should keep toAxis fixed at 60000 and stop on more=0', async () => {
+    const source = new HanjutvSource();
+    const originalTvGet = source.tvGet;
+    const calls = [];
+
+    source.tvGet = async (path) => {
+      calls.push(path);
+      if (calls.length === 1) {
+        return {
+          bulletchats: [{ did: 1, t: 0, tp: 1, sc: 16777215, con: 'page-1', lc: 0 }],
+          more: 1,
+          nextAxis: 12002,
+          lastId: 6196941,
+        };
+      }
+
+      return {
+        bulletchats: [{ did: 2, t: 12002, tp: 1, sc: 16777215, con: 'page-2', lc: 0 }],
+        more: 0,
+        nextAxis: 60000,
+        lastId: 7914194,
+      };
+    };
+
+    try {
+      const danmus = await source.getEpisodeDanmu('xw:legacy-eid');
+      assert.equal(danmus.length, 2);
+      assert.deepEqual(calls, [
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=0&fromAxis=0&toAxis=60000&offset=0',
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=6196941&fromAxis=12002&toAxis=60000&offset=0',
+      ]);
+    } finally {
+      source.tvGet = originalTvGet;
+    }
+  });
+
+  await t.test('hanjutv hxq danmu pagination should use login headers and rolling 60s window', async () => {
+    const source = new HanjutvSource();
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+
+    const mockJsonResponse = (data, url) => ({
+      ok: true,
+      status: 200,
+      url,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(data),
+    });
+
+    globalThis.fetch = async (url, options = {}) => {
+      const targetUrl = String(url);
+      const headers = options?.headers || {};
+      calls.push({ url: targetUrl, headers });
+
+      if (targetUrl === 'https://hxqapi.hiyun.tv/api/danmu/config') {
+        assert(headers.uk, 'Expected danmu config request to include uk header');
+        assert(headers.sign, 'Expected danmu config request to include sign header');
+        assert('auth-token' in headers, 'Expected danmu config request to include auth-token header');
+        assert('auth-uid' in headers, 'Expected danmu config request to include auth-uid header');
+        return mockJsonResponse({ colorStyles: [] }, targetUrl);
+      }
+
+      if (targetUrl.includes('/api/danmu/playItem/list?')) {
+        assert(headers.uk, 'Expected danmu list request to include uk header');
+        assert(headers.sign, 'Expected danmu list request to include sign header');
+        assert('auth-token' in headers, 'Expected danmu list request to include auth-token header');
+        assert('auth-uid' in headers, 'Expected danmu list request to include auth-uid header');
+
+        const pageIndex = calls.filter((call) => call.url.includes('/api/danmu/playItem/list?')).length;
+        if (pageIndex === 1) {
+          return mockJsonResponse({
+            danmus: [{ did: 11, t: 0, tp: 1, sc: 16777215, con: 'hxq-page-1', lc: 0 }],
+            more: 1,
+            nextAxis: 12345,
+            lastId: 111,
+          }, targetUrl);
+        }
+
+        return mockJsonResponse({
+          danmus: [{ did: 12, t: 12345, tp: 1, sc: 16777215, con: 'hxq-page-2', lc: 0 }],
+          more: 0,
+          nextAxis: 72345,
+          lastId: 222,
+        }, targetUrl);
+      }
+
+      throw new Error(`unexpected fetch: ${targetUrl}`);
+    };
+
+    try {
+      const danmus = await source.getEpisodeDanmu('play-1');
+      const listCalls = calls.filter((call) => call.url.includes('/api/danmu/playItem/list?')).map((call) => call.url);
+
+      assert.equal(danmus.length, 2);
+      assert.equal(calls[0].url, 'https://hxqapi.hiyun.tv/api/danmu/config');
+      assert.deepEqual(listCalls, [
+        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=0&fromAxis=0&toAxis=60000&offset=0',
+        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=111&fromAxis=12345&toAxis=72345&offset=0',
+      ]);
+    } finally {
+      if (originalFetch === undefined) {
+        delete globalThis.fetch;
+      } else {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  });
+
+  await t.test('hanjutv hxq danmu should fallback to zmdcq host when hiyun host fails', async () => {
+    const source = new HanjutvSource();
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+
+    const mockJsonResponse = (data, url) => ({
+      ok: true,
+      status: 200,
+      url,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(data),
+    });
+
+    globalThis.fetch = async (url, options = {}) => {
+      const targetUrl = String(url);
+      calls.push(targetUrl);
+
+      if (targetUrl === 'https://hxqapi.hiyun.tv/api/danmu/config') {
+        return mockJsonResponse({ colorStyles: [] }, targetUrl);
+      }
+
+      if (targetUrl.startsWith('https://hxqapi.hiyun.tv/api/danmu/playItem/list?')) {
+        throw new Error('primary host down');
+      }
+
+      if (targetUrl === 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0') {
+        const headers = options?.headers || {};
+        assert(headers.uk, 'Expected fallback danmu request to include uk header');
+        assert(headers.sign, 'Expected fallback danmu request to include sign header');
+        return mockJsonResponse({
+          danmus: [{ did: 21, t: 0, tp: 1, sc: 16777215, con: 'fallback-ok', lc: 0 }],
+          more: 0,
+          nextAxis: 60000,
+          lastId: 21,
+        }, targetUrl);
+      }
+
+      throw new Error(`unexpected fetch: ${targetUrl}`);
+    };
+
+    try {
+      const danmus = await source.getEpisodeDanmu('play-2');
+
+      assert.equal(danmus.length, 1);
+      assert.equal(danmus[0].con, 'fallback-ok');
+      assert.equal(calls[0], 'https://hxqapi.hiyun.tv/api/danmu/config');
+      assert.equal(calls.at(-1), 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0');
+      assert.equal(
+        calls.filter((url) => url === 'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0').length,
+        2,
+      );
+    } finally {
+      if (originalFetch === undefined) {
+        delete globalThis.fetch;
+      } else {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  });
+
+  await t.test('hanjutv detail and episodes should skip unauthenticated app probes', async () => {
+    const source = new HanjutvSource();
+    const originalFetch = globalThis.fetch;
+    const originalTvGet = source.tvGet;
+    const calls = [];
+
+    const mockJsonResponse = (data, url) => ({
+      ok: true,
+      status: 200,
+      url,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(data),
+    });
+
+    globalThis.fetch = async (url) => {
+      const targetUrl = String(url);
+      calls.push(targetUrl);
+
+      if (targetUrl.includes('/api/series/detail?') || targetUrl.includes('/api/series2/episodes?') || targetUrl.includes('/api/series/programs_v2?')) {
+        throw new Error(`unexpected app probe: ${targetUrl}`);
+      }
+
+      if (targetUrl === 'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1') {
+        return mockJsonResponse({
+          series: { sid: 'sid-1', category: 1, rank: 9.5 },
+          episodes: [
+            { pid: 'ep-2', serialNo: 2, title: '第二集' },
+            { pid: 'ep-1', serialNo: 1, title: '第一集' },
+          ],
+        }, targetUrl);
+      }
+
+      throw new Error(`unexpected fetch: ${targetUrl}`);
+    };
+
+    source.tvGet = async () => {
+      throw new Error('unexpected tvGet fallback');
+    };
+
+    try {
+      const detail = await source.getDetail('sid-1');
+      const episodes = await source.getEpisodes('sid-1');
+
+      assert.equal(detail.rank, 9.5);
+      assert.deepEqual(episodes.map((episode) => episode.pid), ['ep-1', 'ep-2']);
+      assert.deepEqual(calls, [
+        'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1',
+        'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1',
+      ]);
+    } finally {
+      source.tvGet = originalTvGet;
+      if (originalFetch === undefined) {
+        delete globalThis.fetch;
+      } else {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  });
+
+  await t.test('hanjutv segment list should not fabricate a 30-second placeholder duration', async () => {
+    const source = new HanjutvSource();
+    const segments = await source.getComments('play-1', 'hanjutv', true);
+
+    assert.equal(segments.duration, 0);
+    assert.equal(Array.isArray(segments.segmentList), true);
+    assert.equal(segments.segmentList.length, 0);
+  });
+
+  await t.test('hanjutv search should drop zero-match fallback recommendations', async () => {
+    const source = new HanjutvSource();
+    const originalS5 = source.searchWithS5Api;
+    const originalLegacy = source.searchWithLegacyApi;
+    const originalTv = source.searchWithTvApi;
+
+    source.searchWithS5Api = async () => ([
+      { sid: 'sid-1', name: '有点敏感也没关系' },
+      { sid: 'sid-2', name: '不是机器人啊' },
+    ]);
+    source.searchWithLegacyApi = async () => ([]);
+    source.searchWithTvApi = async () => ([]);
+
+    try {
+      const result = await source.search('不存在的关键字');
+      assert.deepEqual(result, []);
+    } finally {
+      source.searchWithS5Api = originalS5;
+      source.searchWithLegacyApi = originalLegacy;
+      source.searchWithTvApi = originalTv;
+    }
+  });
+
 
   await t.test('GET /api/v2/comment/:id should auto-migrate legacy hanjutv xw cache before fetching danmu', async () => {
     Globals.init({});
@@ -1399,4 +1658,3 @@ test('worker.js API endpoints', async (t) => {
 //     }
 //   });
 // });
-

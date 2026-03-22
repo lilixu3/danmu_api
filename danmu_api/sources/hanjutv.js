@@ -17,6 +17,7 @@ import {
 
 const CATE_MAP = { 1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧" };
 const MAX_AXIS = 100000000;
+const DANMU_WINDOW_MS = 60000;
 
 // =====================
 // 获取韩剧TV弹幕
@@ -28,10 +29,12 @@ export default class HanjutvSource extends BaseSource {
     this.appHost = "https://hxqapi.hiyun.tv";
     this.tvHost = "https://api.xiawen.tv";
     this.oldDanmuHost = "https://hxqapi.zmdcq.com";
+    this.danmuHosts = Array.from(new Set([this.appHost, this.oldDanmuHost]));
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
     this.tvHeaderFactoryPromise = null;
     this.mobileWarmupUid = null;
+    this.danmuConfigWarmupUid = null;
   }
 
   getWebHeaders() {
@@ -57,6 +60,19 @@ export default class HanjutvSource extends BaseSource {
       "User-Agent": pickedProfile.userAgent,
       "Accept-Encoding": "gzip",
       Connection: "Keep-Alive",
+    };
+  }
+
+  async buildDanmuLoginHeaders(profile = HANJUTV_APP_PROFILE) {
+    const context = this.getMobileSearchContext(profile);
+    const headers = await createHanjutvSearchHeaders(context);
+    return {
+      context,
+      headers: {
+        ...headers,
+        "auth-token": "",
+        "auth-uid": "",
+      },
     };
   }
 
@@ -285,6 +301,20 @@ export default class HanjutvSource extends BaseSource {
     return this._warmupLock;
   }
 
+  async warmupDanmuConfig(context, headers) {
+    if (this.danmuConfigWarmupUid === context.uid) return;
+    this._danmuConfigLock = (this._danmuConfigLock || Promise.resolve()).then(async () => {
+      if (this.danmuConfigWarmupUid === context.uid) return;
+      try {
+        await httpGet(`${this.appHost}/api/danmu/config`, { headers, timeout: 8000, retries: 0 });
+        this.danmuConfigWarmupUid = context.uid;
+      } catch (_) {
+        // 弹幕配置预热失败不阻断主流程
+      }
+    });
+    return this._danmuConfigLock;
+  }
+
   async searchWithS5Api(keyword) {
     const doSearch = async (options = {}) => {
       const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE, options);
@@ -355,6 +385,12 @@ export default class HanjutvSource extends BaseSource {
       }
 
       const { resultList, stats } = this.mergeSearchCandidates(key, s5List, [...webList, ...tvList]);
+      const totalMatched = stats.s5Matched + stats.webMatched;
+
+      if (resultList.length > 0 && totalMatched === 0) {
+        log("warn", `[Hanjutv] 所有候选均未命中关键词，丢弃疑似推荐流结果: ${key}`);
+        return [];
+      }
 
       if (resultList.length === 0) {
         log("info", "hanjutvSearchresp: s5、旧接口和TV端接口均无有效结果");
@@ -379,12 +415,9 @@ export default class HanjutvSource extends BaseSource {
       const sid = String(id || "").trim();
       if (!sid) return [];
 
-      // App → Web → TV 三级降级
+      // 移动端详情链路依赖完整 login/sign_extra_login 态，当前项目未持有稳定登录态时直接跳过，
+      // 避免每次搜索结果处理都先打一轮必败的 bad request params。
       let detail =
-        await this.tryGet(async () => {
-          const r = await httpGet(`${this.appHost}/api/series/detail?sid=${sid}`, { headers: this.getAppHeaders(), timeout: 10000, retries: 1 });
-          return r?.data?.series ?? null;
-        }, null) ??
         await this.tryGet(async () => {
           const r = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, { headers: this.getWebHeaders(), timeout: 10000, retries: 1 });
           return r?.data?.series ?? null;
@@ -410,25 +443,8 @@ export default class HanjutvSource extends BaseSource {
       const sid = String(id || "").trim();
       if (!sid) return [];
 
-      // 依次尝试各接口，直到拿到非空剧集列表
+      // 依次尝试已验证的 Web / TV 接口，避免移动端接口在无登录态下反复空跑
       const attempts = [
-        async () => {
-          const r = await httpGet(`${this.appHost}/api/series/detail?sid=${sid}`, { headers: this.getAppHeaders(), timeout: 10000, retries: 1 });
-          return this.normalizeEpisodes(Array.isArray(r?.data?.playItems) ? r.data.playItems : []);
-        },
-        async () => {
-          const r = await httpGet(`${this.appHost}/api/series2/episodes?sid=${sid}&refer=${encodeURIComponent(this.defaultRefer)}`, { headers: this.getAppHeaders(), timeout: 10000, retries: 1 });
-          const d = r?.data;
-          return this.normalizeEpisodes(d?.programs || d?.episodes || d?.qxkPrograms || []);
-        },
-        async () => {
-          const r = await httpGet(`${this.appHost}/api/series/programs_v2?sid=${sid}`, { headers: this.getAppHeaders(), timeout: 10000, retries: 1 });
-          const d = r?.data;
-          return this.normalizeEpisodes([
-            ...(Array.isArray(d?.programs) ? d.programs : []),
-            ...(Array.isArray(d?.qxkPrograms) ? d.qxkPrograms : []),
-          ]);
-        },
         async () => {
           const r = await httpGet(`${this.webHost}/wapi/series/series/detail?sid=${sid}`, { headers: this.getWebHeaders(), timeout: 10000, retries: 1 });
           return this.normalizeEpisodes(r?.data?.episodes || []);
@@ -526,22 +542,45 @@ export default class HanjutvSource extends BaseSource {
 
     // 尝试旧弹幕接口（分页轮询）
     if (!episodeRef.preferTv) {
-      try {
-        let fromAxis = 0;
-        while (fromAxis < MAX_AXIS) {
-          const resp = await httpGet(`https://hxqapi.zmdcq.com/api/danmu/playItem/list?fromAxis=${fromAxis}&pid=${episodeId}&toAxis=${MAX_AXIS}`, {
-            headers: this.getWebHeaders(),
-            retries: 1,
-          });
+      const { context, headers } = await this.buildDanmuLoginHeaders();
+      await this.warmupDanmuConfig(context, headers);
 
-          if (resp?.data?.danmus) allDanmus.push(...resp.data.danmus);
+      for (const danmuHost of this.danmuHosts) {
+        try {
+          const hostDanmus = [];
+          let prevId = 0;
+          let fromAxis = 0;
+          let pageCount = 0;
+          const maxPages = 120;
 
-          const nextAxis = resp?.data?.nextAxis ?? MAX_AXIS;
-          if (nextAxis >= MAX_AXIS || nextAxis <= fromAxis) break;
-          fromAxis = nextAxis;
+          while (fromAxis < MAX_AXIS && pageCount < maxPages) {
+            const toAxis = fromAxis + DANMU_WINDOW_MS;
+            const resp = await httpGet(`${danmuHost}/api/danmu/playItem/list?pid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${toAxis}&offset=0`, {
+              headers,
+              timeout: 10000,
+              retries: 1,
+            });
+
+            pageCount++;
+            if (Array.isArray(resp?.data?.danmus)) hostDanmus.push(...resp.data.danmus);
+
+            const hasMore = Number(resp?.data?.more ?? 0) === 1 || resp?.data?.more === true || resp?.data?.more === "1";
+            const nextAxis = Number(resp?.data?.nextAxis ?? MAX_AXIS);
+            const lastId = Number(resp?.data?.lastId ?? prevId);
+
+            if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
+            if (!hasMore) break;
+            if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
+            fromAxis = nextAxis;
+          }
+
+          if (hostDanmus.length > 0) {
+            allDanmus = hostDanmus;
+            break;
+          }
+        } catch (error) {
+          this.logError(`fetchHanjutvEpisodeDanmu(App弹幕:${danmuHost})`, error);
         }
-      } catch (error) {
-        this.logError("fetchHanjutvEpisodeDanmu(旧接口)", error);
       }
     } else {
       log("info", `[Hanjutv] 命中旧缓存 xw: 前缀，直接走 TV 弹幕接口: ${episodeId}`);
@@ -554,22 +593,22 @@ export default class HanjutvSource extends BaseSource {
       let pageCount = 0;
       const maxPages = 120;
 
-      while (fromAxis < MAX_AXIS && pageCount < maxPages) {
+      while (fromAxis < DANMU_WINDOW_MS && pageCount < maxPages) {
         try {
-          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
+          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${DANMU_WINDOW_MS}&offset=0`);
 
           pageCount++;
-          allDanmus.push(...data.bulletchats);
+          if (Array.isArray(data?.bulletchats)) allDanmus.push(...data.bulletchats);
 
           const hasMore = Number(data.more ?? 0) === 1 || data.more === true || data.more === "1";
           const nextAxis = Number(data.nextAxis ?? MAX_AXIS);
           const lastId = Number(data.lastId ?? prevId);
 
           if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-          if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
+          if (!hasMore) break;
+          if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= DANMU_WINDOW_MS) break;
 
           fromAxis = nextAxis;
-          if (!hasMore) prevId = 0;
         } catch (error) {
           this.logError("fetchHanjutvEpisodeDanmu(TV端)", error);
           break;
@@ -585,7 +624,8 @@ export default class HanjutvSource extends BaseSource {
 
     return new SegmentListResponse({
       type: "hanjutv",
-      segmentList: [{ type: "hanjutv", segment_start: 0, segment_end: 30000, url: id }],
+      duration: 0,
+      segmentList: [],
     });
   }
 
