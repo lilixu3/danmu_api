@@ -28,13 +28,12 @@ export default class HanjutvSource extends BaseSource {
     this.webHost = "https://hxqapi.hiyun.tv";
     this.appHost = "https://hxqapi.hiyun.tv";
     this.tvHost = "https://api.xiawen.tv";
-    this.oldDanmuHost = "https://hxqapi.zmdcq.com";
-    this.danmuHosts = Array.from(new Set([this.appHost, this.oldDanmuHost]));
+    this.fallbackDanmuHost = "https://hxqapi.zmdcq.com";
+    this.danmuHosts = Array.from(new Set([this.appHost, this.fallbackDanmuHost]));
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
     this.tvHeaderFactoryPromise = null;
     this.mobileWarmupUid = null;
-    this.danmuConfigWarmupUid = null;
   }
 
   getWebHeaders() {
@@ -60,19 +59,6 @@ export default class HanjutvSource extends BaseSource {
       "User-Agent": pickedProfile.userAgent,
       "Accept-Encoding": "gzip",
       Connection: "Keep-Alive",
-    };
-  }
-
-  async buildDanmuLoginHeaders(profile = HANJUTV_APP_PROFILE) {
-    const context = this.getMobileSearchContext(profile);
-    const headers = await createHanjutvSearchHeaders(context);
-    return {
-      context,
-      headers: {
-        ...headers,
-        "auth-token": "",
-        "auth-uid": "",
-      },
     };
   }
 
@@ -301,20 +287,6 @@ export default class HanjutvSource extends BaseSource {
     return this._warmupLock;
   }
 
-  async warmupDanmuConfig(context, headers) {
-    if (this.danmuConfigWarmupUid === context.uid) return;
-    this._danmuConfigLock = (this._danmuConfigLock || Promise.resolve()).then(async () => {
-      if (this.danmuConfigWarmupUid === context.uid) return;
-      try {
-        await httpGet(`${this.appHost}/api/danmu/config`, { headers, timeout: 8000, retries: 0 });
-        this.danmuConfigWarmupUid = context.uid;
-      } catch (_) {
-        // 弹幕配置预热失败不阻断主流程
-      }
-    });
-    return this._danmuConfigLock;
-  }
-
   async searchWithS5Api(keyword) {
     const doSearch = async (options = {}) => {
       const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE, options);
@@ -540,10 +512,9 @@ export default class HanjutvSource extends BaseSource {
     const episodeId = episodeRef.id;
     let allDanmus = [];
 
-    // 尝试旧弹幕接口（分页轮询）
+    // 韩小圈弹幕接口本身是公开可用的，不依赖登录态；这里只保留真实分页协议。
     if (!episodeRef.preferTv) {
-      const { context, headers } = await this.buildDanmuLoginHeaders();
-      await this.warmupDanmuConfig(context, headers);
+      const headers = this.getWebHeaders();
 
       for (const danmuHost of this.danmuHosts) {
         try {
@@ -579,7 +550,7 @@ export default class HanjutvSource extends BaseSource {
             break;
           }
         } catch (error) {
-          this.logError(`fetchHanjutvEpisodeDanmu(App弹幕:${danmuHost})`, error);
+          this.logError(`fetchHanjutvEpisodeDanmu(韩小圈弹幕:${danmuHost})`, error);
         }
       }
     } else {

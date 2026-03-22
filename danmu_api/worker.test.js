@@ -449,7 +449,7 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('hanjutv hxq danmu pagination should use login headers and rolling 60s window', async () => {
+  await t.test('hanjutv hxq danmu pagination should not require login headers and should keep rolling 60s window', async () => {
     const source = new HanjutvSource();
     const originalFetch = globalThis.fetch;
     const calls = [];
@@ -467,19 +467,11 @@ test('worker.js API endpoints', async (t) => {
       const headers = options?.headers || {};
       calls.push({ url: targetUrl, headers });
 
-      if (targetUrl === 'https://hxqapi.hiyun.tv/api/danmu/config') {
-        assert(headers.uk, 'Expected danmu config request to include uk header');
-        assert(headers.sign, 'Expected danmu config request to include sign header');
-        assert('auth-token' in headers, 'Expected danmu config request to include auth-token header');
-        assert('auth-uid' in headers, 'Expected danmu config request to include auth-uid header');
-        return mockJsonResponse({ colorStyles: [] }, targetUrl);
-      }
-
       if (targetUrl.includes('/api/danmu/playItem/list?')) {
-        assert(headers.uk, 'Expected danmu list request to include uk header');
-        assert(headers.sign, 'Expected danmu list request to include sign header');
-        assert('auth-token' in headers, 'Expected danmu list request to include auth-token header');
-        assert('auth-uid' in headers, 'Expected danmu list request to include auth-uid header');
+        assert.equal('uk' in headers, false, 'Expected danmu list request not to include uk header');
+        assert.equal('sign' in headers, false, 'Expected danmu list request not to include sign header');
+        assert.equal('auth-token' in headers, false, 'Expected danmu list request not to include auth-token header');
+        assert.equal('auth-uid' in headers, false, 'Expected danmu list request not to include auth-uid header');
 
         const pageIndex = calls.filter((call) => call.url.includes('/api/danmu/playItem/list?')).length;
         if (pageIndex === 1) {
@@ -507,7 +499,6 @@ test('worker.js API endpoints', async (t) => {
       const listCalls = calls.filter((call) => call.url.includes('/api/danmu/playItem/list?')).map((call) => call.url);
 
       assert.equal(danmus.length, 2);
-      assert.equal(calls[0].url, 'https://hxqapi.hiyun.tv/api/danmu/config');
       assert.deepEqual(listCalls, [
         'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=0&fromAxis=0&toAxis=60000&offset=0',
         'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=111&fromAxis=12345&toAxis=72345&offset=0',
@@ -538,18 +529,14 @@ test('worker.js API endpoints', async (t) => {
       const targetUrl = String(url);
       calls.push(targetUrl);
 
-      if (targetUrl === 'https://hxqapi.hiyun.tv/api/danmu/config') {
-        return mockJsonResponse({ colorStyles: [] }, targetUrl);
-      }
-
       if (targetUrl.startsWith('https://hxqapi.hiyun.tv/api/danmu/playItem/list?')) {
         throw new Error('primary host down');
       }
 
       if (targetUrl === 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0') {
         const headers = options?.headers || {};
-        assert(headers.uk, 'Expected fallback danmu request to include uk header');
-        assert(headers.sign, 'Expected fallback danmu request to include sign header');
+        assert.equal('uk' in headers, false, 'Expected fallback danmu request not to include uk header');
+        assert.equal('sign' in headers, false, 'Expected fallback danmu request not to include sign header');
         return mockJsonResponse({
           danmus: [{ did: 21, t: 0, tp: 1, sc: 16777215, con: 'fallback-ok', lc: 0 }],
           more: 0,
@@ -566,7 +553,7 @@ test('worker.js API endpoints', async (t) => {
 
       assert.equal(danmus.length, 1);
       assert.equal(danmus[0].con, 'fallback-ok');
-      assert.equal(calls[0], 'https://hxqapi.hiyun.tv/api/danmu/config');
+      assert.equal(calls[0], 'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0');
       assert.equal(calls.at(-1), 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0');
       assert.equal(
         calls.filter((url) => url === 'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0').length,
