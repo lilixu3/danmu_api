@@ -55,6 +55,29 @@ export default class TencentSource extends BaseSource {
       return null;
     }
 
+    let mediaType = contentType;
+    let is3D = false;
+    let is2D = false;
+    if (videoInfo.coverDoc) {
+      if (Array.isArray(videoInfo.coverDoc.richTags)) {
+        videoInfo.coverDoc.richTags.forEach(tag => {
+          if (tag?.text?.includes("3D")) is3D = true;
+          if (tag?.text?.includes("2D")) is2D = true;
+        });
+      }
+      if (Array.isArray(videoInfo.coverDoc.tags)) {
+        videoInfo.coverDoc.tags.forEach(tag => {
+          if (typeof tag === "string" && tag.includes("3D")) is3D = true;
+          if (typeof tag === "string" && tag.includes("2D")) is2D = true;
+        });
+      }
+    }
+    if (is3D) {
+      mediaType = `3D${mediaType}`;
+    } else if (is2D) {
+      mediaType = `2D${mediaType}`;
+    }
+
     // 过滤非腾讯视频内容
     const allSites = (videoInfo.playSites || []).concat(videoInfo.episodeSites || []);
     if (allSites.length > 0 && !allSites.some(site => site.enName === 'qq')) {
@@ -75,7 +98,7 @@ export default class TencentSource extends BaseSource {
       provider: "tencent",
       mediaId: mediaId,
       title: title,
-      type: contentType,  // 使用中文类型,与360/vod保持一致
+      type: mediaType,
       year: videoInfo.year,
       imageUrl: videoInfo.imgUrl,
       episodeCount: episodeCount
@@ -155,6 +178,30 @@ export default class TencentSource extends BaseSource {
       if (itemList.length === 0 && data.data && data.data.normalList && data.data.normalList.itemList) {
         log("info", "[Tencent] MainNeed box 未找到，使用 normalList");
         itemList = data.data.normalList.itemList;
+      }
+
+      if (data.data && data.data.areaBoxList) {
+        for (const box of data.data.areaBoxList) {
+          if (
+            box.itemList &&
+            box.boxTitle &&
+            Array.isArray(box.boxTitle.boxTitles) &&
+            box.boxTitle.boxTitles.includes("相关影视")
+          ) {
+            const relatedItems = box.itemList.filter(item =>
+              item.videoInfo &&
+              item.videoInfo.title &&
+              item.videoInfo.title.includes(keyword)
+            );
+            if (relatedItems.length > 0) {
+              log("info", `[Tencent] 追加「相关影视」box 中匹配 "${keyword}" 的 ${relatedItems.length} 个项目`);
+              itemList = [...itemList, ...relatedItems];
+            } else {
+              log("info", `[Tencent] 「相关影视」box 中无匹配 "${keyword}" 的项目`);
+            }
+            break;
+          }
+        }
       }
 
       if (itemList.length === 0) {
@@ -368,12 +415,19 @@ export default class TencentSource extends BaseSource {
           }
 
           if (links.length > 0) {
+            const firstEpTitle = eps[0].unionTitle || eps[0].title || "第1集";
+            let displayTitle = anime.title;
+            const versionMatch = firstEpTitle.match(/\[.+版\]/);
+            if (versionMatch && firstEpTitle.includes(anime.title)) {
+              displayTitle = `${anime.title}${versionMatch[0]}`;
+            }
+
             // 将字符串mediaId转换为数字ID (使用哈希函数)
             const numericAnimeId = convertToAsciiSum(anime.mediaId);
             let transformedAnime = {
               animeId: numericAnimeId,
               bangumiId: anime.mediaId,
-              animeTitle: `${anime.title}(${anime.year})【${anime.type}】from tencent`,
+              animeTitle: `${displayTitle}(${anime.year})【${anime.type}】from tencent`,
               type: anime.type,
               typeDescription: anime.type,
               imageUrl: anime.imageUrl,

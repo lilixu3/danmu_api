@@ -20,6 +20,7 @@ const mangoSource = new MangoSource();
 const bilibiliSource = new BilibiliSource();
 const youkuSource = new YoukuSource();
 const bahamutSource = new BahamutSource();
+const DandanUserAgent = `LogVar Danmu API/${globals.version}`;
 
 // =====================
 // 获取弹弹play弹幕
@@ -44,7 +45,7 @@ export default class DandanSource extends BaseSource {
           const resp = await httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=/v2/search/anime?keyword=${keyword}`, {
             headers: {
               "Content-Type": "application/json",
-              "User-Agent": `LogVar Danmu API/${globals.version}`,
+              "User-Agent": DandanUserAgent,
             },
           });
 
@@ -99,7 +100,7 @@ export default class DandanSource extends BaseSource {
           const resp = await httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=/v2/search/episodes?anime=${encodeURIComponent(tmdbTitle)}`, {
             headers: {
               "Content-Type": "application/json",
-              "User-Agent": `LogVar Danmu API/${globals.version}`,
+              "User-Agent": DandanUserAgent,
             },
             signal: tmdbAbortController.signal,
           });
@@ -182,7 +183,7 @@ export default class DandanSource extends BaseSource {
       const resp = await httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=/v2/bangumi/${id}`, {
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": `LogVar Danmu API/${globals.version}`,
+          "User-Agent": DandanUserAgent,
         },
       });
 
@@ -397,7 +398,7 @@ export default class DandanSource extends BaseSource {
       const dandanPromise = httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=%2Fv2%2Fcomment%2F${id}%3Ffrom%3D0%26withRelated%3Dtrue%26chConvert%3D0`, {
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "User-Agent": DandanUserAgent,
         },
         retries: 1,
       }).catch(e => { log('error', `dandan base comments error: ${e.message}`); return null; });
@@ -409,7 +410,7 @@ export default class DandanSource extends BaseSource {
         relatedPromise = httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=/v2/related/${id}`, {
           headers: {
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "User-Agent": DandanUserAgent,
           },
           retries: 1,
         }).catch(e => { log('error', `dandan related data error: ${e.message}`); return null; });

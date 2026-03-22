@@ -261,6 +261,17 @@ export default class AnimekoSource extends BaseSource {
         }
       }
 
+      let is3D = false;
+      let is2D = false;
+      if (Array.isArray(item.tags)) {
+        item.tags.forEach(tag => {
+          if (tag?.name === "3D") is3D = true;
+          if (tag?.name === "2D") is2D = true;
+        });
+      }
+      if (is3D) typeDesc = `3D${typeDesc}`;
+      else if (is2D) typeDesc = `2D${typeDesc}`;
+
       const titleSuffix = item._relation_mark ? ` ${item._relation_mark}` : "";
 
       // 提取别名列表，供合并工具匹配

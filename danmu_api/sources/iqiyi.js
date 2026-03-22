@@ -149,8 +149,28 @@ export default class IqiyiSource extends BaseSource {
       return null;
     }
 
+    let is3D = false;
+    let is2D = false;
+    if (Array.isArray(album.metaTags)) {
+      album.metaTags.forEach(tag => {
+        if (tag?.name === "3D") is3D = true;
+        if (tag?.name === "2D") is2D = true;
+      });
+    }
+    if (Array.isArray(album.baseTags)) {
+      album.baseTags.forEach(tag => {
+        if (tag?.value === "3D") is3D = true;
+        if (tag?.value === "2D") is2D = true;
+      });
+    }
+    if (is3D) {
+      mediaType = `3D${mediaType}`;
+    } else if (is2D) {
+      mediaType = `2D${mediaType}`;
+    }
+
     // 电影类型：使用 qipuId 作为 mediaId
-    if (mediaType === "电影") {
+    if (mediaType.includes("电影")) {
       const qipuId = album.qipuId || album.playQipuId;
       if (!qipuId) {
         log("debug", `[iQiyi] 电影缺少 qipuId: ${album.title}`);
