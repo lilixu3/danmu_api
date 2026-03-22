@@ -1,13 +1,15 @@
 import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, invSubBytes, subWord, keyExpansion, invShiftRows } from "./codec-util.js";
 
 // 移动端参数
+const HANJUTV_APP = "hj";
 const HANJUTV_VERSION = "6.8.2";
 const HANJUTV_VC = "a_8280";
 const HANJUTV_CH = "xiaomi";
 const HANJUTV_MODEL = "Redmi Note 12";
 const HANJUTV_MAKER = "Xiaomi";
 const HANJUTV_OSV = "14";
-const HANJUTV_UA = `HanjuTV/${HANJUTV_VERSION} (${HANJUTV_MODEL}; Android ${HANJUTV_OSV}; Scale/2.00)`;
+export const HANJUTV_APP_USER_AGENT = `HanjuTV/${HANJUTV_VERSION} (${HANJUTV_MODEL}; Android ${HANJUTV_OSV}; Scale/2.00)`;
+export const HANJUTV_APP_HEADERS = Object.freeze({ vc: HANJUTV_VC, vn: HANJUTV_VERSION, ch: HANJUTV_CH, app: HANJUTV_APP, "User-Agent": HANJUTV_APP_USER_AGENT, "Accept-Encoding": "gzip" });
 const HANJUTV_INSTALL_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const HANJUTV_UK_KEY = "f349wghhe784tqwh";
 const HANJUTV_UK_IV = "d3w8hf94fidk38lk";
@@ -19,6 +21,7 @@ const UK_KEY = "f349wghhe784tqwh";
 const UK_IV = "d3w8hf94fidk38lk";
 const RESPONSE_SECRET = "34F9Q53w/HJW8E6Q";
 const SAID = "fb3597b87601d5a7";
+let hanjutvSearchIdentityState = null;
 
 function utf8Encode(text) {
   if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(text);
@@ -202,10 +205,14 @@ function randomInt(max) {
   return Math.floor(Math.random() * max);
 }
 
-function buildSearchSignPayload(uid, timestamp) {
+function randomHex(len) {
+  return randomFrom("0123456789abcdef", len);
+}
+
+function buildSearchSignPayload(context, timestamp) {
   const ts = Number(timestamp);
-  const installTs = Math.max(0, ts - HANJUTV_INSTALL_AGE_MS);
-  return JSON.stringify({ emu: 0, ou: 0, it: installTs, iit: installTs, bs: 0, uid, pc: 0, tm: 81, d8m: "0,0,0,0,0,0,0,4", md: HANJUTV_MODEL, maker: HANJUTV_MAKER, osv: HANJUTV_OSV, br: 95, rpc: 0, scc: 2, plc: 6, toc: 19, tsc: 10, ts, pa: 1, crec: 0, nw: 2, px: "0", isp: "", ai: "", oa: "", dpc: 0, dsc: 0, qpc: 0, apad: 0, pk: "com.babycloud.hanju" });
+  // sign 载荷字段来自抓包：安装时间、uid、ai/oa 运行时身份、设备信息、端侧计数和请求时间。
+  return JSON.stringify({ emu: 0, ou: 0, it: context.installTs, iit: context.installTs, bs: 0, uid: context.uid, pc: 0, tm: 81, d8m: "0,0,0,0,0,0,0,4", md: HANJUTV_MODEL, maker: HANJUTV_MAKER, osv: HANJUTV_OSV, br: 95, rpc: 0, scc: 2, plc: 6, toc: 19, tsc: 10, ts, pa: 1, crec: 0, nw: 2, px: "0", isp: "", ai: context.said, oa: context.oa, dpc: 0, dsc: 0, qpc: 0, apad: 0, pk: "com.babycloud.hanju" });
 }
 
 export function createHanjutvUid(length = 20) {
@@ -220,23 +227,57 @@ function randomFrom(chars, len) {
   return s;
 }
 
-// 移动端headers
-export async function createHanjutvSearchHeaders(uid, timestamp = Date.now()) {
+export function createHanjutvSearchContext(uid = createHanjutvUid(), timestamp = Date.now()) {
   const ts = Number(timestamp);
-  const uidMd5 = md5(uid);
-  const signPayload = buildSearchSignPayload(uid, ts);
-  const sign = await aesCbcEncryptToBase64(signPayload, uidMd5.slice(0, 16), uidMd5.slice(16, 32));
-  const uk = await aesCbcEncryptToBase64(uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
-
   return {
-    app: "hj",
-    ch: HANJUTV_CH,
+    uid,
+    said: randomHex(16),
+    oa: randomHex(16),
+    installTs: ts > 0 ? ts : Math.max(0, Date.now() - HANJUTV_INSTALL_AGE_MS),
+  };
+}
+
+function normalizeSearchContext(contextOrUid, timestamp = Date.now()) {
+  if (contextOrUid && typeof contextOrUid === "object") {
+    return {
+      uid: contextOrUid.uid || createHanjutvUid(),
+      said: contextOrUid.said || randomHex(16),
+      oa: contextOrUid.oa || randomHex(16),
+      installTs: Number.isFinite(Number(contextOrUid.installTs))
+        ? Number(contextOrUid.installTs)
+        : Math.max(0, Number(timestamp) - HANJUTV_INSTALL_AGE_MS),
+    };
+  }
+
+  return createHanjutvSearchContext(contextOrUid || createHanjutvUid(), timestamp);
+}
+
+export function loadHanjutvSearchContext(options = {}) {
+  if (options.refresh || !hanjutvSearchIdentityState) {
+    hanjutvSearchIdentityState = createHanjutvSearchContext(
+      createHanjutvUid(),
+      options.timestamp ?? Date.now()
+    );
+  }
+
+  return normalizeSearchContext(hanjutvSearchIdentityState, options.timestamp ?? Date.now());
+}
+
+// 移动端headers
+export async function createHanjutvSearchHeaders(contextOrUid, timestamp = Date.now()) {
+  const ts = Number(timestamp);
+  const context = normalizeSearchContext(contextOrUid, ts);
+  const uidMd5 = md5(context.uid);
+  const signPayload = buildSearchSignPayload(context, ts);
+  const sign = await aesCbcEncryptToBase64(signPayload, uidMd5.slice(0, 16), uidMd5.slice(16, 32));
+  const uk = await aesCbcEncryptToBase64(context.uid, HANJUTV_UK_KEY, HANJUTV_UK_IV);
+
+  // 搜索请求头字段：app/ch/vn/vc 为应用版本渠道，said 为运行时标识，uk/sign 为加密后的 uid/载荷。
+  return {
+    ...HANJUTV_APP_HEADERS,
+    said: context.said,
     uk,
-    vn: HANJUTV_VERSION,
     sign,
-    "User-Agent": HANJUTV_UA,
-    vc: HANJUTV_VC,
-    "Accept-Encoding": "gzip",
     Connection: "Keep-Alive",
   };
 }

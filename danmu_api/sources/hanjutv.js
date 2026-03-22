@@ -7,7 +7,7 @@ import { generateValidStartDate } from "../utils/time-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
-import { createHanjutvUid, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload, buildLiteHeaders } from "../utils/hanjutv-util.js";
+import { HANJUTV_APP_HEADERS, loadHanjutvSearchContext, createHanjutvSearchHeaders, decodeHanjutvEncryptedPayload, buildLiteHeaders } from "../utils/hanjutv-util.js";
 
 const CATE_MAP = { 1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧" };
 const MAX_AXIS = 100000000;
@@ -24,7 +24,8 @@ export default class HanjutvSource extends BaseSource {
     this.oldDanmuHost = "https://hxqapi.zmdcq.com";
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
-    this.appUserAgent = "HanjuTV/6.8.2 (Redmi Note 12; Android 14; Scale/2.00)";
+    this.mobileWarmupPromise = null;
+    this.mobileWarmupUid = null;
   }
 
   getWebHeaders() {
@@ -36,12 +37,7 @@ export default class HanjutvSource extends BaseSource {
 
   getAppHeaders() {
     return {
-      vc: "a_8280",
-      vn: "6.8.2",
-      ch: "xiaomi",
-      app: "hj",
-      "User-Agent": this.appUserAgent,
-      "Accept-Encoding": "gzip",
+      ...HANJUTV_APP_HEADERS,
     };
   }
 
@@ -235,16 +231,52 @@ export default class HanjutvSource extends BaseSource {
     return items;
   }
 
-  async searchWithS5Api(keyword) {
-    const uid = createHanjutvUid();
-    const headers = await createHanjutvSearchHeaders(uid);
-    const q = encodeURIComponent(keyword);
-    const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
-      headers,
-      timeout: 10000,
-      retries: 1,
+  async warmupMobileIdentity(context, headers) {
+    if (this.mobileWarmupUid === context.uid) return;
+
+    this.mobileWarmupPromise = (this.mobileWarmupPromise || Promise.resolve()).then(async () => {
+      if (this.mobileWarmupUid === context.uid) return;
+
+      try {
+        await httpGet(`${this.appHost}/api/common/configs`, {
+          headers,
+          timeout: 8000,
+          retries: 0,
+        });
+        this.mobileWarmupUid = context.uid;
+      } catch (_) {
+        // 暖身失败不阻断正式搜索
+      }
     });
-    return this.extractFromPayload(resp?.data, uid, "s5");
+
+    await this.mobileWarmupPromise;
+  }
+
+  async searchWithS5Api(keyword) {
+    const doSearch = async (options = {}) => {
+      const context = loadHanjutvSearchContext(options);
+      const headers = await createHanjutvSearchHeaders(context);
+      await this.warmupMobileIdentity(context, headers);
+
+      const q = encodeURIComponent(keyword);
+      const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
+        headers,
+        timeout: 10000,
+        retries: 1,
+      });
+      return this.extractFromPayload(resp?.data, context.uid, "s5");
+    };
+
+    try {
+      return await doSearch();
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (!message.includes("无有效结果") && !message.includes("解密失败")) throw error;
+
+      log("warn", `[Hanjutv] s5 当前身份失败，刷新后重试一次: ${error.message}`);
+      this.mobileWarmupUid = null;
+      return doSearch({ refresh: true, forceRandom: true });
+    }
   }
 
   async searchWithLegacyApi(keyword) {
