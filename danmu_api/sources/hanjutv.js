@@ -517,15 +517,15 @@ export default class HanjutvSource extends BaseSource {
       const headers = this.getWebHeaders();
 
       for (const danmuHost of this.danmuHosts) {
+        const hostDanmus = [];
         try {
-          const hostDanmus = [];
           let prevId = 0;
           let fromAxis = 0;
+          let toAxis = DANMU_WINDOW_MS;
           let pageCount = 0;
-          const maxPages = 120;
+          const maxPages = 240;
 
           while (fromAxis < MAX_AXIS && pageCount < maxPages) {
-            const toAxis = fromAxis + DANMU_WINDOW_MS;
             const resp = await httpGet(`${danmuHost}/api/danmu/playItem/list?pid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${toAxis}&offset=0`, {
               headers,
               timeout: 10000,
@@ -533,16 +533,27 @@ export default class HanjutvSource extends BaseSource {
             });
 
             pageCount++;
-            if (Array.isArray(resp?.data?.danmus)) hostDanmus.push(...resp.data.danmus);
+            const pageDanmus = Array.isArray(resp?.data?.danmus) ? resp.data.danmus : [];
+            if (pageDanmus.length > 0) hostDanmus.push(...pageDanmus);
 
             const hasMore = Number(resp?.data?.more ?? 0) === 1 || resp?.data?.more === true || resp?.data?.more === "1";
             const nextAxis = Number(resp?.data?.nextAxis ?? MAX_AXIS);
             const lastId = Number(resp?.data?.lastId ?? prevId);
 
-            if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-            if (!hasMore) break;
             if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
+
+            if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
             fromAxis = nextAxis;
+
+            if (hasMore) {
+              // 同一 60 秒窗口内继续翻页，toAxis 保持不变。
+              continue;
+            }
+
+            if (pageDanmus.length === 0) break;
+
+            // 当前窗口拉完，推进到下一个 60 秒窗口。
+            toAxis = fromAxis + DANMU_WINDOW_MS;
           }
 
           if (hostDanmus.length > 0) {
@@ -551,6 +562,10 @@ export default class HanjutvSource extends BaseSource {
           }
         } catch (error) {
           this.logError(`fetchHanjutvEpisodeDanmu(韩小圈弹幕:${danmuHost})`, error);
+          if (hostDanmus.length > 0) {
+            allDanmus = hostDanmus;
+            break;
+          }
         }
       }
     } else {

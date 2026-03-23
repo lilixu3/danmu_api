@@ -449,7 +449,7 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('hanjutv hxq danmu pagination should not require login headers and should keep rolling 60s window', async () => {
+  await t.test('hanjutv hxq danmu pagination should keep window fixed within a page chain and advance after more=0', async () => {
     const source = new HanjutvSource();
     const originalFetch = globalThis.fetch;
     const calls = [];
@@ -483,11 +483,29 @@ test('worker.js API endpoints', async (t) => {
           }, targetUrl);
         }
 
+        if (pageIndex === 2) {
+          return mockJsonResponse({
+            danmus: [{ did: 12, t: 12345, tp: 1, sc: 16777215, con: 'hxq-page-2', lc: 0 }],
+            more: 0,
+            nextAxis: 60000,
+            lastId: 222,
+          }, targetUrl);
+        }
+
+        if (pageIndex === 3) {
+          return mockJsonResponse({
+            danmus: [{ did: 13, t: 61000, tp: 1, sc: 16777215, con: 'hxq-page-3', lc: 0 }],
+            more: 0,
+            nextAxis: 120000,
+            lastId: 333,
+          }, targetUrl);
+        }
+
         return mockJsonResponse({
-          danmus: [{ did: 12, t: 12345, tp: 1, sc: 16777215, con: 'hxq-page-2', lc: 0 }],
+          danmus: [],
           more: 0,
-          nextAxis: 72345,
-          lastId: 222,
+          nextAxis: 180000,
+          lastId: 333,
         }, targetUrl);
       }
 
@@ -498,10 +516,12 @@ test('worker.js API endpoints', async (t) => {
       const danmus = await source.getEpisodeDanmu('play-1');
       const listCalls = calls.filter((call) => call.url.includes('/api/danmu/playItem/list?')).map((call) => call.url);
 
-      assert.equal(danmus.length, 2);
+      assert.equal(danmus.length, 3);
       assert.deepEqual(listCalls, [
         'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=0&fromAxis=0&toAxis=60000&offset=0',
-        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=111&fromAxis=12345&toAxis=72345&offset=0',
+        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=111&fromAxis=12345&toAxis=60000&offset=0',
+        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=222&fromAxis=60000&toAxis=120000&offset=0',
+        'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-1&prevId=333&fromAxis=120000&toAxis=180000&offset=0',
       ]);
     } finally {
       if (originalFetch === undefined) {
@@ -545,6 +565,15 @@ test('worker.js API endpoints', async (t) => {
         }, targetUrl);
       }
 
+      if (targetUrl === 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=21&fromAxis=60000&toAxis=120000&offset=0') {
+        return mockJsonResponse({
+          danmus: [],
+          more: 0,
+          nextAxis: 120000,
+          lastId: 21,
+        }, targetUrl);
+      }
+
       throw new Error(`unexpected fetch: ${targetUrl}`);
     };
 
@@ -554,7 +583,7 @@ test('worker.js API endpoints', async (t) => {
       assert.equal(danmus.length, 1);
       assert.equal(danmus[0].con, 'fallback-ok');
       assert.equal(calls[0], 'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0');
-      assert.equal(calls.at(-1), 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0');
+      assert.equal(calls.at(-1), 'https://hxqapi.zmdcq.com/api/danmu/playItem/list?pid=play-2&prevId=21&fromAxis=60000&toAxis=120000&offset=0');
       assert.equal(
         calls.filter((url) => url === 'https://hxqapi.hiyun.tv/api/danmu/playItem/list?pid=play-2&prevId=0&fromAxis=0&toAxis=60000&offset=0').length,
         2,
