@@ -579,22 +579,24 @@ export default class HanjutvSource extends BaseSource {
       let pageCount = 0;
       const maxPages = 120;
 
-      while (fromAxis < DANMU_WINDOW_MS && pageCount < maxPages) {
+      while (fromAxis < MAX_AXIS && pageCount < maxPages) {
         try {
-          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${DANMU_WINDOW_MS}&offset=0`);
+          const data = await this.tvGet(`/api/v1/bulletchat/episode/get?eid=${episodeId}&prevId=${prevId}&fromAxis=${fromAxis}&toAxis=${MAX_AXIS}&offset=0`);
 
           pageCount++;
-          if (Array.isArray(data?.bulletchats)) allDanmus.push(...data.bulletchats);
+          const pageDanmus = Array.isArray(data?.bulletchats) ? data.bulletchats : [];
+          if (pageDanmus.length > 0) allDanmus.push(...pageDanmus);
 
           const hasMore = Number(data.more ?? 0) === 1 || data.more === true || data.more === "1";
           const nextAxis = Number(data.nextAxis ?? MAX_AXIS);
           const lastId = Number(data.lastId ?? prevId);
 
-          if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
-          if (!hasMore) break;
-          if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= DANMU_WINDOW_MS) break;
+          if (!Number.isFinite(nextAxis) || nextAxis <= fromAxis || nextAxis >= MAX_AXIS) break;
 
+          if (Number.isFinite(lastId) && lastId > prevId) prevId = lastId;
           fromAxis = nextAxis;
+          if (!hasMore) prevId = 0;
+          if (pageDanmus.length === 0 && !hasMore) break;
         } catch (error) {
           this.logError("fetchHanjutvEpisodeDanmu(TV端)", error);
           break;

@@ -413,7 +413,7 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('hanjutv tv danmu pagination should keep toAxis fixed at 60000 and stop on more=0', async () => {
+  await t.test('hanjutv tv danmu pagination should fetch full episode timeline and reset prevId after more=0', async () => {
     const source = new HanjutvSource();
     const originalTvGet = source.tvGet;
     const calls = [];
@@ -425,24 +425,44 @@ test('worker.js API endpoints', async (t) => {
           bulletchats: [{ did: 1, t: 0, tp: 1, sc: 16777215, con: 'page-1', lc: 0 }],
           more: 1,
           nextAxis: 12002,
-          lastId: 6196941,
+          lastId: 111,
+        };
+      }
+
+      if (calls.length === 2) {
+        return {
+          bulletchats: [{ did: 2, t: 12002, tp: 1, sc: 16777215, con: 'page-2', lc: 0 }],
+          more: 0,
+          nextAxis: 60000,
+          lastId: 222,
+        };
+      }
+
+      if (calls.length === 3) {
+        return {
+          bulletchats: [{ did: 3, t: 61000, tp: 1, sc: 16777215, con: 'page-3', lc: 0 }],
+          more: 0,
+          nextAxis: 120000,
+          lastId: 333,
         };
       }
 
       return {
-        bulletchats: [{ did: 2, t: 12002, tp: 1, sc: 16777215, con: 'page-2', lc: 0 }],
+        bulletchats: [],
         more: 0,
-        nextAxis: 60000,
-        lastId: 7914194,
+        nextAxis: 100000000,
+        lastId: 333,
       };
     };
 
     try {
       const danmus = await source.getEpisodeDanmu('xw:legacy-eid');
-      assert.equal(danmus.length, 2);
+      assert.equal(danmus.length, 3);
       assert.deepEqual(calls, [
-        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=0&fromAxis=0&toAxis=60000&offset=0',
-        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=6196941&fromAxis=12002&toAxis=60000&offset=0',
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=0&fromAxis=0&toAxis=100000000&offset=0',
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=111&fromAxis=12002&toAxis=100000000&offset=0',
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=0&fromAxis=60000&toAxis=100000000&offset=0',
+        '/api/v1/bulletchat/episode/get?eid=legacy-eid&prevId=0&fromAxis=120000&toAxis=100000000&offset=0',
       ]);
     } finally {
       source.tvGet = originalTvGet;
