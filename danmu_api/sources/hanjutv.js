@@ -288,28 +288,16 @@ export default class HanjutvSource extends BaseSource {
   }
 
   async searchWithS5Api(keyword) {
-    const doSearch = async (options = {}) => {
-      const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE, options);
-      const headers = await createHanjutvSearchHeaders(context);
-      await this.warmupMobileIdentity(context, headers);
-      const q = encodeURIComponent(keyword);
-      const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
-        headers,
-        timeout: 10000,
-        retries: 1,
-      });
-      return this.extractFromPayload(resp?.data, context.uid, "s5");
-    };
-
-    try {
-      return await doSearch();
-    } catch (error) {
-      const msg = String(error?.message || "");
-      if (!msg.includes("无有效结果") && !msg.includes("解密失败")) throw error;
-      log("warn", `[Hanjutv] s5 当前身份失败，刷新重试: ${error.message}`);
-      this.mobileWarmupUid = null;
-      return doSearch({ refresh: true, forceRandom: true });
-    }
+    const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE);
+    const headers = await createHanjutvSearchHeaders(context);
+    await this.warmupMobileIdentity(context, headers);
+    const q = encodeURIComponent(keyword);
+    const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
+      headers,
+      timeout: 10000,
+      retries: 1,
+    });
+    return this.extractFromPayload(resp?.data, context.uid, "s5");
   }
 
   async searchWithLegacyApi(keyword) {

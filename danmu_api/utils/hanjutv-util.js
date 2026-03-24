@@ -202,6 +202,17 @@ function createSeededIdentityRecord(seed, kind) {
   };
 }
 
+function createFreshInstallIdentityRecord(baseRecord = null, timestamp = Date.now()) {
+  const existing = baseRecord && typeof baseRecord === "object" ? baseRecord : {};
+  const installTs = normalizePositiveTimestamp(timestamp, Date.now());
+  return {
+    ...existing,
+    uid: createHanjutvUid(),
+    installTs,
+    createdAt: installTs,
+  };
+}
+
 function createIdentityRecord(baseRecord = null, timestamp = Date.now(), options = {}) {
   const existing = baseRecord && typeof baseRecord === "object" ? baseRecord : {};
   const fallbackTs = normalizePositiveTimestamp(options.fallbackTs, timestamp);
@@ -215,10 +226,24 @@ function createIdentityRecord(baseRecord = null, timestamp = Date.now(), options
   };
 }
 
+function getEnvUid() {
+  if (typeof process === "undefined" || !process?.env) return "";
+  const v = typeof process.env.HANJUTV_UID === "string" ? process.env.HANJUTV_UID.trim() : "";
+  return v.length === 20 && /^[0-9A-Za-z]+$/.test(v) ? v : "";
+}
+
 function getMobileIdentityState(options = {}) {
   if (options.refresh || !hanjutvMobileIdentityState) {
-    const seed = options.forceRandom ? "" : getStableDeploymentSeed();
-    const base = seed ? createSeededIdentityRecord(seed, "mobile") : null;
+    const envUid = options.forceRandom ? "" : getEnvUid();
+    const seed = getStableDeploymentSeed();
+    const seededBase = seed ? createSeededIdentityRecord(seed, "mobile") : null;
+    const stableDeviceBase = hanjutvMobileIdentityState || seededBase;
+    // 设备级身份尽量稳定；仅应用安装身份（uid/installTs）在显式刷新时变化
+    const base = options.forceRandom
+      ? createFreshInstallIdentityRecord(stableDeviceBase, options.timestamp ?? Date.now())
+      : envUid
+        ? { ...(stableDeviceBase || {}), uid: envUid }
+        : seededBase;
     hanjutvMobileIdentityState = createHanjutvSearchContext(base, base?.installTs ?? options.timestamp ?? Date.now(), HANJUTV_APP_PROFILE);
   }
   return hanjutvMobileIdentityState;
