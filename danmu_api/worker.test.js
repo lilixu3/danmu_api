@@ -33,7 +33,7 @@ import { NetlifyHandler } from "./configs/handlers/netlify-handler.js";
 import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
 import { Globals, globals } from "./configs/globals.js";
-import { addAnime, addEpisode, migrateLegacyRuntimeCaches, setSearchCache } from "./utils/cache-util.js";
+import { addAnime, addEpisode, migrateLegacyRuntimeCaches, setLastSearch, setSearchCache, storeAnimeIdsToMap } from "./utils/cache-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -260,6 +260,74 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(res.status, 200);
     assert(Math.abs(body.videoDuration - 720.41) < 0.001, `Expected 720.41, but got ${body.videoDuration}`);
     assert.equal(globals.commentCache.size, 0);
+  });
+
+  await t.test('GET /api/v2/comment/:id should ignore stale lastSearch from another episode', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+    Globals.lastSelectMap = new Map();
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    TencentSource.prototype.getComments = async function() {
+      return [
+        {
+          cid: 1,
+          p: '1.00,1,25,16777215,[qq]',
+          m: '回归测试弹幕',
+          t: 1,
+          like: 0
+        }
+      ];
+    };
+
+    try {
+      addAnime({
+        animeId: 501,
+        bangumiId: 'race-501',
+        animeTitle: '竞态回归测试剧',
+        type: 'tvseries',
+        typeDescription: 'TV',
+        imageUrl: '',
+        startDate: '2024-01-01T00:00:00.000Z',
+        episodeCount: 1,
+        rating: 0,
+        isFavorited: false,
+        source: 'tencent',
+        links: [
+          {
+            url: 'https://v.qq.com/x/cover/race/test.html',
+            title: '【qq】第5集'
+          }
+        ]
+      });
+
+      storeAnimeIdsToMap(globals.animes, '竞态回归测试剧');
+      const commentId = globals.animes[0].links[0].id;
+      setLastSearch('test-last-search-ip', {
+        title: '竞态回归测试剧',
+        season: 1,
+        episode: 6,
+        episodeId: commentId + 1
+      });
+
+      const res = await getComment(`/api/v2/comment/${commentId}`, 'json', false, 'test-last-search-ip');
+      const body = await parseResponse(res);
+      const preferState = globals.lastSelectMap.get('竞态回归测试剧');
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.deepEqual(preferState?.preferBySeason || {}, {});
+      assert.deepEqual(preferState?.offsets || {}, {});
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.animes = [];
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+      Globals.lastSelectMap = new Map();
+    }
   });
 
   await t.test('cloud platforms should clear transient runtime search/comment caches at request entry', async () => {
