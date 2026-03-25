@@ -1439,10 +1439,6 @@ export async function matchAnime(url, req, clientIp = null) {
       title = simplifiedTitle;
     }
 
-    if (clientIp) {
-      setLastSearch(clientIp, { title, season, episode });
-    }
-
     // 获取 prefer animeId（按 season 维度）
     const [preferAnimeId, preferSource, offsets] = getPreferAnimeId(title, season);
     log("info", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
@@ -1553,6 +1549,9 @@ export async function matchAnime(url, req, clientIp = null) {
     };
 
     if (resEpisode) {
+      if (clientIp) {
+        setLastSearch(clientIp, { title, season, episode, episodeId: resEpisode.episodeId });
+      }
       resData["isMatched"] = true;
       resData["matches"] = [
         AnimeMatch.fromJson({
@@ -1963,7 +1962,7 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
 
     if (clientIp) {
       const lastSearch = getLastSearch(clientIp);
-      if (lastSearch?.title) {
+      if (lastSearch?.episodeId === commentId && lastSearch.title) {
         lastTitle = lastSearch.title;
         lastSeason = lastSearch.season ?? null;
         if (lastSearch.season && lastSearch.episode && episodeTitle) {
