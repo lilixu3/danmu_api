@@ -200,10 +200,10 @@ export default class DandanSource extends BaseSource {
       }
 
       const bangumiData = resp.data.bangumi;
-      
+
       // 提取剧集列表，确保它是数组
       const episodes = Array.isArray(bangumiData.episodes) ? bangumiData.episodes : [];
-      
+
       // 提取标题别名列表
       // 数据源格式: [{"language":"主标题","title":"雨天遇见狸"}, ...]
       const titles = Array.isArray(bangumiData.titles) ? bangumiData.titles.map(t => t.title) : [];
@@ -213,7 +213,22 @@ export default class DandanSource extends BaseSource {
 
       // 提取番剧类型信息，用于相关作品无法从搜索接口获取该字段时的数据补全
       const type = bangumiData.type || null;
-      const typeDescription = bangumiData.typeDescription || null;
+      let typeDescription = bangumiData.typeDescription || null;
+
+      // 识别 3D 与 2D 标签并追加至类型描述
+      let is3D = false;
+      let is2D = false;
+      if (bangumiData.tags && Array.isArray(bangumiData.tags)) {
+          bangumiData.tags.forEach(tag => {
+              if (tag.name && tag.name.toUpperCase().includes('3D')) is3D = true;
+              if (tag.name && tag.name.toUpperCase().includes('2D')) is2D = true;
+          });
+      }
+      if (is3D) {
+          typeDescription = "3D" + (typeDescription || "");
+      } else if (is2D) {
+          typeDescription = "2D" + (typeDescription || "");
+      }
 
       // 提取封面图片 URL，用于 episodes 接口返回结果缺少 imageUrl 时的数据补全
       const imageUrl = bangumiData.imageUrl || null;
@@ -444,12 +459,12 @@ export default class DandanSource extends BaseSource {
           const url = rel.url;
           const shift = rel.shift || 0;
           const sourceInfo = this.parseRelatedUrl(url);
-          
+
           if (!sourceInfo) continue;
 
           const { sourceName } = sourceInfo;
           const coreUrl = getCoreIdentifier(url, sourceName);
-          
+
           // 构建唯一键存储偏移量，包含平台与核心标识，防止同平台多链接导致数据覆盖
           relatedShifts[`${sourceName}:${coreUrl}`] = shift;
 
@@ -469,7 +484,7 @@ export default class DandanSource extends BaseSource {
             if (firstColonIndex === -1) return false;
             const mSource = part.substring(0, firstColonIndex);
             const mId = part.substring(firstColonIndex + 1);
-            
+
             // 来源标识必须一致
             if (mSource !== sourceName) return false;
 
@@ -502,7 +517,7 @@ export default class DandanSource extends BaseSource {
               allDanmus = allDanmus.concat(extra);
             }
           }
-          
+
           // 汇总日志：仅在产生实际拉取任务时，输出拉取总数与原生基础数据
           const totalCount = allDanmus.length;
           const dandanCount = stats['dandan'] || 0;
@@ -559,7 +574,7 @@ export default class DandanSource extends BaseSource {
       let comments = [];
       let sourceInstance = null;
       let platName = sourceName; // 映射标准平台名称用于去重工具
-      
+
       // 匹配对应的源实例，并处理标准平台名
       if (sourceName === 'tencent') { sourceInstance = tencentSource; platName = 'qq'; }
       else if (sourceName === 'iqiyi') { sourceInstance = iqiyiSource; platName = 'qiyi'; }
@@ -615,7 +630,7 @@ export default class DandanSource extends BaseSource {
         }
         return c;
       }
-      
+
       return {
         cid: c.cid,
         p: `${c.p.replace(/([A-Za-z]+)([0-9a-fA-F]{6})/, (_, platform, hexColor) => {
