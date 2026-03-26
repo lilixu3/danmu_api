@@ -275,6 +275,10 @@ export function convertToDanmakuJson(contents, platform, offsetSeconds = 0) {
     return [];
   }
 
+  if (!isMultiSource && /[&＆]/.test(String(platform || ''))) {
+    isMultiSource = true;
+  }
+
   for (const item of items) {
     let attributes, m;
     let time, mode, color;

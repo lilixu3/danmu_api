@@ -1713,8 +1713,27 @@ export async function getBangumi(path) {
  */
 async function fetchMergedComments(url, offsetContext = {}) {
   const parts = url.split(MERGE_DELIMITER);
-  const sourceNames = parts.map(part => part.split(':')[0]).filter(Boolean);
-  const sourceTag = sourceNames.join('＆');
+  const resolveMergedLabel = (sourceName, realId) => {
+    if (sourceName === 'hanjutv') {
+      return String(realId || '').startsWith('xw:') ? '极速版' : '韩小圈';
+    }
+    return sourceName;
+  };
+
+  const sourceParts = parts.map((part) => {
+    const firstColonIndex = part.indexOf(':');
+    if (firstColonIndex === -1) return null;
+    const sourceName = part.substring(0, firstColonIndex);
+    const realId = part.substring(firstColonIndex + 1);
+    if (!sourceName || !realId) return null;
+    return {
+      sourceName,
+      realId,
+      label: resolveMergedLabel(sourceName, realId)
+    };
+  }).filter(Boolean);
+  const sourceNames = sourceParts.map(part => part.sourceName);
+  const sourceTag = sourceParts.map(part => part.label).join('＆');
   const { animeTitle, episodeTitle } = offsetContext || {};
 
   log("info", `[Merge] 开始获取 [${sourceTag}] 聚合弹幕...`);
@@ -1729,17 +1748,11 @@ async function fetchMergedComments(url, offsetContext = {}) {
   const stats = {};
 
   // 2. 并行获取所有源的弹幕
-  const tasks = parts.map(async (part) => {
-    const firstColonIndex = part.indexOf(':');
-    if (firstColonIndex === -1) return [];
-
-    const sourceName = part.substring(0, firstColonIndex);
-    const realId = part.substring(firstColonIndex + 1);
-
-    if (!sourceName || !realId) return [];
+  const tasks = sourceParts.map(async ({ sourceName, realId, label }) => {
 
     // 构建去重Key
     const pendingKey = `${sourceName}:${realId}`;
+    const statKey = sourceName === 'hanjutv' ? `hanjutv:${label}` : sourceName;
 
     // 检查是否有正在进行的相同请求（请求合并）
     if (PENDING_DANMAKU_REQUESTS.has(pendingKey)) {
@@ -1782,7 +1795,7 @@ async function fetchMergedComments(url, offsetContext = {}) {
 
             // 给合并工具里的每一条弹幕打上独立的原始源标签
             if (formatted && Array.isArray(formatted)) {
-              formatted.forEach(item => item._sourceLabel = sourceName);
+              formatted.forEach(item => item._sourceLabel = label);
             }
 
             // 提取并挂载 dandan 源传出的精确偏移量
@@ -1799,18 +1812,18 @@ async function fetchMergedComments(url, offsetContext = {}) {
             // 应用偏移后补回源标签
             if (formatted && Array.isArray(formatted)) {
               formatted.forEach(item => {
-                if (!item._sourceLabel) item._sourceLabel = sourceName;
+                if (!item._sourceLabel) item._sourceLabel = label;
               });
             }
 
             if (relatedShifts) {
               formatted.relatedShifts = relatedShifts;
             }
-            stats[sourceName] = formatted.length;
+            stats[statKey] = formatted.length;
             return formatted;
           } catch (e) {
             log("error", `[Merge] 获取 ${sourceName} 失败: ${e.message}`);
-            stats[sourceName] = 0;
+            stats[statKey] = 0;
             return [];
           }
         }

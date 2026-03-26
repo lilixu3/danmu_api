@@ -34,6 +34,7 @@ import { CloudflareHandler } from "./configs/handlers/cloudflare-handler.js";
 import { EdgeoneHandler } from "./configs/handlers/edgeone-handler.js";
 import { Globals, globals } from "./configs/globals.js";
 import { addAnime, addEpisode, migrateLegacyRuntimeCaches, setLastSearch, setSearchCache, storeAnimeIdsToMap } from "./utils/cache-util.js";
+import { convertToAsciiSum } from "./utils/codec-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 
 // Mock Request class for testing
@@ -108,7 +109,7 @@ test('worker.js API endpoints', async (t) => {
 
 
   await t.test('GET /api/v2/comment/:id/duration should return segment duration without cache', async () => {
-    Globals.init({});
+    Globals.init({ TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
     Globals.animes = [];
     Globals.episodeIds = [];
     Globals.episodeNum = 10001;
@@ -232,7 +233,7 @@ test('worker.js API endpoints', async (t) => {
     try {
       const episode = addEpisode('https://www.bilibili.com/bangumi/play/ep_test.html', '【bilibili】测试样例');
       const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
-      const res = await handleRequest(req);
+      const res = await handleRequest(req, { TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
       const body = await parseResponse(res);
 
       assert.equal(res.status, 200);
@@ -685,7 +686,7 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('hanjutv detail and episodes should skip unauthenticated app probes', async () => {
+  await t.test('hanjutv detail and episodes should use app chain without falling back to web or tv', async () => {
     const source = new HanjutvSource();
     const originalFetch = globalThis.fetch;
     const originalTvGet = source.tvGet;
@@ -703,14 +704,14 @@ test('worker.js API endpoints', async (t) => {
       const targetUrl = String(url);
       calls.push(targetUrl);
 
-      if (targetUrl.includes('/api/series/detail?') || targetUrl.includes('/api/series2/episodes?') || targetUrl.includes('/api/series/programs_v2?')) {
-        throw new Error(`unexpected app probe: ${targetUrl}`);
+      if (targetUrl.includes('/wapi/series/series/detail?')) {
+        throw new Error(`unexpected web probe: ${targetUrl}`);
       }
 
-      if (targetUrl === 'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1') {
+      if (targetUrl === 'https://hxqapi.hiyun.tv/api/series/detail?sid=sid-1') {
         return mockJsonResponse({
           series: { sid: 'sid-1', category: 1, rank: 9.5 },
-          episodes: [
+          playItems: [
             { pid: 'ep-2', serialNo: 2, title: '第二集' },
             { pid: 'ep-1', serialNo: 1, title: '第一集' },
           ],
@@ -731,8 +732,8 @@ test('worker.js API endpoints', async (t) => {
       assert.equal(detail.rank, 9.5);
       assert.deepEqual(episodes.map((episode) => episode.pid), ['ep-1', 'ep-2']);
       assert.deepEqual(calls, [
-        'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1',
-        'https://hxqapi.hiyun.tv/wapi/series/series/detail?sid=sid-1',
+        'https://hxqapi.hiyun.tv/api/series/detail?sid=sid-1',
+        'https://hxqapi.hiyun.tv/api/series/detail?sid=sid-1',
       ]);
     } finally {
       source.tvGet = originalTvGet;
@@ -756,14 +757,12 @@ test('worker.js API endpoints', async (t) => {
   await t.test('hanjutv search should drop zero-match fallback recommendations', async () => {
     const source = new HanjutvSource();
     const originalS5 = source.searchWithS5Api;
-    const originalLegacy = source.searchWithLegacyApi;
     const originalTv = source.searchWithTvApi;
 
     source.searchWithS5Api = async () => ([
       { sid: 'sid-1', name: '有点敏感也没关系' },
       { sid: 'sid-2', name: '不是机器人啊' },
     ]);
-    source.searchWithLegacyApi = async () => ([]);
     source.searchWithTvApi = async () => ([]);
 
     try {
@@ -771,8 +770,95 @@ test('worker.js API endpoints', async (t) => {
       assert.deepEqual(result, []);
     } finally {
       source.searchWithS5Api = originalS5;
-      source.searchWithLegacyApi = originalLegacy;
       source.searchWithTvApi = originalTv;
+    }
+  });
+
+  await t.test('hanjutv search should merge hxq and tv hits into one composite candidate', async () => {
+    const source = new HanjutvSource();
+    const originalS5 = source.searchWithS5Api;
+    const originalTv = source.searchWithTvApi;
+
+    source.searchWithS5Api = async () => ([
+      { sid: 'hxq-sid-1', name: '信号 第2季', image: { thumb: 'https://img/a.jpg' } },
+    ]);
+    source.searchWithTvApi = async () => ([
+      { sid: 'tv-sid-1', name: '信号 第2季', image: { thumb: 'https://img/b.jpg' } },
+    ]);
+
+    try {
+      const result = await source.search('信号 第2季');
+      assert.equal(result.length, 1);
+      assert.equal(result[0]._variant, 'merged');
+      assert.equal(result[0].sid, 'hxq-sid-1');
+      assert.equal(result[0].tvSid, 'tv-sid-1');
+      assert.equal(result[0].animeId, convertToAsciiSum('hxq:hxq-sid-1|tv:tv-sid-1'));
+    } finally {
+      source.searchWithS5Api = originalS5;
+      source.searchWithTvApi = originalTv;
+    }
+  });
+
+  await t.test('hanjutv handleAnimes should build merged urls with a dedicated composite identity', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+
+    const source = new HanjutvSource();
+    const originalGetHxqDetail = source.getHxqDetail;
+    const originalGetHxqEpisodes = source.getHxqEpisodes;
+    const originalGetTvDetail = source.getTvDetail;
+    const originalGetTvEpisodes = source.getTvEpisodes;
+
+    source.getHxqDetail = async () => ({ category: 1, rank: 9.5 });
+    source.getHxqEpisodes = async () => ([
+      { pid: 'pid-1', serialNo: 1, title: '第一集' },
+      { pid: 'pid-2', serialNo: 2, title: '第二集' },
+    ]);
+    source.getTvDetail = async () => ({ category: 1, rank: 8.8 });
+    source.getTvEpisodes = async () => ([
+      { eid: 'eid-1', serialNo: 1, title: '第一集' },
+      { eid: 'eid-3', serialNo: 3, title: '第三集' },
+    ]);
+
+    try {
+      const curAnimes = [];
+      await source.handleAnimes([
+        {
+          sid: 'hxq-sid-1',
+          tvSid: 'tv-sid-1',
+          name: '偏移测试',
+          image: { thumb: 'https://img/a.jpg' },
+          updateTime: '2024-01-01T00:00:00.000Z',
+          _variant: 'merged',
+        }
+      ], '偏移测试', curAnimes, new Map());
+
+      assert.equal(curAnimes.length, 1);
+      assert.equal(Globals.animes.length, 1);
+      assert.equal(curAnimes[0].animeId, convertToAsciiSum('hxq:hxq-sid-1|tv:tv-sid-1'));
+      assert.equal(curAnimes[0].bangumiId, String(curAnimes[0].animeId));
+      assert.deepEqual(Globals.animes[0].links.map(item => item.url), [
+        'hanjutv:pid-1$$$hanjutv:xw:eid-1',
+        'pid-2',
+        'xw:eid-3',
+      ]);
+    } finally {
+      source.getHxqDetail = originalGetHxqDetail;
+      source.getHxqEpisodes = originalGetHxqEpisodes;
+      source.getTvDetail = originalGetTvDetail;
+      source.getTvEpisodes = originalGetTvEpisodes;
+      Globals.animes = [];
+      Globals.episodeIds = [];
+      Globals.searchCache = new Map();
+      Globals.commentCache = new Map();
+      Globals.animeDetailsCache = new Map();
+      Globals.episodeDetailsCache = new Map();
     }
   });
 
@@ -810,6 +896,63 @@ test('worker.js API endpoints', async (t) => {
       assert.equal(Globals.episodeIds[0].url, 'legacy-eid');
     } finally {
       HanjutvSource.prototype.getComments = originalHanjutvGetComments;
+      Globals.commentCache = new Map();
+      Globals.searchCache = new Map();
+      Globals.animeDetailsCache = new Map();
+      Globals.episodeDetailsCache = new Map();
+    }
+  });
+
+  await t.test('GET /api/v2/comment/:id should apply hanjutv offsets to both merged variants before deduping', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 43010;
+    Globals.commentCache = new Map();
+    Globals.searchCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+
+    const episode = addEpisode('hanjutv:pid-1$$$hanjutv:xw:eid-1', '【hanjutv】 第1集');
+    Globals.animes.push({
+      animeId: 930010,
+      bangumiId: '930010',
+      animeTitle: '偏移测试(2024)【韩剧】from hanjutv',
+      type: '韩剧',
+      typeDescription: '韩剧',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 9.5,
+      isFavorited: true,
+      source: 'hanjutv',
+      links: [episode]
+    });
+
+    const originalGetEpisodeDanmu = HanjutvSource.prototype.getEpisodeDanmu;
+    HanjutvSource.prototype.getEpisodeDanmu = async function(id) {
+      if (id === 'pid-1') {
+        return [{ did: 1, t: 1000, tp: 1, sc: 16777215, con: '双端同步', lc: 0 }];
+      }
+      if (id === 'xw:eid-1') {
+        return [{ did: 2, t: 1000, tp: 1, sc: 16777215, con: '双端同步', lc: 0 }];
+      }
+      throw new Error(`unexpected hanjutv id: ${id}`);
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + `/api/v2/comment/${episode.id}`, { method: 'GET' });
+      const res = await handleRequest(req, { TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.match(body.comments[0].p, /^21\.00,1,16777215,\[韩小圈＆极速版\]$/);
+      assert.equal(body.comments[0].m, '双端同步');
+    } finally {
+      HanjutvSource.prototype.getEpisodeDanmu = originalGetEpisodeDanmu;
+      Globals.animes = [];
+      Globals.episodeIds = [];
       Globals.commentCache = new Map();
       Globals.searchCache = new Map();
       Globals.animeDetailsCache = new Map();
