@@ -12,6 +12,7 @@ import { getImdbepisodes } from "./utils/imdb-util.js";
 import { getTMDBChineseTitle, getTmdbJpDetail, searchTmdbTitles } from "./utils/tmdb-util.js";
 import { getDoubanDetail, getDoubanInfoByImdbId, searchDoubanTitles } from "./utils/douban-util.js";
 import AIClient from './utils/ai-util.js';
+import { applyMergeLogic, MERGE_DELIMITER } from "./utils/merge-util.js";
 import RenrenSource from "./sources/renren.js";
 import HanjutvSource from "./sources/hanjutv.js";
 import BahamutSource from "./sources/bahamut.js";
@@ -1176,6 +1177,90 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(body.success, true);
     assert.equal(body.animes.length, 3);
     assert.deepEqual(body.animes.map(item => item.animeTitle), ['你好A', '你好B', '你好C']);
+  });
+
+  await t.test('applyMergeLogic should merge multi-secondary matches without ReferenceError', async () => {
+    Globals.init({ MERGE_SOURCE_PAIRS: 'tencent&iqiyi&youku' });
+    Globals.MAX_ANIMES = 100;
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+
+    addAnime({
+      animeId: 201,
+      bangumiId: 'merge-201',
+      animeTitle: '完美世界(2024)【动漫】from tencent',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'tencent',
+      links: [{ id: 61001, url: 'https://example.com/tencent-1', title: '【qq】第1集' }]
+    });
+    addAnime({
+      animeId: 202,
+      bangumiId: 'merge-202',
+      animeTitle: '完美世界(2024)【动漫】from iqiyi',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'iqiyi',
+      links: [{ id: 61002, url: 'https://example.com/iqiyi-1', title: '【qiyi】第1集' }]
+    });
+    addAnime({
+      animeId: 203,
+      bangumiId: 'merge-203',
+      animeTitle: '完美世界(2024)【动漫】from youku',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: [{ id: 61003, url: 'https://example.com/youku-1', title: '【youku】第1集' }]
+    });
+
+    const curAnimes = globals.animes.map(anime => ({
+      animeId: anime.animeId,
+      bangumiId: anime.bangumiId,
+      animeTitle: anime.animeTitle,
+      type: anime.type,
+      typeDescription: anime.typeDescription,
+      imageUrl: anime.imageUrl,
+      startDate: anime.startDate,
+      episodeCount: anime.episodeCount,
+      rating: anime.rating,
+      isFavorited: anime.isFavorited,
+      source: anime.source,
+      links: anime.links.map(link => ({ ...link }))
+    }));
+
+    await assert.doesNotReject(async () => {
+      await applyMergeLogic(curAnimes);
+    });
+
+    assert.equal(curAnimes.length, 1);
+    const [mergedAnime] = curAnimes;
+    assert.ok(mergedAnime, 'Expected merged anime to be retained as the only result');
+    assert.equal(mergedAnime.source, 'tencent');
+    assert.ok(mergedAnime.animeTitle.includes('from tencent&iqiyi&youku'));
+    assert.equal(mergedAnime.links.length, 1);
+    assert.ok(mergedAnime.links[0].url.includes(`tencent:https://example.com/tencent-1${MERGE_DELIMITER}iqiyi:https://example.com/iqiyi-1`));
+    assert.ok(mergedAnime.links[0].url.includes(`${MERGE_DELIMITER}youku:https://example.com/youku-1`));
   });
 
   // await t.test('Test ai cilent', async () => {

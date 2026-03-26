@@ -1848,6 +1848,8 @@ async function processMergeTask(params) {
                 if (!isReuse && groupConsumedIds.has(match.animeId)) continue;
             }
 
+            const currentSecondarySource = match.source;
+
             const globalCachedMatch = globals.animes.find(a => String(a.animeId) === String(match.animeId));
             if (!globalCachedMatch?.links) continue;
             const derivedMatch = fastCloneAnime(globalCachedMatch);
@@ -1856,19 +1858,19 @@ async function processMergeTask(params) {
             const logTitleB = derivedMatch.animeTitle.replace(RegexStore.Clean.FROM_SUFFIX, '');
 
             const decimalsP = getDecimalEpisodes(derivedAnime.links, currentPrimarySource);
-            const decimalsS = getDecimalEpisodes(derivedMatch.links, secSource);
+            const decimalsS = getDecimalEpisodes(derivedMatch.links, currentSecondarySource);
             const toSinkS = new Set([...decimalsS].filter(x => !decimalsP.has(x)));
             const toSinkP = new Set([...decimalsP].filter(x => !decimalsS.has(x)));
             
             if (toSinkP.size > 0) sinkDecimalEpisodes(derivedAnime.links, toSinkP, currentPrimarySource, `主源:${currentPrimarySource}`);
             
             if (toSinkS.size > 0) {
-                sinkDecimalEpisodes(derivedMatch.links, toSinkS, secSource, `副源:${secSource}`);
+                sinkDecimalEpisodes(derivedMatch.links, toSinkS, currentSecondarySource, `副源:${currentSecondarySource}`);
             }
             let currentSecondaryLinks = derivedMatch.links;
 
             const filteredPLinksWithIndex = filterEpisodes(derivedAnime.links, epFilter, currentPrimarySource);
-            const filteredMLinksWithIndex = filterEpisodes(currentSecondaryLinks, epFilter, secSource);
+            const filteredMLinksWithIndex = filterEpisodes(currentSecondaryLinks, epFilter, currentSecondarySource);
 
             const seriesLangB = getLanguageType(derivedMatch.animeTitle);
             let activePLinks = filteredPLinksWithIndex, activeMLinks = filteredMLinksWithIndex;
@@ -1916,7 +1918,7 @@ async function processMergeTask(params) {
                             const safeEnd = Math.min(nextStart, collectionLinks.length);
                             slicedList = collectionLinks.slice(safeAccumulated, safeEnd);
                             sliceStart = safeAccumulated;
-                            const sideName = isPrimarySide ? `主源[${currentPrimarySource}]` : `副源[${secSource}]`;
+                            const sideName = isPrimarySide ? `主源[${currentPrimarySource}]` : `副源[${currentSecondarySource}]`;
                             log("info", `${logPrefix} [合集切片] 检测到${sideName}为合集 (Target: S${seasonNum}): 无历史推断(Defensive Fallback)，信任地图切至 ${safeAccumulated}~${safeEnd} (共 ${slicedList.length} 集) 参与对齐`);
                         } else log("info", `${logPrefix} [合集切片] 放弃切片: 计算起点 ${safeAccumulated} 超出范围 (Total: ${collectionLinks.length})`);
                      }
@@ -1924,7 +1926,7 @@ async function processMergeTask(params) {
                      const s1Count = seasonLengthMap.get(1);
                      if (s1Count && s1Count < collectionLinks.length) {
                          slicedList = collectionLinks.slice(0, s1Count);
-                         const sideName = isPrimarySide ? `主源[${currentPrimarySource}]` : `副源[${secSource}]`;
+                         const sideName = isPrimarySide ? `主源[${currentPrimarySource}]` : `副源[${currentSecondarySource}]`;
                          log("info", `${logPrefix} [合集切片] 检测到${sideName}为合集 (Target: S1): 使用 Index 0~${s1Count} 参与对齐`);
                      }
                 }
@@ -1941,15 +1943,15 @@ async function processMergeTask(params) {
                 activeMLinks = res.slicedList; sliceStartS = res.sliceStart;
             }
 
-            const bestOffsetLocal = findBestAlignmentOffset(activePLinks, activeMLinks, seriesLangA, seriesLangB, currentPrimarySource, secSource, pAnime.animeTitle, derivedMatch.animeTitle);
+            const bestOffsetLocal = findBestAlignmentOffset(activePLinks, activeMLinks, seriesLangA, seriesLangB, currentPrimarySource, currentSecondarySource, pAnime.animeTitle, derivedMatch.animeTitle);
             const offset = bestOffsetLocal + sliceStartP - sliceStartS;
-            if (offset !== 0) log("info", `${logPrefix} 集数自动对齐 (${secSource}): Offset=${offset} (P:${filteredPLinksWithIndex.length}, S:${filteredMLinksWithIndex.length})`);
+            if (offset !== 0) log("info", `${logPrefix} 集数自动对齐 (${currentSecondarySource}): Offset=${offset} (P:${filteredPLinksWithIndex.length}, S:${filteredMLinksWithIndex.length})`);
 
             derivedAnime.animeId = generateSafeMergedId(derivedAnime.animeId, match.animeId, groupFingerprint);
             derivedAnime.bangumiId = String(derivedAnime.animeId);
 
             let mergedCount = 0;
-            const redundantS = identifyRedundantTitle(derivedMatch.links, derivedMatch.animeTitle, secSource);
+            const redundantS = identifyRedundantTitle(derivedMatch.links, derivedMatch.animeTitle, currentSecondarySource);
 
             for (let k = 0; k < filteredMLinksWithIndex.length; k++) {
               const pIndex = k + offset; 
@@ -1959,7 +1961,7 @@ async function processMergeTask(params) {
 
               const orphanItem = { link: sourceLink, originalIndex: sourceLinkItem.originalIndex, relativeIndex: pIndex, info: null };
               const cleanTitleS = getTempTitle(sourceLink.title, redundantS);
-              orphanItem.info = extractEpisodeInfo(cleanTitleS, secSource);
+              orphanItem.info = extractEpisodeInfo(cleanTitleS, currentSecondarySource);
               
               if (pIndex >= 0 && pIndex < filteredPLinksWithIndex.length) {
                 const originalPIndex = filteredPLinksWithIndex[pIndex].originalIndex;
@@ -1990,7 +1992,7 @@ async function processMergeTask(params) {
                 
                 const idB = sanitizeUrl(sourceLink.url);
                 let currentUrl = targetLink.url;
-                const secPart = `${secSource}:${idB}`;
+                const secPart = `${currentSecondarySource}:${idB}`;
                 if (!currentUrl.includes(MERGE_DELIMITER)) {
                     if (!currentUrl.startsWith(currentPrimarySource + ':')) currentUrl = `${currentPrimarySource}:${currentUrl}`;
                 }
@@ -1998,7 +2000,7 @@ async function processMergeTask(params) {
                 
                 let newMergedTitle = targetLink.title;
                 if (newMergedTitle) {
-                    let sLabel = secSource;
+                    let sLabel = currentSecondarySource;
                     if (sourceLink.title) {
                         const sMatch = sourceLink.title.match(/^【([^】\d]+)(?:\d*)】/);
                         if (sMatch) sLabel = sMatch[1].trim();
@@ -2027,20 +2029,20 @@ async function processMergeTask(params) {
 
             if (mergedCount > 0) {
               const isAnyCollection = collectionAnimeIds.has(pAnime.animeId) || collectionAnimeIds.has(match.animeId);
-              if (isMergeRatioValid(mergedCount, filteredPLinksWithIndex.length, filteredMLinksWithIndex.length, currentPrimarySource, secSource, isAnyCollection)) {
+              if (isMergeRatioValid(mergedCount, filteredPLinksWithIndex.length, filteredMLinksWithIndex.length, currentPrimarySource, currentSecondarySource, isAnyCollection)) {
                   for (const mutation of pendingMutations) {
                       const link = derivedAnime.links[mutation.linkIndex];
                       link.url = mutation.newUrl;
                       link.title = mutation.newTitle;
                   }
-                  log("info", `${logPrefix} 关联成功: [${currentPrimarySource}] ${logTitleA} <-> [${secSource}] ${logTitleB} (本次合并 ${mergedCount} 集)`);
+                  log("info", `${logPrefix} 关联成功: [${currentPrimarySource}] ${logTitleA} <-> [${currentSecondarySource}] ${logTitleB} (本次合并 ${mergedCount} 集)`);
                   if (mappingEntries.length > 0) {
                       mappingEntries.sort((a, b) => a.idx - b.idx);
                       const matchedCount = mappingEntries.filter(e => e.text.includes('[匹配]')).length;
                       const orphanCount = mappingEntries.filter(e => e.text.includes('[落单]')).length;
                       const skippedCount = mappingEntries.filter(e => e.text.includes('[略过]')).length;
-                      log("info", `${logPrefix} [${secSource}] 映射摘要: 匹配=${matchedCount}, 落单=${orphanCount}, 略过=${skippedCount}, 总计=${mappingEntries.length}`);
-                      log("debug", `${logPrefix} [${secSource}] 映射详情:\n${mappingEntries.map(e => e.text).join("\n")}`);
+                      log("info", `${logPrefix} [${currentSecondarySource}] 映射摘要: 匹配=${matchedCount}, 落单=${orphanCount}, 略过=${skippedCount}, 总计=${mappingEntries.length}`);
+                      log("debug", `${logPrefix} [${currentSecondarySource}] 映射详情:\n${mappingEntries.map(e => e.text).join("\n")}`);
                   }
                   
                   // 支持双向进度写入：主源为合集与副源为合集的情况都被覆盖，为链式关联铺路
@@ -2083,8 +2085,8 @@ async function processMergeTask(params) {
                       }
                   }
 
-                  if (collectionAnimeIds.has(match.animeId)) log("info", `${logPrefix} [智能补全] 跳过: 副源 [${secSource}] 为合集，为避免混入其他季度集数，不执行补全。`);
-                  else stitchUnmatchedEpisodes(derivedAnime, orphanedEpisodes, secSource);
+                  if (collectionAnimeIds.has(match.animeId)) log("info", `${logPrefix} [智能补全] 跳过: 副源 [${currentSecondarySource}] 为合集，为避免混入其他季度集数，不执行补全。`);
+                  else stitchUnmatchedEpisodes(derivedAnime, orphanedEpisodes, currentSecondarySource);
                   
                   const normals = [], sinkers = [];
                   derivedAnime.links.forEach(link => {
@@ -2097,9 +2099,9 @@ async function processMergeTask(params) {
                       log("info", `${logPrefix} [排序优化] 立即执行番外沉底: 移动了 ${sinkers.length} 个番外集到末尾`);
                   }
                   hasMergedAny = true;
-                  actualMergedSources.push(secSource);
+                  actualMergedSources.push(currentSecondarySource);
                   contentSignatureParts.push(match.animeId);
-              } else log("info", `${logPrefix} 关联取消: [${currentPrimarySource}] ${logTitleA} <-> [${secSource}] ${logTitleB} (匹配率过低: ${mergedCount}/${Math.max(filteredPLinksWithIndex.length, filteredMLinksWithIndex.length)})`);
+              } else log("info", `${logPrefix} 关联取消: [${currentPrimarySource}] ${logTitleA} <-> [${currentSecondarySource}] ${logTitleB} (匹配率过低: ${mergedCount}/${Math.max(filteredPLinksWithIndex.length, filteredMLinksWithIndex.length)})`);
             }
         }
     }
