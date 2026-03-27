@@ -782,6 +782,47 @@ export default class BilibiliSource extends BaseSource {
   async getEpisodeDanmuSegments(id) {
     log("info", "获取B站弹幕分段列表...", id);
 
+    if (typeof id === 'string' && id.includes('/combine?')) {
+      const segmentList = [];
+      let currentOffset = 0;
+      let totalDuration = 0;
+      const urlStr = id.startsWith('http') ? id : `https://www.bilibili.com${id}`;
+      const urlObj = new URL(urlStr);
+
+      for (const [key, value] of urlObj.searchParams.entries()) {
+        if (!key.startsWith('cid')) continue;
+
+        const cid = key.substring(3);
+        const [startStr, endStr] = value.split('-');
+        const start = parseFloat(startStr) || 0;
+        const end = parseFloat(endStr) || 0;
+        const duration = end - start;
+
+        if (duration <= 0) continue;
+
+        totalDuration += duration;
+        const maxLen = Math.ceil(end / 360);
+
+        for (let i = 0; i < maxLen; i += 1) {
+          const metadataHash = `#combine_start=${start}&combine_end=${end}&combine_offset=${currentOffset}`;
+          segmentList.push({
+            "type": "bilibili1",
+            "segment_start": i * 360,
+            "segment_end": Math.min((i + 1) * 360, end),
+            "url": `https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid=${cid}&segment_index=${i + 1}${metadataHash}`
+          });
+        }
+
+        currentOffset += duration;
+      }
+
+      return new SegmentListResponse({
+        "type": "bilibili1",
+        "duration": totalDuration,
+        "segmentList": segmentList
+      });
+    }
+
     // 提取视频信息
     const videoInfo = await this._extractVideoInfo(id);
     if (!videoInfo) {
@@ -829,7 +870,10 @@ export default class BilibiliSource extends BaseSource {
 
   async getEpisodeSegmentDanmu(segment) {
     try {
-      const response = await httpGet(segment.url, {
+      const urlObj = new URL(segment.url);
+      const rawUrl = segment.url.split('#')[0];
+
+      const response = await httpGet(rawUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
           "Cookie": globals.bilibliCookie
@@ -842,6 +886,35 @@ export default class BilibiliSource extends BaseSource {
       let contents = [];
       if (response && response.data) {
         contents = parseDanmakuBase64(response.data);
+      }
+
+      if (urlObj.hash && urlObj.hash.includes('combine_offset')) {
+        const hashParams = new URLSearchParams(urlObj.hash.substring(1));
+        const start = parseFloat(hashParams.get('combine_start')) || 0;
+        const end = parseFloat(hashParams.get('combine_end')) || 0;
+        const offset = parseFloat(hashParams.get('combine_offset')) || 0;
+        const filtered = [];
+
+        for (const c of contents) {
+          let time = 0;
+          if (c.p && typeof c.p === 'string') time = parseFloat(c.p.split(',')[0]);
+          else if (c.t !== undefined) time = Number(c.t);
+          else if (c.progress !== undefined) time = c.progress / 1000;
+
+          if (!isNaN(time) && time >= start && time <= end) {
+            const shiftedTime = (time - start) + offset;
+            if (c.p && typeof c.p === 'string') {
+              const parts = c.p.split(',');
+              parts[0] = shiftedTime.toFixed(5);
+              c.p = parts.join(',');
+            }
+            if (c.t !== undefined) c.t = shiftedTime;
+            if (c.progress !== undefined) c.progress = Math.round(shiftedTime * 1000);
+            filtered.push(c);
+          }
+        }
+
+        return filtered;
       }
 
       return contents;

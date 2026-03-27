@@ -451,8 +451,26 @@ export default class DandanSource extends BaseSource {
             const match = targetStr.match(/sn=(\d+)/) || targetStr.match(/\d+$/);
             return match ? (match[1] || match[0]) : targetStr;
           }
-          // 常规平台逻辑：统一剥离 http/https协议、www.前缀，并截断 ? 后面的所有查询参数
-          return targetStr.replace(/^https?:\/\/(www\.)?/, '').split('?')[0];
+
+          // 常规平台逻辑：统一剥离 http/https 协议、www. 前缀
+          let core = targetStr.replace(/^https?:\/\/(www\.)?/, '');
+
+          // 保留 B 站分 P 和合并分 P 关键参数，避免同源多链接互相覆盖偏移量
+          if (sName === 'bilibili' || sName === 'bilibili1') {
+            if (/\/combine\?/.test(core)) {
+              return core.replace(/#.*/, '');
+            }
+
+            const pMatch = core.match(/\b(p=\d+)\b/);
+            core = core.replace(/\?.*/, '');
+            if (pMatch) {
+              core += `?${pMatch[1]}`;
+            }
+            return core;
+          }
+
+          // 其他平台默认去掉查询参数
+          return core.replace(/\?.*/, '');
         };
 
         for (const rel of relatedResp.data.relateds) {
