@@ -1183,20 +1183,6 @@ function jumpToEpisode() {
     }, 1800);
 }
 
-/* ========================================
-   时长估算工具
-   ======================================== */
-function fetchDanmuDuration(episodeId) {
-    const durationUrl = buildApiUrl('/api/v2/comment/' + episodeId + '/duration');
-    return fetch(durationUrl)
-        .then(response => response.ok ? response.json() : null)
-        .then(data => {
-            const seconds = Number((data && data.videoDuration) || 0);
-            return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-        })
-        .catch(() => 0);
-}
-
 function getValidDanmuTimes(comments) {
     return comments
         .map(comment => parseFloat((comment.p || '0').split(',')[0]))
@@ -1334,23 +1320,21 @@ function loadDanmuData(episodeId, title) {
     // 保存当前 episodeId 用于导出
     currentEpisodeId = episodeId;
 
-    const queryParams = new URLSearchParams({ format: 'json' });
+    const queryParams = new URLSearchParams({ format: 'json', duration: 'true' });
     const commentUrl = buildApiUrl('/api/v2/comment/' + episodeId + '?' + queryParams.toString());
-    const commentRequest = fetch(commentUrl)
+    fetch(commentUrl)
         .then(response => {
             if (!response.ok) {
                 throw new Error(\`HTTP error! status: \${response.status}\`);
             }
             return response.json();
-        });
-    const durationRequest = fetchDanmuDuration(episodeId);
-
-    Promise.all([commentRequest, durationRequest])
-        .then(([data, durationSeconds]) => {
+        })
+        .then((data) => {
             if (mySeq !== activeDanmuLoadSeq) {
                 return;
             }
 
+            const durationSeconds = Number((data && data.videoDuration) || 0);
             let comments = null;
 
             if (Array.isArray(data)) {

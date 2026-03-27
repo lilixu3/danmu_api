@@ -264,6 +264,59 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(globals.commentCache.size, 0);
   });
 
+  await t.test('GET /api/v2/comment/:id?format=json&duration=true should return comments and duration in one request', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    let commentRequestCount = 0;
+    let durationRequestCount = 0;
+
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      assert.equal(url, 'https://v.qq.com/x/cover/a/b.html');
+      assert.equal(plat, 'qq');
+
+      if (segmentFlag) {
+        durationRequestCount++;
+        return {
+          type: 'qq',
+          segmentList: [
+            { type: 'qq', segment_start: 0, segment_end: 60, url: 'mock-1' },
+            { type: 'qq', segment_start: 60, segment_end: 2760, url: 'mock-2' }
+          ]
+        };
+      }
+
+      commentRequestCount++;
+      return [
+        { p: '12.3,1,16777215,qq', m: '测试弹幕1' },
+        { p: '45.6,1,16777215,qq', m: '测试弹幕2' }
+      ];
+    };
+
+    try {
+      const episode = addEpisode('https://v.qq.com/x/cover/a/b.html', '【qq】测试样例');
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '?format=json&duration=true', { method: 'GET' });
+      const res = await handleRequest(req, {}, 'vercel');
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.videoDuration, 2760);
+      assert.equal(body.count, 2);
+      assert.equal(body.comments.length, 2);
+      assert.equal(commentRequestCount, 1);
+      assert.equal(durationRequestCount, 1);
+      assert.equal(Globals.commentCache.size, 1);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
+  });
+
   await t.test('GET /api/v2/comment/:id should ignore stale lastSearch from another episode', async () => {
     Globals.init({});
     Globals.animes = [];
@@ -332,24 +385,82 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('cloud platforms should clear transient runtime search/comment caches at request entry', async () => {
+  await t.test('cloud platforms should preserve transient runtime search cache for follow-up comment lookups', async () => {
     Globals.init({});
-    Globals.searchCache = new Map([
-      ['云缓存测试', { results: [{ animeId: 1, animeTitle: '旧搜索结果' }], details: [], timestamp: Date.now() }]
-    ]);
-    Globals.commentCache = new Map([
-      ['https://example.com/stale', { comments: [{ m: 'stale' }], timestamp: Date.now() }]
-    ]);
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.requestHistory = new Map();
 
-    const req = new MockRequest(urlPrefix, { method: 'GET' });
-    const res = await handleRequest(req, {}, 'vercel');
+    const cachedAnime = {
+      animeId: 500002,
+      bangumiId: '500002',
+      animeTitle: '缓存弹幕番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: 'https://example.com/poster2.jpg',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 31001, url: 'https://v.qq.com/x/cover/cache/comment-ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    Globals.searchCache.set('缓存弹幕番剧', {
+      results: [
+        {
+          animeId: cachedAnime.animeId,
+          bangumiId: cachedAnime.bangumiId,
+          animeTitle: cachedAnime.animeTitle,
+          type: cachedAnime.type,
+          typeDescription: cachedAnime.typeDescription,
+          imageUrl: cachedAnime.imageUrl,
+          startDate: cachedAnime.startDate,
+          episodeCount: cachedAnime.episodeCount,
+          rating: cachedAnime.rating,
+          isFavorited: cachedAnime.isFavorited,
+          source: cachedAnime.source
+        }
+      ],
+      details: [cachedAnime],
+      timestamp: Date.now()
+    });
 
-    assert.equal(res.status, 200);
-    assert.equal(Globals.searchCache.size, 0);
-    assert.equal(Globals.commentCache.size, 0);
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    let requestCount = 0;
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      requestCount++;
+      assert.equal(url, cachedAnime.links[0].url);
+      assert.equal(plat, 'qq');
+      assert.equal(segmentFlag, false);
+      return [
+        { p: '12.3,1,16777215,qq', m: '缓存弹幕命中' }
+      ];
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + '/api/v2/comment/' + cachedAnime.links[0].id + '?format=json', { method: 'GET' });
+      const res = await handleRequest(req, {}, 'vercel');
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.equal(body.comments[0].m, '缓存弹幕命中');
+      assert.equal(requestCount, 1);
+      assert.equal(Globals.searchCache.size, 1);
+      assert.equal(Globals.commentCache.size, 1);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.searchCache = new Map();
+      Globals.commentCache = new Map();
+    }
   });
 
-  await t.test('GET /api/v2/comment/:id should ignore transient runtime comment cache on cloud platforms', async () => {
+  await t.test('GET /api/v2/comment/:id should reuse transient runtime comment cache on cloud platforms', async () => {
     Globals.init({});
     Globals.animes = [];
     Globals.episodeIds = [
@@ -357,18 +468,13 @@ test('worker.js API endpoints', async (t) => {
     ];
     Globals.episodeNum = 43012;
     Globals.commentCache = new Map([
-      ['https://v.qq.com/x/cover/a/cloud-test.html', { comments: [{ m: 'stale-comment' }], timestamp: Date.now() }]
+      ['https://v.qq.com/x/cover/a/cloud-test.html', { comments: [{ m: 'cached-comment' }], timestamp: Date.now() }]
     ]);
     Globals.requestHistory = new Map();
 
     const originalTencentGetComments = TencentSource.prototype.getComments;
-    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
-      assert.equal(url, 'https://v.qq.com/x/cover/a/cloud-test.html');
-      assert.equal(plat, 'qq');
-      assert.equal(segmentFlag, false);
-      return [
-        { p: '1.00,1,16777215,[qq]', m: 'fresh-comment' }
-      ];
+    TencentSource.prototype.getComments = async function() {
+      throw new Error('comment cache should have been reused before hitting source');
     };
 
     try {
@@ -378,8 +484,8 @@ test('worker.js API endpoints', async (t) => {
 
       assert.equal(res.status, 200);
       assert.equal(body.count, 1);
-      assert.equal(body.comments[0].m, 'fresh-comment');
-      assert.equal(Globals.commentCache.size, 0);
+      assert.equal(body.comments[0].m, 'cached-comment');
+      assert.equal(Globals.commentCache.size, 1);
     } finally {
       TencentSource.prototype.getComments = originalTencentGetComments;
       Globals.commentCache = new Map();

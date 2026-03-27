@@ -79,6 +79,17 @@ function normalizeDurationValue(rawValue) {
   return duration > 6 * 60 * 60 ? duration / 1000 : duration;
 }
 
+function shouldIncludeVideoDuration(queryFormat, includeDuration = false) {
+  if (!includeDuration) return false;
+  const format = String(queryFormat || globals.danmuOutputFormat || 'json').toLowerCase();
+  return format === 'json';
+}
+
+function buildDanmuResponse(data, videoDuration = null) {
+  if (videoDuration === null) return data;
+  return { videoDuration, ...data };
+}
+
 function buildDurationResponse(videoDuration = 0) {
   return { videoDuration };
 }
@@ -124,6 +135,19 @@ function extractMergedUrls(url) {
       return part.slice(firstColonIndex + 1).trim();
     })
     .filter(Boolean);
+}
+
+async function resolveMergedDuration(url) {
+  if (!url) return 0;
+
+  try {
+    const targetUrls = url.includes(MERGE_DELIMITER) ? extractMergedUrls(url) : [url];
+    const durations = await Promise.all(targetUrls.map(resolveUrlDuration));
+    return durations.reduce((maxValue, currentValue) => Math.max(maxValue, currentValue || 0), 0);
+  } catch (error) {
+    log('warn', '[Duration] 获取时长失败: ' + error.message);
+    return 0;
+  }
 }
 
 export async function getCommentDuration(path) {
@@ -1873,13 +1897,14 @@ async function fetchMergedComments(url, offsetContext = {}) {
 }
 
 // Extracted function for GET /api/v2/comment/:commentId
-export async function getComment(path, queryFormat, segmentFlag, clientIp = null) {
+export async function getComment(path, queryFormat, segmentFlag, clientIp = null, includeDuration = false) {
   const commentId = parseInt(path.split("/").pop());
   const [animeId, source, cachedEpisodeTitle] = findAnimeIdByCommentId(commentId);
   let url = findUrlById(commentId);
   const episodeTitle = findTitleById(commentId) || cachedEpisodeTitle || null;
   let plat = episodeTitle ? (episodeTitle.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
   const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeByAnimeId(animeId, source)?.animeTitle || '') : '');
+  const shouldAttachDuration = shouldIncludeVideoDuration(queryFormat, includeDuration);
   const offsetSeconds = resolveTimelineOffsetSeconds({
     animeTitle,
     episodeTitle,
@@ -1898,12 +1923,16 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
   // 检查弹幕缓存（分片列表请求不走弹幕缓存）
   const cachedComments = !segmentFlag ? getCommentCache(url) : null;
   if (cachedComments !== null) {
-    const responseData = { count: cachedComments.length, comments: cachedComments };
+    const responseData = buildDanmuResponse(
+      { count: cachedComments.length, comments: cachedComments },
+      shouldAttachDuration ? await resolveMergedDuration(url) : null
+    );
     return formatDanmuResponse(responseData, queryFormat);
   }
 
   log("info", "开始从本地请求弹幕...", url);
   const pendingKey = `comment:${url}|seg:${segmentFlag ? 1 : 0}`;
+  const durationPromise = shouldAttachDuration ? resolveMergedDuration(url) : null;
   let danmus = await withPendingCommentRequest(pendingKey, async () => {
     let fetchedDanmus = [];
 
@@ -2019,12 +2048,15 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
     }
   }
 
-  const responseData = { count: danmus.length, comments: danmus };
+  const responseData = buildDanmuResponse(
+    { count: danmus.length, comments: danmus },
+    durationPromise ? await durationPromise : null
+  );
   return formatDanmuResponse(responseData, queryFormat);
 }
 
 // Extracted function for GET /api/v2/comment?url=xxx
-export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
+export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includeDuration = false) {
   try {
     const validation = await validateExternalUrl(videoUrl);
     if (!validation.ok) {
@@ -2035,18 +2067,20 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
     log("debug", `Processing comment request for URL: ${originalUrl}`);
 
     let url = originalUrl;
+    const shouldAttachDuration = shouldIncludeVideoDuration(queryFormat, includeDuration);
+    const durationPromise = shouldAttachDuration ? resolveMergedDuration(originalUrl) : null;
 
     // 仅在“非分片列表”模式下启用弹幕缓存
     if (!segmentFlag) {
       const cachedComments = getCommentCache(url);
       if (cachedComments !== null) {
-        const responseData = {
+        const responseData = buildDanmuResponse({
           errorCode: 0,
           success: true,
           errorMessage: "",
           count: cachedComments.length,
           comments: cachedComments
-        };
+        }, durationPromise ? await durationPromise : null);
         return formatDanmuResponse(responseData, queryFormat);
       }
     }
@@ -2146,13 +2180,13 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag) {
       }
     }
 
-    const responseData = {
+    const responseData = buildDanmuResponse({
       errorCode: 0,
       success: true,
       errorMessage: "",
       count: danmus.length,
       comments: danmus
-    };
+    }, durationPromise ? await durationPromise : null);
     return formatDanmuResponse(responseData, queryFormat);
   } catch (error) {
     log("error", `Failed to process comment by URL request: ${error.message}`);

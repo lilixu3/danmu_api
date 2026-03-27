@@ -62,32 +62,11 @@ function parseCacheContent(raw) {
 
 
 function shouldUseRuntimeResponseCache() {
-    const platform = String(globals.deployPlatform || '').trim().toLowerCase();
-    return platform === '' || platform === 'node';
+    return true;
 }
 
 export function clearDisabledRuntimeResponseCaches() {
-    if (shouldUseRuntimeResponseCache()) {
-        return false;
-    }
-
-    let changed = false;
-
-    if (globals.searchCache instanceof Map && globals.searchCache.size > 0) {
-        globals.searchCache = new Map();
-        changed = true;
-    }
-
-    if (globals.commentCache instanceof Map && globals.commentCache.size > 0) {
-        globals.commentCache = new Map();
-        changed = true;
-    }
-
-    if (changed) {
-        log('info', '[cache] 非 node 平台已清空搜索/弹幕运行时缓存');
-    }
-
-    return changed;
+    return false;
 }
 
 function normalizeLegacyHanjutvEpisodeUrl(url, source = '', title = '') {

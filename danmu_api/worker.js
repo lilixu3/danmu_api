@@ -2,7 +2,7 @@ import { Globals } from './configs/globals.js';
 import { jsonResponse } from './utils/http-util.js';
 import { log, formatLogMessage } from './utils/log-util.js'
 import { getRedisCaches, judgeRedisValid, updateRedisCaches } from "./utils/redis-util.js";
-import { cleanupExpiredIPs, clearDisabledRuntimeResponseCaches, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid, migrateLegacyRuntimeCaches, updateLocalCaches } from "./utils/cache-util.js";
+import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeLocalCacheValid, migrateLegacyRuntimeCaches, updateLocalCaches } from "./utils/cache-util.js";
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
@@ -90,7 +90,6 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   const method = req.method;
 
   globals.deployPlatform = deployPlatform;
-  clearDisabledRuntimeResponseCaches();
   if (deployPlatform === "node") {
     await judgeLocalCacheValid(path, deployPlatform);
     const { judgeLocalRedisValid } = await import("./utils/local-redis-util.js");
@@ -426,6 +425,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     const queryFormat = url.searchParams.get('format');
     const videoUrl = url.searchParams.get('url');
     const segmentFlag = parseBoolean(url.searchParams.get('segmentflag'), false);
+    const includeDuration = parseBoolean(url.searchParams.get('duration'), false);
 
     // ⚠️ 限流设计说明：
     // 1. 先检查缓存，缓存命中时直接返回，不计入限流次数
@@ -439,7 +439,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       if (cachedComments !== null) {
         log("info", `[Rate Limit] Cache hit for URL: ${videoUrl}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
-        return formatDanmuResponse(responseData, queryFormat);
+        if (!includeDuration) {
+          return formatDanmuResponse(responseData, queryFormat);
+        }
       }
 
       // 缓存未命中，执行限流检查（如果 rateLimitMaxRequests > 0 则启用限流）
@@ -474,7 +476,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       }
 
       // 通过URL获取弹幕
-      return getCommentByUrl(videoUrl, queryFormat, segmentFlag);
+      return getCommentByUrl(videoUrl, queryFormat, segmentFlag, includeDuration);
     }
 
     // 否则通过commentId获取弹幕
@@ -495,7 +497,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       if (cachedComments !== null) {
         log("info", `[Rate Limit] Cache hit for URL: ${urlForComment}, skipping rate limit check`);
         const responseData = { count: cachedComments.length, comments: cachedComments };
-        return formatDanmuResponse(responseData, queryFormat);
+        if (!includeDuration) {
+          return formatDanmuResponse(responseData, queryFormat);
+        }
       }
     }
 
@@ -534,11 +538,11 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       log("info", `[Rate Limit] IP ${clientIp} request count: ${recentRequests.length}/${globals.rateLimitMaxRequests}`);
     }
 
-    return getComment(path, queryFormat, segmentFlag, clientIp);
+    return getComment(path, queryFormat, segmentFlag, clientIp, includeDuration);
   }
 
   // POST /api/v2/segmentcomment - 接收segment类的JSON请求体
- if (path.startsWith("/api/v2/segmentcomment") && method === "POST") {
+  if (path.startsWith("/api/v2/segmentcomment") && method === "POST") {
     try {
       const queryFormat = url.searchParams.get('format');
       // 从请求体获取segment数据
