@@ -882,6 +882,24 @@ export function findAnimeById(idParam, sourceParam = null, detailStore = null) {
     return findAnimeByAnimeId(rawId, sourceParam, detailStore) || findAnimeByBangumiId(rawId, sourceParam, detailStore);
 }
 
+export function resolveAnimeByIdFromDetailStore(idParam, detailStore = null, sourceParam = null) {
+    const rawId = String(idParam ?? '');
+    if (rawId === '') {
+        return null;
+    }
+
+    return findAnimeInDetailStore(
+        rawId,
+        sourceParam,
+        anime => matchesAnimeId(anime, rawId) || matchesBangumiId(anime, rawId),
+        detailStore
+    );
+}
+
+export function resolveAnimeById(idParam, detailStore = null, sourceParam = null) {
+    return resolveAnimeByIdFromDetailStore(idParam, detailStore, sourceParam) || findAnimeById(idParam, sourceParam);
+}
+
 // 检查搜索缓存是否有效（未过期）
 export function isSearchCacheValid(keyword) {
     if (!shouldUseRuntimeResponseCache()) {

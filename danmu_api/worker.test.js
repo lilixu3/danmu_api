@@ -1285,6 +1285,178 @@ test('worker.js API endpoints', async (t) => {
     assert.deepEqual(body.animes.map(item => item.animeTitle), ['你好A', '你好B', '你好C']);
   });
 
+  await t.test('POST /api/v2/match should prefer request detail snapshot over polluted runtime cache', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '太平年';
+    const animeId = 4201;
+    const bangumiId = 'tpn-4201';
+    const source = 'iqiyi';
+    const baseAnime = {
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 42,
+      rating: 0,
+      isFavorited: false,
+      source
+    };
+    const freshLinks = Array.from({ length: 42 }, (_, index) => ({
+      url: `https://fresh.example.com/${index + 1}`,
+      title: `【qiyi】 ${title}第${index + 1}集`
+    }));
+    const pollutedLinks = Array.from({ length: 42 }, (_, index) => ({
+      url: `https://stale.example.com/${index + 1}`,
+      title: index === 41 ? `【qiyi】 ${title}第45集 金陵落日` : `【qiyi】 ${title}第${index + 1}集`
+    }));
+    const searchResults = [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 42,
+      rating: 0,
+      isFavorited: false,
+      source
+    }];
+
+    const detailStore = new Map();
+    addAnime({ ...baseAnime, links: freshLinks }, detailStore);
+    setSearchCache(title, searchResults, detailStore);
+
+    // 模拟全局运行时详情被后续请求污染：同一 anime/source，但第 42 个槽位标题已经错到第 45 集。
+    addAnime({ ...baseAnime, links: pollutedLinks });
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E42`,
+        fileHash: 'hash',
+        fileSize: 0,
+        videoDuration: 0,
+        matchMode: 'fileNameOnly'
+      }
+    });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, true);
+    assert.equal(body.matches.length, 1);
+    assert.equal(body.matches[0].animeId, animeId);
+    assert.equal(body.matches[0].episodeTitle, `【qiyi】 ${title}第42集`);
+  });
+
+  await t.test('POST /api/v2/match fast path should keep remembered season offset while ignoring polluted runtime cache', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '太平年';
+    const animeId = 5201;
+    const bangumiId = 'tpn-5201';
+    const source = 'iqiyi';
+    const baseAnime = {
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 10,
+      rating: 0,
+      isFavorited: false,
+      source
+    };
+    const freshLinks = Array.from({ length: 10 }, (_, index) => ({
+      url: `https://fast-fresh.example.com/${index + 1}`,
+      title: `【qiyi】 ${title}第${index + 1}集`
+    }));
+    const pollutedLinks = Array.from({ length: 10 }, (_, index) => ({
+      url: `https://fast-stale.example.com/${index + 1}`,
+      title: index === 4 ? `【qiyi】 ${title}第8集 错乱` : `【qiyi】 ${title}第${index + 1}集`
+    }));
+    const searchResults = [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 10,
+      rating: 0,
+      isFavorited: false,
+      source
+    }];
+
+    const detailStore = new Map();
+    addAnime({ ...baseAnime, links: freshLinks }, detailStore);
+    setSearchCache(title, searchResults, detailStore);
+
+    // 污染全局运行时详情；如果 fast path 继续吃全局缓存，这里会把偏移后的目标集带偏。
+    addAnime({ ...baseAnime, links: pollutedLinks });
+
+    Globals.lastSelectMap.set(title, {
+      animeIds: [animeId],
+      preferBySeason: { '1': animeId },
+      sourceBySeason: { '1': source },
+      offsets: { '1': `1:【qiyi】 ${title}第4集` }
+    });
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E2`,
+        fileHash: 'hash',
+        fileSize: 0,
+        videoDuration: 0,
+        matchMode: 'fileNameOnly'
+      }
+    });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, true);
+    assert.equal(body.matches.length, 1);
+    assert.equal(body.matches[0].animeId, animeId);
+    assert.equal(body.matches[0].episodeTitle, `【qiyi】 ${title}第5集`);
+    assert.ok(
+      Globals.logBuffer.some(entry => entry.message.includes('[FastMatch] 使用偏好缓存命中')),
+      'Expected fast match path to be used'
+    );
+  });
+
   await t.test('applyMergeLogic should merge multi-secondary matches without ReferenceError', async () => {
     Globals.init({ MERGE_SOURCE_PAIRS: 'tencent&iqiyi&youku' });
     Globals.MAX_ANIMES = 100;
