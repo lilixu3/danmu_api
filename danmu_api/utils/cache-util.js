@@ -2,6 +2,7 @@ import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { Anime } from "../models/dandan-model.js";
 import { simpleHash } from "./codec-util.js";
+import { normalizeHanjutvEpisodeUrl } from "./hanjutv-util.js";
 let fs, path;
 
 // =====================
@@ -69,19 +70,6 @@ export function clearDisabledRuntimeResponseCaches() {
     return false;
 }
 
-function normalizeLegacyHanjutvEpisodeUrl(url, source = '', title = '') {
-    const rawUrl = String(url ?? '').trim();
-    if (!rawUrl.startsWith('xw:')) {
-        return rawUrl;
-    }
-
-    const sourceName = String(source || '').trim().toLowerCase();
-    const titleText = String(title || '');
-    const isHanjutvLink = sourceName === 'hanjutv' || titleText.includes('【hanjutv】');
-
-    return isHanjutvLink ? rawUrl.slice(3) : rawUrl;
-}
-
 function migrateLegacyAnimeLinks(anime) {
     if (!anime || !Array.isArray(anime.links)) {
         return { anime, changed: false };
@@ -93,7 +81,7 @@ function migrateLegacyAnimeLinks(anime) {
             return link;
         }
 
-        const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(link.url, anime.source, link.title);
+        const normalizedUrl = normalizeHanjutvEpisodeUrl(link.url);
         if (normalizedUrl === link.url) {
             return link;
         }
@@ -121,7 +109,7 @@ export function migrateLegacyRuntimeCaches() {
                 return episode;
             }
 
-            const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(episode.url, 'hanjutv', episode.title);
+            const normalizedUrl = normalizeHanjutvEpisodeUrl(episode.url);
             if (normalizedUrl === episode.url) {
                 return episode;
             }
@@ -167,7 +155,7 @@ export function migrateLegacyRuntimeCaches() {
                 }
 
                 const animeResult = migrateLegacyAnimeLinks(entry.anime);
-                const normalizedUrl = normalizeLegacyHanjutvEpisodeUrl(entry?.link?.url, entry?.anime?.source, entry?.link?.title);
+                const normalizedUrl = normalizeHanjutvEpisodeUrl(entry?.link?.url);
                 const linkChanged = normalizedUrl !== entry?.link?.url;
 
                 if (!animeResult.changed && !linkChanged) {
@@ -798,6 +786,8 @@ function collectMatchedSearchDetails(results, detailStore = null) {
 }
 
 function findCachedAnimeLinkByCommentId(commentId) {
+    migrateLegacyRuntimeCaches();
+
     for (const anime of globals.animes) {
         if (!anime || !Array.isArray(anime.links)) {
             continue;
@@ -861,14 +851,17 @@ function findCachedAnimeLinkByCommentId(commentId) {
 }
 
 export function findAnimeByAnimeId(idParam, sourceParam = null, detailStore = null) {
+    migrateLegacyRuntimeCaches();
     return findAnimeByAnimeIdFromRuntime(idParam, sourceParam, detailStore) || findAnimeByAnimeIdFromSearchCache(idParam, sourceParam);
 }
 
 export function findAnimeByBangumiId(idParam, sourceParam = null, detailStore = null) {
+    migrateLegacyRuntimeCaches();
     return findAnimeByBangumiIdFromRuntime(idParam, sourceParam, detailStore) || findAnimeByBangumiIdFromSearchCache(idParam, sourceParam);
 }
 
 export function findAnimeById(idParam, sourceParam = null, detailStore = null) {
+    migrateLegacyRuntimeCaches();
     const rawId = String(idParam ?? '');
     if (rawId === '') {
         return null;
@@ -883,6 +876,7 @@ export function findAnimeById(idParam, sourceParam = null, detailStore = null) {
 }
 
 export function resolveAnimeByIdFromDetailStore(idParam, detailStore = null, sourceParam = null) {
+    migrateLegacyRuntimeCaches();
     const rawId = String(idParam ?? '');
     if (rawId === '') {
         return null;
@@ -897,6 +891,7 @@ export function resolveAnimeByIdFromDetailStore(idParam, detailStore = null, sou
 }
 
 export function resolveAnimeById(idParam, detailStore = null, sourceParam = null) {
+    migrateLegacyRuntimeCaches();
     return resolveAnimeByIdFromDetailStore(idParam, detailStore, sourceParam) || findAnimeById(idParam, sourceParam);
 }
 
@@ -926,6 +921,7 @@ export function isSearchCacheValid(keyword) {
 
 // 获取搜索缓存
 export function getSearchCache(keyword, detailStore = null) {
+    migrateLegacyRuntimeCaches();
     if (!shouldUseRuntimeResponseCache()) {
         return null;
     }
@@ -1036,6 +1032,8 @@ export function setCommentCache(videoUrl, comments) {
 
 // 添加元素到 episodeIds：检查 url 是否存在，若不存在则以自增 id 添加
 export function addEpisode(url, title) {
+    migrateLegacyRuntimeCaches();
+    url = normalizeHanjutvEpisodeUrl(url);
     // 检查是否已存在相同的 url 和 title
     const existingEpisode = globals.episodeIds.find(episode => episode.url === url && episode.title === title);
     if (existingEpisode) {
@@ -1056,6 +1054,8 @@ export function addEpisode(url, title) {
 
 // 删除指定 URL 的对象从 episodeIds
 export function removeEpisodeByUrl(url) {
+    migrateLegacyRuntimeCaches();
+    url = normalizeHanjutvEpisodeUrl(url);
     const initialLength = globals.episodeIds.length;
     globals.episodeIds = globals.episodeIds.filter(episode => episode.url !== url);
     const removedCount = initialLength - globals.episodeIds.length;
@@ -1117,6 +1117,7 @@ function cleanupDetachedEpisodeIds(links, retainedEpisodeIds = new Set()) {
 
 // 根据 ID 查找 URL
 export function findUrlById(id) {
+    migrateLegacyRuntimeCaches();
     const episode = globals.episodeIds.find(episode => String(episode.id) === String(id));
     if (episode) {
         log("info", `Found URL for ID ${id}: ${episode.url}`);
@@ -1135,6 +1136,7 @@ export function findUrlById(id) {
 
 // 根据 ID 查找 TITLE
 export function findTitleById(id) {
+    migrateLegacyRuntimeCaches();
     const episode = globals.episodeIds.find(episode => String(episode.id) === String(id));
     if (episode) {
         log("info", `Found TITLE for ID ${id}: ${episode.title}`);
@@ -1153,6 +1155,7 @@ export function findTitleById(id) {
 
 // 根据 ID 查找 animeTitle
 export function findAnimeTitleById(id) {
+    migrateLegacyRuntimeCaches();
     for (const anime of globals.animes) {
         if (!anime.links || !Array.isArray(anime.links)) {
             continue;
@@ -1307,6 +1310,7 @@ export function storeAnimeIdsToMap(curAnimes, key) {
 
 // 根据给定的 commentId 查找对应的 animeId
 export function findAnimeIdByCommentId(commentId) {
+  migrateLegacyRuntimeCaches();
   const cachedDetail = findCachedAnimeLinkByCommentId(commentId);
   if (cachedDetail?.anime) {
     return [cachedDetail.anime.animeId, cachedDetail.anime.source, cachedDetail.link?.title || null];
@@ -1448,6 +1452,8 @@ export async function getLocalCaches() {
         }
         log("debug", `Restored lastSelectMap from local cache with ${globals.lastSelectMap.size} entries`);
       }
+
+      migrateLegacyRuntimeCaches();
 
       // 更新哈希值
       globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));

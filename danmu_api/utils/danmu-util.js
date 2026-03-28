@@ -108,23 +108,38 @@ const DEFAULT_RANDOM_COLOR_POOL = [
   16744319, 16752762, 16774799, 9498256,
   8388564, 8900346, 14204888, 16758465
 ];
+const LOW_THRESHOLD_DANMU_SOURCES = Object.freeze([
+  '[hanjutv]',
+  '[韩小圈]',
+  '[极速版]',
+  '[韩小圈＆极速版]',
+  '[sohu]',
+  '[bilibili1]',
+  '[migu]',
+]);
 
 function normalizeDanmuLikePreset(rawPreset) {
   const preset = String(rawPreset || 'default').trim().toLowerCase();
   return DANMU_LIKE_PRESETS.includes(preset) ? preset : 'default';
 }
 
-function resolveDanmuLikeIcon(item, preset) {
+function isLowThresholdDanmuSource(item) {
+  const sourceText = String(item?.p || '');
+  return LOW_THRESHOLD_DANMU_SOURCES.some(source => sourceText.includes(source));
+}
+
+function resolveDanmuLikeIcon(item, preset, { lowThreshold = false } = {}) {
   const like = Number(item?.like) || 0;
+  const fireThreshold = lowThreshold ? 100 : 1000;
 
   // 第二档：1000 以下用 💗，1000 以上用 🔥
   if (preset === 'pink_under_1k') {
-    return like >= 1000 ? '🔥' : '💗';
+    return like >= fireThreshold ? '🔥' : '💗';
   }
 
   // 第三档：1000 以下用 ♡，1000 以上用 🔥
   if (preset === 'outline_under_1k') {
-    return like >= 1000 ? '🔥' : '♡';
+    return like >= fireThreshold ? '🔥' : '♡';
   }
 
   // 第四档：统一 💗
@@ -138,7 +153,7 @@ function resolveDanmuLikeIcon(item, preset) {
   }
 
   // 第一档（默认）：<100 用 ♡，100~999 用 💗，>=1000 用 🔥
-  if (like >= 1000) return '🔥';
+  if (like >= fireThreshold) return '🔥';
   if (like >= 100) return '💗';
   return '♡';
 }
@@ -189,7 +204,9 @@ export function handleDanmusLike(groupedDanmus) {
       return item;
     }
 
-    const icon = resolveDanmuLikeIcon(item, likePreset);
+    const icon = resolveDanmuLikeIcon(item, likePreset, {
+      lowThreshold: isLowThresholdDanmuSource(item),
+    });
 
     let formattedLike;
     if (item.like >= 10000) {

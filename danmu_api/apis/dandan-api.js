@@ -15,6 +15,7 @@ import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "..
 import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, extractYear, titleMatches } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
+import { getHanjutvSourceLabel } from "../utils/hanjutv-util.js";
 import AIClient from '../utils/ai-util.js';
 import Kan360Source from "../sources/kan360.js";
 import VodSource from "../sources/vod.js";
@@ -1752,7 +1753,7 @@ async function fetchMergedComments(url, offsetContext = {}) {
   const parts = url.split(MERGE_DELIMITER);
   const resolveMergedLabel = (sourceName, realId) => {
     if (sourceName === 'hanjutv') {
-      return String(realId || '').startsWith('xw:') ? '极速版' : '韩小圈';
+      return getHanjutvSourceLabel(realId);
     }
     return sourceName;
   };

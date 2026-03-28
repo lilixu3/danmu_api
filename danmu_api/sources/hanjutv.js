@@ -9,10 +9,11 @@ import { titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
 import {
   HANJUTV_APP_PROFILE,
-  loadHanjutvSearchContext,
+  createHanjutvUid,
   createHanjutvSearchHeaders,
   decodeHanjutvEncryptedPayload,
   buildLiteHeaders,
+  parseHanjutvEpisodeDanmuId,
 } from "../utils/hanjutv-util.js";
 
 const CATE_MAP = { 1: "韩剧", 2: "综艺", 3: "电影", 4: "日剧", 5: "美剧", 6: "泰剧", 7: "国产剧" };
@@ -30,15 +31,13 @@ const HANJUTV_VARIANTS = Object.freeze({
 export default class HanjutvSource extends BaseSource {
   constructor() {
     super();
-    this.webHost = "https://hxqapi.hiyun.tv";
     this.appHost = "https://hxqapi.hiyun.tv";
     this.tvHost = "https://api.xiawen.tv";
     this.fallbackDanmuHost = "https://hxqapi.zmdcq.com";
     this.danmuHosts = Array.from(new Set([this.appHost, this.fallbackDanmuHost]));
     this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
-    this.tvHeaderFactoryPromise = null;
-    this.mobileWarmupUid = null;
+    this.appUserAgent = HANJUTV_APP_PROFILE.userAgent;
   }
 
   getWebHeaders() {
@@ -48,22 +47,14 @@ export default class HanjutvSource extends BaseSource {
     };
   }
 
-  getMobileSearchContext(profile = HANJUTV_APP_PROFILE, options = {}) {
-    return loadHanjutvSearchContext(profile, { ...options, timestamp: Date.now() });
-  }
-
-  getAppHeaders(profile = HANJUTV_APP_PROFILE) {
-    const context = this.getMobileSearchContext(profile);
-    const pickedProfile = context.profile || profile;
+  getAppHeaders() {
     return {
-      vc: pickedProfile.vc,
-      vn: pickedProfile.version,
-      ch: pickedProfile.ch,
+      vc: HANJUTV_APP_PROFILE.vc,
+      vn: HANJUTV_APP_PROFILE.version,
+      ch: HANJUTV_APP_PROFILE.ch,
       app: "hj",
-      said: context.said,
-      "User-Agent": pickedProfile.userAgent,
+      "User-Agent": this.appUserAgent,
       "Accept-Encoding": "gzip",
-      Connection: "Keep-Alive",
     };
   }
 
@@ -71,28 +62,12 @@ export default class HanjutvSource extends BaseSource {
     return CATE_MAP[key] || "其他";
   }
 
-  normalizeEpisodeDanmuId(rawId) {
-    const idText = String(rawId || "").trim();
-    if (!idText) return { id: "", preferTv: false, isLegacyTvCache: false };
-
-    if (idText.startsWith("xw:")) {
-      return {
-        id: idText.slice(3),
-        preferTv: true,
-        isLegacyTvCache: true,
-      };
-    }
-
-    return { id: idText, preferTv: false, isLegacyTvCache: false };
-  }
-
   /**
    * 构建 TV 端请求头，返回 { headers, uid }
    */
   async buildTvHeaders() {
-    if (!this.tvHeaderFactoryPromise) this.tvHeaderFactoryPromise = buildLiteHeaders(Date.now());
-    const makeHeaders = await this.tvHeaderFactoryPromise;
-    return makeHeaders(Date.now()); // { headers, uid }
+    const makeHeaders = await buildLiteHeaders(Date.now());
+    return makeHeaders(Date.now());
   }
 
   /**
@@ -219,14 +194,6 @@ export default class HanjutvSource extends BaseSource {
     return Array.from(map.values());
   }
 
-  countMatchedItems(items = [], keyword = "") {
-    if (!Array.isArray(items) || !keyword) return 0;
-    return items.reduce((count, item) => {
-      const name = item?.name ? String(item.name) : "";
-      return count + (titleMatches(name, keyword) ? 1 : 0);
-    }, 0);
-  }
-
   isMergeableSearchPair(leftItem, rightItem, keyword = "") {
     if (!leftItem?.name || !rightItem?.name) return false;
     if (keyword) {
@@ -287,7 +254,14 @@ export default class HanjutvSource extends BaseSource {
         resultList.push(this.buildSearchCandidate(item, HANJUTV_VARIANTS.TV));
       });
 
-    if (!hasMatched) {
+    if (hasMatched) {
+      s5.unmatched.forEach(item => {
+        resultList.push(this.buildSearchCandidate(item, HANJUTV_VARIANTS.HXQ));
+      });
+      tv.unmatched.forEach(item => {
+        resultList.push(this.buildSearchCandidate(item, HANJUTV_VARIANTS.TV));
+      });
+    } else {
       s5Unique.forEach(item => resultList.push(this.buildSearchCandidate(item, HANJUTV_VARIANTS.HXQ)));
       tvUnique.forEach(item => resultList.push(this.buildSearchCandidate(item, HANJUTV_VARIANTS.TV)));
     }
@@ -335,32 +309,25 @@ export default class HanjutvSource extends BaseSource {
     return items;
   }
 
-  async warmupMobileIdentity(context, headers) {
-    if (this.mobileWarmupUid === context.uid) return;
-    // 串行化：多个并发调用只执行一次暖身请求
-    this._warmupLock = (this._warmupLock || Promise.resolve()).then(async () => {
-      if (this.mobileWarmupUid === context.uid) return;
-      try {
-        await httpGet("https://hxqapi.hiyun.tv/api/common/configs", { headers, timeout: 8000, retries: 0 });
-        this.mobileWarmupUid = context.uid;
-      } catch (_) {
-        // 暖身失败不阻断搜索
-      }
-    });
-    return this._warmupLock;
+  async warmupMobileIdentity(headers) {
+    try {
+      await httpGet(`${this.appHost}/api/common/configs`, { headers, timeout: 8000, retries: 0 });
+    } catch (_) {
+      // 暖身失败不阻断搜索
+    }
   }
 
   async searchWithS5Api(keyword) {
-    const context = this.getMobileSearchContext(HANJUTV_APP_PROFILE);
-    const headers = await createHanjutvSearchHeaders(context);
-    await this.warmupMobileIdentity(context, headers);
+    const uid = createHanjutvUid();
+    const headers = await createHanjutvSearchHeaders(uid);
+    await this.warmupMobileIdentity(headers);
     const q = encodeURIComponent(keyword);
     const resp = await httpGet(`https://hxqapi.hiyun.tv/api/search/s5?k=${q}&srefer=search_input&type=0&page=1`, {
       headers,
       timeout: 10000,
       retries: 1,
     });
-    return this.extractFromPayload(resp?.data, context.uid, "s5");
+    return this.extractFromPayload(resp?.data, uid, "s5");
   }
 
   async searchWithTvApi(keyword) {
@@ -533,20 +500,6 @@ export default class HanjutvSource extends BaseSource {
     }
   }
 
-  async getDetail(id, variant = HANJUTV_VARIANTS.HXQ) {
-    if (variant === HANJUTV_VARIANTS.TV) {
-      return this.getTvDetail(id);
-    }
-    return this.getHxqDetail(id);
-  }
-
-  async getEpisodes(id, variant = HANJUTV_VARIANTS.HXQ) {
-    if (variant === HANJUTV_VARIANTS.TV) {
-      return this.getTvEpisodes(id);
-    }
-    return this.getHxqEpisodes(id);
-  }
-
   resolveAnimeYear(anime, ...details) {
     const candidates = [
       anime?.updateTime,
@@ -576,11 +529,11 @@ export default class HanjutvSource extends BaseSource {
 
     let url = "";
     if (hxqEpisode?.pid && tvEpisode?.eid) {
-      url = `hanjutv:${hxqEpisode.pid}$$$hanjutv:xw:${tvEpisode.eid}`;
+      url = `hanjutv:hxq:${hxqEpisode.pid}$$$hanjutv:tv:${tvEpisode.eid}`;
     } else if (hxqEpisode?.pid) {
-      url = String(hxqEpisode.pid);
+      url = `hxq:${hxqEpisode.pid}`;
     } else if (tvEpisode?.eid) {
-      url = `xw:${tvEpisode.eid}`;
+      url = `tv:${tvEpisode.eid}`;
     }
 
     if (!url) return null;
@@ -623,6 +576,10 @@ export default class HanjutvSource extends BaseSource {
     const variant = anime?._variant || HANJUTV_VARIANTS.HXQ;
     const hxqSid = String(anime?.sid || "").trim();
     const tvSid = String(anime?.tvSid || "").trim();
+    const parsedAnimeId = Number(anime?.animeId);
+    const stableMergedAnimeId = variant === HANJUTV_VARIANTS.MERGED && hxqSid && tvSid
+      ? ((Number.isFinite(parsedAnimeId) && parsedAnimeId > 0) ? parsedAnimeId : convertToAsciiSum(`hxq:${hxqSid}|tv:${tvSid}`))
+      : null;
 
     if (variant === HANJUTV_VARIANTS.MERGED && hxqSid && tvSid) {
       const [[hxqDetail, hxqEpisodes], [tvDetail, tvEpisodes]] = await Promise.all([
@@ -632,12 +589,8 @@ export default class HanjutvSource extends BaseSource {
 
       const links = this.mergeVariantEpisodes(hxqEpisodes, tvEpisodes);
       if (links.length > 0) {
-        const bothAvailable = hxqEpisodes.length > 0 && tvEpisodes.length > 0;
-        const effectiveAnimeId = bothAvailable
-          ? convertToAsciiSum(`hxq:${hxqSid}|tv:${tvSid}`)
-          : (hxqEpisodes.length > 0 ? convertToAsciiSum(hxqSid) : convertToAsciiSum(tvSid));
         const detail = hxqDetail?.category ? hxqDetail : (tvDetail?.category ? tvDetail : (hxqDetail || tvDetail));
-        return { summary: this.buildAnimeSummary(anime, detail, links, effectiveAnimeId), links };
+        return { summary: this.buildAnimeSummary(anime, detail, links, stableMergedAnimeId), links };
       }
     }
 
@@ -645,7 +598,15 @@ export default class HanjutvSource extends BaseSource {
       const [detail, episodes] = await Promise.all([this.getHxqDetail(hxqSid), this.getHxqEpisodes(hxqSid)]);
       const links = episodes.map(ep => this.buildEpisodeLink(ep, null)).filter(Boolean);
       if (links.length > 0) {
-        return { summary: this.buildAnimeSummary(anime, detail, links, convertToAsciiSum(hxqSid)), links };
+        return {
+          summary: this.buildAnimeSummary(
+            anime,
+            detail,
+            links,
+            stableMergedAnimeId ?? convertToAsciiSum(hxqSid),
+          ),
+          links,
+        };
       }
     }
 
@@ -654,7 +615,15 @@ export default class HanjutvSource extends BaseSource {
       const [detail, episodes] = await Promise.all([this.getTvDetail(sid), this.getTvEpisodes(sid)]);
       const links = episodes.map(ep => this.buildEpisodeLink(null, ep)).filter(Boolean);
       if (links.length > 0) {
-        return { summary: this.buildAnimeSummary(anime, detail, links, convertToAsciiSum(sid)), links };
+        return {
+          summary: this.buildAnimeSummary(
+            anime,
+            detail,
+            links,
+            stableMergedAnimeId ?? convertToAsciiSum(sid),
+          ),
+          links,
+        };
       }
     }
 
@@ -693,7 +662,7 @@ export default class HanjutvSource extends BaseSource {
   // ── 弹幕 ─────────────────────────────────────────────────────
 
   async getEpisodeDanmu(id) {
-    const episodeRef = this.normalizeEpisodeDanmuId(id);
+    const episodeRef = parseHanjutvEpisodeDanmuId(id);
     if (!episodeRef.id) return [];
 
     const episodeId = episodeRef.id;
@@ -755,7 +724,7 @@ export default class HanjutvSource extends BaseSource {
           }
         }
       }
-    } else {
+    } else if (episodeRef.isLegacyTvCache) {
       log("info", `[Hanjutv] 命中旧缓存 xw: 前缀，直接走 TV 弹幕接口: ${episodeId}`);
     }
 

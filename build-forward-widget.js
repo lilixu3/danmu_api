@@ -65,10 +65,11 @@ try {
     minify: false,
     sourcemap: false,
     platform: 'neutral',
+    mainFields: ['browser', 'module', 'main'],
     target: 'es2020',
     outfile: distPath,
     format: 'esm',
-    external: ['redis'],
+    external: ['redis', 'node-fetch', 'pako'],
     plugins: [
       // 插件：排除UI相关模块
       {
