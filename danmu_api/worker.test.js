@@ -38,6 +38,7 @@ import { addAnime, addEpisode, migrateLegacyRuntimeCaches, setLastSearch, setSea
 import { convertToAsciiSum } from "./utils/codec-util.js";
 import { handleDanmusLike } from "./utils/danmu-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
+import { HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "./utils/hanjutv-util.js";
 
 // Mock Request class for testing
 class MockRequest {
@@ -794,13 +795,54 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
-  await t.test('hanjutv segment list should not fabricate a 30-second placeholder duration', async () => {
+  await t.test('hanjutv segment list should expose a full-episode fallback segment without faking duration', async () => {
     const source = new HanjutvSource();
     const segments = await source.getComments('play-1', 'hanjutv', true);
 
     assert.equal(segments.duration, 0);
     assert.equal(Array.isArray(segments.segmentList), true);
-    assert.equal(segments.segmentList.length, 0);
+    assert.equal(segments.segmentList.length, 1);
+    assert.equal(segments.segmentList[0].type, 'hanjutv');
+    assert.equal(segments.segmentList[0].segment_start, 0);
+    assert.equal(segments.segmentList[0].segment_end, 100000000);
+    assert.equal(segments.segmentList[0].url, 'play-1');
+    assert.equal(segments.segmentList[0].data, HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA);
+  });
+
+  await t.test('hanjutv fallback segment should remain fetchable via segmentcomment flow', async () => {
+    const source = new HanjutvSource();
+    const originalGetEpisodeDanmu = HanjutvSource.prototype.getEpisodeDanmu;
+    HanjutvSource.prototype.getEpisodeDanmu = async function(id) {
+      assert.equal(id, 'play-1');
+      return [{ did: 1, t: 1000, tp: 1, sc: 25, con: 'segment-ok', lc: 0 }];
+    };
+
+    try {
+      const segments = await source.getComments('play-1', 'hanjutv', true);
+      const comments = await source.getSegmentComments(segments.segmentList[0]);
+
+      assert.equal(Array.isArray(comments), true);
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].m, 'segment-ok');
+    } finally {
+      HanjutvSource.prototype.getEpisodeDanmu = originalGetEpisodeDanmu;
+    }
+  });
+
+  await t.test('GET /api/v2/comment/:id/duration should keep hanjutv fallback segment duration at 0', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const episode = addEpisode('hanjutv:hxq:pid-1$$$hanjutv:tv:eid-1', '【hanjutv】测试样例');
+    const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.videoDuration, 0);
   });
 
   await t.test('hanjutv s5 search should warm up identity before issuing the search request', async () => {
@@ -1642,6 +1684,92 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(mergedAnime.links.length, 1);
     assert.ok(mergedAnime.links[0].url.includes(`tencent:https://example.com/tencent-1${MERGE_DELIMITER}iqiyi:https://example.com/iqiyi-1`));
     assert.ok(mergedAnime.links[0].url.includes(`${MERGE_DELIMITER}youku:https://example.com/youku-1`));
+  });
+
+  await t.test('applyMergeLogic should preserve hanjutv tv variant when multi-source aggregation rewrites merged urls', async () => {
+    Globals.init({ MERGE_SOURCE_PAIRS: 'renren&hanjutv&aiyifan' });
+    Globals.MAX_ANIMES = 100;
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+
+    addAnime({
+      animeId: 301,
+      bangumiId: 'merge-301',
+      animeTitle: '爱情怎么翻译？(2026)【电视剧】from renren',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2026-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'renren',
+      links: [{ id: 62001, url: '55176-377624', title: '【renren】 第01集' }]
+    });
+    addAnime({
+      animeId: 302,
+      bangumiId: 'merge-302',
+      animeTitle: '爱情怎么翻译?(2026)【韩剧】from hanjutv',
+      type: 'tvseries',
+      typeDescription: '韩剧',
+      imageUrl: '',
+      startDate: '2026-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'hanjutv',
+      links: [{ id: 62002, url: 'hanjutv:hxq:pid-1$$$hanjutv:tv:eid-1', title: '【hanjutv】 第1集：帮帮我，Papago先生' }]
+    });
+    addAnime({
+      animeId: 303,
+      bangumiId: 'merge-303',
+      animeTitle: '爱情怎么翻译(2026)【电视剧】from aiyifan',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2026-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source: 'aiyifan',
+      links: [{ id: 62003, url: 'https://www.yfsp.tv/play/oQBP0ycKY24?id=1whgqbhXdn6', title: '【aiyifan】 01' }]
+    });
+
+    const curAnimes = globals.animes.map(anime => ({
+      animeId: anime.animeId,
+      bangumiId: anime.bangumiId,
+      animeTitle: anime.animeTitle,
+      type: anime.type,
+      typeDescription: anime.typeDescription,
+      imageUrl: anime.imageUrl,
+      startDate: anime.startDate,
+      episodeCount: anime.episodeCount,
+      rating: anime.rating,
+      isFavorited: anime.isFavorited,
+      source: anime.source,
+      links: anime.links.map(link => ({ ...link }))
+    }));
+
+    await assert.doesNotReject(async () => {
+      await applyMergeLogic(curAnimes);
+    });
+
+    assert.equal(curAnimes.length, 1);
+    const [mergedAnime] = curAnimes;
+    assert.ok(mergedAnime, 'Expected merged anime to be retained as the only result');
+    assert.equal(mergedAnime.source, 'renren');
+    assert.ok(mergedAnime.animeTitle.includes('from renren&hanjutv&aiyifan'));
+    assert.equal(mergedAnime.links.length, 1);
+    assert.equal(
+      mergedAnime.links[0].url,
+      `renren:55176-377624${MERGE_DELIMITER}hanjutv:hxq:pid-1${MERGE_DELIMITER}hanjutv:tv:eid-1${MERGE_DELIMITER}aiyifan:https://www.yfsp.tv/play/oQBP0ycKY24?id=1whgqbhXdn6`
+    );
   });
 
   // await t.test('Test ai cilent', async () => {

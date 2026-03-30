@@ -9,6 +9,7 @@ import { titleMatches } from "../utils/common-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
 import {
   HANJUTV_APP_PROFILE,
+  HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA,
   createHanjutvUid,
   createHanjutvSearchHeaders,
   decodeHanjutvEncryptedPayload,
@@ -769,7 +770,14 @@ export default class HanjutvSource extends BaseSource {
     return new SegmentListResponse({
       type: "hanjutv",
       duration: 0,
-      segmentList: [],
+      // 韩剧TV当前没有可复用的真实分片清单接口，返回全片兜底分片以兼容 segmentcomment 流程。
+      segmentList: [{
+        type: "hanjutv",
+        segment_start: 0,
+        segment_end: MAX_AXIS,
+        url: id,
+        data: HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA,
+      }],
     });
   }
 

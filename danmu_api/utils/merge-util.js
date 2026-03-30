@@ -22,7 +22,12 @@ export const MERGE_DELIMITER = '$$$';
 export const DISPLAY_CONNECTOR = '&';
 
 // 调试级别的日志开关 false/true
-const ENABLE_VERBOSE_MERGE_LOG = false; 
+const ENABLE_VERBOSE_MERGE_LOG = false;
+const KNOWN_MERGE_SOURCE_PREFIXES = new Set([
+    '360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'bilibili1',
+    'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui',
+    'aiyifan', 'animeko', 'custom', 'other_server'
+]);
 
 /**
  * 核心算法权重配置
@@ -430,6 +435,32 @@ function sanitizeUrl(urlStr) {
     return body;
   }
   return clean;
+}
+
+function splitMergeUrlParts(urlStr) {
+  return String(urlStr || '')
+    .split(MERGE_DELIMITER)
+    .map(part => String(part || '').trim())
+    .filter(Boolean);
+}
+
+function buildMergeUrlParts(sourceName, urlStr) {
+  const normalizedSource = String(sourceName || '').trim();
+  if (!normalizedSource) return splitMergeUrlParts(urlStr);
+
+  return splitMergeUrlParts(urlStr).map((part) => {
+    if (part.startsWith('//')) return `${normalizedSource}:https:${part}`;
+
+    const match = part.match(/^([^:]+):(.+)$/);
+    if (!match) return `${normalizedSource}:${part}`;
+
+    const prefix = match[1].toLowerCase();
+    if (KNOWN_MERGE_SOURCE_PREFIXES.has(prefix)) return part;
+    if (prefix === normalizedSource.toLowerCase()) return part;
+    if (prefix === 'http' || prefix === 'https') return `${normalizedSource}:${part}`;
+
+    return `${normalizedSource}:${part}`;
+  });
 }
 
 /**
@@ -1506,8 +1537,7 @@ function createNewLink(item, sourceName) {
     const rawTitle = rawLink.title || rawLink.name || `Episode ${item.originalIndex + 1}`;
     let newUrl = rawLink.url || '';
     if (newUrl) {
-        newUrl = sanitizeUrl(newUrl);
-        if (!/^https?:\/\//i.test(newUrl)) newUrl = `${sourceName}:${newUrl}`;
+        newUrl = buildMergeUrlParts(sourceName, newUrl).join(MERGE_DELIMITER);
     }
     let displayTitle = rawTitle;
     if (!displayTitle.includes(`【${sourceName}】`)) displayTitle = `【${sourceName}】 ${displayTitle}`;
@@ -2011,13 +2041,9 @@ async function processMergeTask(params) {
                     continue;
                 }
 
-                const idB = sanitizeUrl(sourceLink.url);
-                let currentUrl = targetLink.url;
-                const secPart = `${secSource}:${idB}`;
-                if (!currentUrl.includes(MERGE_DELIMITER)) {
-                    if (!currentUrl.startsWith(currentPrimarySource + ':')) currentUrl = `${currentPrimarySource}:${currentUrl}`;
-                }
-                const newMergedUrl = `${currentUrl}${MERGE_DELIMITER}${secPart}`;
+                const currentParts = buildMergeUrlParts(currentPrimarySource, targetLink.url);
+                const secondaryParts = buildMergeUrlParts(secSource, sourceLink.url);
+                const newMergedUrl = Array.from(new Set([...currentParts, ...secondaryParts])).join(MERGE_DELIMITER);
 
                 let newMergedTitle = targetLink.title;
                 if (newMergedTitle) {

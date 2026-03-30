@@ -1,5 +1,7 @@
 import { md5, stringToUtf8Bytes, utf8BytesToString, bytesToBase64, base64ToBytes, aesCbcEncryptPure, aesCbcDecryptPure } from "./crypto-util.js";
 
+export const HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA = "__hanjutv_full_episode_fallback__";
+
 export const HANJUTV_APP_PROFILE = Object.freeze({
   version: "6.8.2",
   vc: "a_8280",
