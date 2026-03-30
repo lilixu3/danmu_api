@@ -90,7 +90,7 @@ export default class AiyifanSource extends BaseSource {
         headers
       });
 
-      if (response.status !== 200) {
+      if (response.status !== undefined && response.status !== 200) {
         const responsePreview = typeof response.data === "string"
           ? response.data.slice(0, previewLength)
           : response.statusText;
@@ -99,7 +99,7 @@ export default class AiyifanSource extends BaseSource {
       }
 
       const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data.ret !== 200) {
+      if (data && Object.prototype.hasOwnProperty.call(data, "ret") && data.ret !== 200) {
         log("error", `[${actionLabel}失败] 返回码: ${data.ret}, msg: ${data.msg}`);
         return null;
       }
