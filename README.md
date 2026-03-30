@@ -195,6 +195,7 @@ node ./danmu_api/server.js
 | `CONVERT_COLOR` | 颜色转换：`default`/`white`/`color` 或自定义十进制颜色列表 |
 | `SEARCH_CACHE_MINUTES` / `COMMENT_CACHE_MINUTES` | 缓存时长（分钟，`0` 表示不缓存） |
 | `SEARCH_CACHE_MAX_ITEMS` / `COMMENT_CACHE_MAX_ITEMS` | 缓存最大条目数（`0` 不限制） |
+| `MAX_ANIMES` | 动漫标题缓存最大数量（默认 `100`，最小 `100`，最大 `1000`） |
 | `RATE_LIMIT_MAX_REQUESTS` | 限流：同一 IP 1 分钟最大请求数（`0` 不限流） |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis（可选，用于持久化与稳定性） |
 | `LOCAL_REDIS_URL` | 本地 Redis（可选，适用于 Docker/本地部署） |
