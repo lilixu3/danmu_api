@@ -27,6 +27,7 @@ import LeshiSource from "./sources/leshi.js";
 import XiguaSource from "./sources/xigua.js";
 import MaiduiduiSource from "./sources/maiduidui.js";
 import AnimekoSource from "./sources/animeko.js";
+import AiyifanSource from "./sources/aiyifan.js";
 import OtherSource from "./sources/other.js";
 import { NodeHandler } from "./configs/handlers/node-handler.js";
 import { VercelHandler } from "./configs/handlers/vercel-handler.js";
@@ -60,8 +61,47 @@ async function parseResponse(response) {
   }
 }
 
+function createFetchResponse(body, overrides = {}) {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    url: 'https://example.com/mock',
+    headers: {
+      entries() {
+        return [];
+      }
+    },
+    async text() {
+      return typeof body === 'string' ? body : JSON.stringify(body);
+    },
+    ...overrides,
+  };
+}
+
 const urlPrefix = "http://localhost:9321";
 const token = "87654321";
+
+test('Aiyifan requestApi tolerates fw-style responses without status/ret fields', async () => {
+  const source = new AiyifanSource();
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => createFetchResponse(
+    { data: { info: [{ result: [] }] } },
+    { status: undefined }
+  );
+
+  try {
+    const result = await source.requestApi(
+      source.SEARCH_API,
+      { tags: 'test', orderby: 4, page: 1, size: 10, desc: 1, isserial: -1 },
+      '搜索'
+    );
+    assert.deepEqual(result, { data: { info: [{ result: [] }] } });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('worker.js API endpoints', async (t) => {
   const renrenSource = new RenrenSource();
