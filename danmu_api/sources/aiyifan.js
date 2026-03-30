@@ -15,20 +15,23 @@ import { globals } from '../configs/globals.js';
 export default class AiyifanSource extends BaseSource {
   constructor() {
     super();
-    this.PUBLIC_KEY = "CJStD3SqE3GrCouoCpbVIb1VCJOmBZ4sBZ8mE2uoDJHVDpKrP69cEMKtCZ0qD31bP68qDJ9bCJOvDZ4oDM4sOJ1VCJTcCpOuCpHYCpOmDZLcOJTaD3GrDZ5ZP68qOJOpDc6";
-    this.SALT = "StD3JStD3SqE3GrCouoC";
+    this.PUBLIC_KEY = "CJStD3WpEJKqCouuC3TVL5TVCZGmDZfaOJ5ZEZXaEMOwPZ4mC3euEMHYEZGnEMOwDZbcPJetOpWpNpGnP69aOJ8tP30tOpGqCp8uE31YDJGnPJSoP31aCZXcNpOpD64nEMOuOpWrP6CuCpbcD3KnC3DcCcPcC68qE3Ha";
+    this.SALT = "StD3JStD3WpEJKqCouuC";
 
     this.USER_AGENT = (
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
       "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0 Safari/537.36"
+      "Chrome/116.0.0.0 Safari/537.36"
     );
 
-    this.SEARCH_API = "https://rankv21.tripdata.app/v3/list/briefsearch";
-    this.PLAYLIST_API = "https://app-m10.tripdata.app/v3/video/languagesplaylist";
-    this.VIDEO_API = "https://app-m10.tripdata.app/v3/video/play";
-    this.DANMU_API = "https://app-m10.tripdata.app/api/video/getBarrage";
+    this.SEARCH_API = "https://rankv21.yfsp.tv/v3/list/briefsearch";
+    this.PLAYLIST_API = "https://m10.yfsp.tv/v3/video/languagesplaylist";
+    this.VIDEO_API = "https://m10.yfsp.tv/v3/video/play";
+    this.DANMU_API = "https://m10.yfsp.tv/api/video/getBarrage";
     this.DOMAIN_API = "https://www.yfsp.tv/play";
+    this.DEFAULT_DN_CONFIG = "dn_config=device=desktop&player=CkPlayer&tech=HLS&region=JP&country=JP&lang=none&v=1&isDark=1&volume=0.8";
+    const uidSeed = md5(`${Date.now()}_${Math.random()}_aiyifan`);
+    this.DEFAULT_UID = `_uid=${uidSeed.slice(0, 8)}-${uidSeed.slice(8, 12)}-${uidSeed.slice(12, 16)}-${uidSeed.slice(16, 20)}-${uidSeed.slice(20, 32)}`;
   }
 
   computeVv(params) {
@@ -37,6 +40,75 @@ export default class AiyifanSource extends BaseSource {
       .join('&');
     const raw = this.PUBLIC_KEY + "&" + sortedParams.toLowerCase() + "&" + this.SALT;
     return md5(raw);
+  }
+
+  buildCookieHeader() {
+    const rawCookie = globals.aiyifanCookie ? globals.aiyifanCookie.trim() : "";
+    const cookies = rawCookie ? [rawCookie.replace(/;\s*$/, "")] : [];
+
+    if (!/_uid=/.test(rawCookie)) {
+      cookies.push(this.DEFAULT_UID);
+    }
+
+    if (!/dn_config=/.test(rawCookie)) {
+      cookies.push(this.DEFAULT_DN_CONFIG);
+    }
+
+    return cookies.join("; ");
+  }
+
+  buildPlayUrl(vid, epKey = "") {
+    if (!vid) {
+      return "https://www.yfsp.tv/";
+    }
+    return epKey ? `${this.DOMAIN_API}/${vid}?id=${epKey}` : `${this.DOMAIN_API}/${vid}`;
+  }
+
+  async requestApi(apiUrl, baseParams, actionLabel, previewLength = 200, referer = "https://www.yfsp.tv/") {
+    const params = {
+      ...baseParams,
+      vv: this.computeVv(baseParams),
+      pub: this.PUBLIC_KEY
+    };
+
+    try {
+      const urlWithParams = updateQueryString(apiUrl, params);
+      const headers = {
+        "User-Agent": this.USER_AGENT,
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.yfsp.tv",
+        "Referer": referer,
+        "X-Requested-With": "mark.via"
+      };
+
+      const cookieHeader = this.buildCookieHeader();
+      if (cookieHeader) {
+        headers.Cookie = cookieHeader;
+      }
+
+      const response = await httpGet(globals.makeProxyUrl(urlWithParams), {
+        headers
+      });
+
+      if (response.status !== 200) {
+        const responsePreview = typeof response.data === "string"
+          ? response.data.slice(0, previewLength)
+          : response.statusText;
+        log("error", `[${actionLabel}失败] HTTP ${response.status}: ${responsePreview}`);
+        return null;
+      }
+
+      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+      if (data.ret !== 200) {
+        log("error", `[${actionLabel}失败] 返回码: ${data.ret}, msg: ${data.msg}`);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      log("error", `[${actionLabel}失败] 错误: ${error.message}`);
+      return null;
+    }
   }
 
   async searchDrama(keyword, page = 1, size = 10) {
@@ -49,35 +121,8 @@ export default class AiyifanSource extends BaseSource {
       isserial: -1
     };
 
-    const headers = {
-      "User-Agent": this.USER_AGENT,
-      "Accept": "application/json"
-    };
-
     log("info", `[搜索] 关键词: ${keyword}, 页码: ${page}`);
-
-    try {
-      const urlWithParams = updateQueryString(this.SEARCH_API, params);
-      const response = await httpGet(globals.makeProxyUrl(urlWithParams), { headers });
-
-      if (response.status !== 200) {
-        const responsePreview = typeof response.data === "string"
-          ? response.data.slice(0, 200)
-          : response.statusText;
-        log("error", `[搜索失败] HTTP ${response.status}: ${responsePreview}`);
-        return null;
-      }
-
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data.ret !== 200) {
-        log("error", `[搜索失败] 返回码: ${data.ret}, msg: ${data.msg}`);
-        return null;
-      }
-      return data;
-    } catch (error) {
-      log("error", `[搜索失败] 错误: ${error.message}`);
-      return null;
-    }
+    return await this.requestApi(this.SEARCH_API, params, "搜索");
   }
 
   extractDramaList(searchResult) {
@@ -128,106 +173,58 @@ export default class AiyifanSource extends BaseSource {
       cid: "0,1,4,152",
     };
 
-    const vv = this.computeVv(baseParams);
-
-    const params = {
-      ...baseParams,
-      vv,
-      pub: this.PUBLIC_KEY
-    };
-
-    const headers = {
-      "User-Agent": this.USER_AGENT,
-      "Accept": "application/json"
-    };
-
     log("info", `[播放列表] 请求 vid: ${vid}`);
-
-    try {
-      const urlWithParams = updateQueryString(this.PLAYLIST_API, params);
-      const response = await httpGet(globals.makeProxyUrl(urlWithParams), { headers });
-
-      if (response.status !== 200) {
-        const responsePreview = typeof response.data === "string"
-          ? response.data.slice(0, 200)
-          : response.statusText;
-        log("error", `[播放列表失败] HTTP ${response.status}: ${responsePreview}`);
-        return [];
-      }
-
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data.ret !== 200) {
-        log("error", `[播放列表失败] 返回码: ${data.ret}, msg: ${data.msg}`);
-        return [];
-      }
-
-      const episodes = [];
-      const infoList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
-      for (const info of infoList) {
-        for (const ep of info.playList || []) {
-          episodes.push(ep);
-        }
-      }
-
-      log("info", `[播放列表] 共获取到 ${episodes.length} 集`);
-      return episodes;
-    } catch (error) {
-      log("error", `[播放列表失败] 错误: ${error.message}`);
+    const data = await this.requestApi(this.PLAYLIST_API, baseParams, "播放列表", 200, this.buildPlayUrl(vid));
+    if (!data) {
       return [];
     }
+
+    const episodes = [];
+    const infoList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
+    for (const info of infoList) {
+      for (const ep of info.playList || []) {
+        episodes.push(ep);
+      }
+    }
+
+    log("info", `[播放列表] 共获取到 ${episodes.length} 集`);
+    return episodes;
   }
 
-  async getVideoInfo(epKey, epId = null) {
+  async getVideoInfo(epKey, epId = null, referer = "https://www.yfsp.tv/") {
     const baseParams = {
       cinema: 1,
       id: epKey,
       a: 0,
       lang: "none",
       usersign: 1,
-      region: "GL.",
-      device: 0,
-      isMasterSupport: 1
-    };
-
-    const vv = this.computeVv(baseParams);
-
-    const params = {
-      ...baseParams,
-      vv,
-      pub: this.PUBLIC_KEY
-    };
-
-    const headers = {
-      "User-Agent": this.USER_AGENT,
-      "Accept": "application/json"
+      region: "JP",
+      device: 1,
+      isMasterSupport: 0
     };
 
     const epInfo = epId ? `(ID:${epId})` : "";
     log("info", `[视频信息] 请求 key: ${epKey} ${epInfo}`);
+    const vv = this.computeVv(baseParams);
     log("info", `[视频信息] vv签名: ${vv.substring(0, 16)}...`);
 
-    try {
-      const urlWithParams = updateQueryString(this.VIDEO_API, params);
-      const response = await httpGet(globals.makeProxyUrl(urlWithParams), { headers });
-
-      if (response.status !== 200) {
-        const responsePreview = typeof response.data === "string"
-          ? response.data.slice(0, 200)
-          : response.statusText;
-        log("error", `[视频信息失败] HTTP ${response.status}: ${responsePreview}`);
-        return null;
-      }
-
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data.ret !== 200) {
-        log("error", `[视频信息失败] 返回码: ${data.ret}, msg: ${data.msg}`);
-        return null;
-      }
-      return data.data || {};
-    } catch (error) {
-      log("error", `[视频信息失败] 错误: ${error.message}`);
+    const data = await this.requestApi(this.VIDEO_API, baseParams, "视频信息", 200, referer);
+    if (!data) {
       return null;
     }
+
+    if (
+      data.data
+      && typeof data.data === "object"
+      && data.data.code !== undefined
+      && data.data.code !== 0
+      && data.data.code !== 200
+    ) {
+      log("error", `[视频信息失败] 返回码: ${data.ret}, msg: ${data.data.msg || data.msg}`);
+      return null;
+    }
+
+    return data.data || {};
   }
 
   extractUniqueKey(videoInfo) {
@@ -241,7 +238,7 @@ export default class AiyifanSource extends BaseSource {
     return uniqueKey;
   }
 
-  async fetchBarrage(uniqueKey, page = 1, size = 30000) {
+  async fetchBarrage(uniqueKey, referer = "https://www.yfsp.tv/", page = 1, size = 30000) {
     const baseParams = {
       cinema: 1,
       page,
@@ -250,45 +247,17 @@ export default class AiyifanSource extends BaseSource {
     };
 
     const vv = this.computeVv(baseParams);
-
-    const params = {
-      ...baseParams,
-      vv,
-      pub: this.PUBLIC_KEY
-    };
-
-    const headers = {
-      "User-Agent": this.USER_AGENT,
-    };
-
     log("info", `[弹幕] 请求 uniqueKey: ${uniqueKey}`);
     log("info", `[弹幕] vv签名: ${vv.substring(0, 16)}...`);
 
-    try {
-      const urlWithParams = updateQueryString(this.DANMU_API, params);
-      const response = await httpGet(globals.makeProxyUrl(urlWithParams), { headers });
-
-      if (response.status !== 200) {
-        const responsePreview = typeof response.data === "string"
-          ? response.data.slice(0, 400)
-          : response.statusText;
-        log("error", `[弹幕失败] HTTP ${response.status}: ${responsePreview}`);
-        return [];
-      }
-
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data.ret !== 200) {
-        log("error", `[弹幕失败] 返回码: ${data.ret}`);
-        return [];
-      }
-
-      const danmuList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
-      log("info", `[弹幕] 获取到 ${danmuList.length} 条弹幕`);
-      return danmuList;
-    } catch (error) {
-      log("error", `[弹幕失败] 错误: ${error.message}`);
+    const data = await this.requestApi(this.DANMU_API, baseParams, "弹幕", 400, referer);
+    if (!data) {
       return [];
     }
+
+    const danmuList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
+    log("info", `[弹幕] 获取到 ${danmuList.length} 条弹幕`);
+    return danmuList;
   }
 
   async search(keyword) {
@@ -415,17 +384,23 @@ export default class AiyifanSource extends BaseSource {
     log("info", `[Aiyifan] 获取弹幕: ${id}`);
 
     let videoId = id;
+    let bangumiId = "";
     try {
       const parsedUrl = new URL(id);
       const queryId = parsedUrl.searchParams.get("id");
+      const pathMatch = parsedUrl.pathname.match(/\/play\/([^/?#]+)/);
       if (queryId) {
         videoId = queryId;
+      }
+      if (pathMatch && pathMatch[1]) {
+        bangumiId = pathMatch[1];
       }
     } catch (error) {
       videoId = id;
     }
 
-    const videoInfo = await this.getVideoInfo(videoId);
+    const referer = this.buildPlayUrl(bangumiId, videoId);
+    const videoInfo = await this.getVideoInfo(videoId, null, referer);
     if (!videoInfo) {
       log("error", "获取视频信息失败");
       return [];
@@ -437,7 +412,7 @@ export default class AiyifanSource extends BaseSource {
       return [];
     }
 
-    const danmuList = await this.fetchBarrage(uniqueKey);
+    const danmuList = await this.fetchBarrage(uniqueKey, referer);
     if (danmuList.length === 0) {
       log("info", "未获取到弹幕");
       return [];
