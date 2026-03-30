@@ -192,14 +192,24 @@ export function createDynamicPlatformOrder(preferredPlatform) {
 }
 
 /**
+ * 清除不可见 Unicode 字符（零宽空格、方向控制符等，\s 无法覆盖的部分）
+ * @param {string} str - 输入字符串
+ * @returns {string} 清理后的字符串
+ */
+export function stripInvisibleChars(str) {
+  if (!str) return '';
+  return String(str).replace(/[\u00AD\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g, '');
+}
+
+/**
  * 规范化标题（移除空格并清理修饰性符号）
  * @param {string} str - 输入字符串
  * @returns {string} 规范化后的字符串
  */
 export function normalizeSpaces(str) {
   if (!str) return '';
-  // 移除所有空格与修饰性符号，减少标题格式噪音
-  return String(str).trim().replace(/[\s【】\[\]《》<>「」!?！？.,，。~～]/g, '');
+  // 先清除不可见字符，再移除所有空格与修饰性符号，减少标题格式噪音
+  return stripInvisibleChars(String(str).trim()).replace(/[\s【】\[\]《》<>「」!?！？.,，。~～]/g, '');
 }
 
 /**
