@@ -1812,6 +1812,94 @@ test('worker.js API endpoints', async (t) => {
     );
   });
 
+  await t.test('applyMergeLogic should normalize segmented aiyifan episode labels before offset matching', async () => {
+    Globals.init({ MERGE_SOURCE_PAIRS: 'renren&aiyifan' });
+    Globals.MAX_ANIMES = 100;
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+
+    addAnime({
+      animeId: 401,
+      bangumiId: 'merge-401',
+      animeTitle: '春夜(2019)【电视剧】from renren',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2019-01-01T00:00:00.000Z',
+      episodeCount: 16,
+      rating: 0,
+      isFavorited: false,
+      source: 'renren',
+      links: Array.from({ length: 16 }, (_, i) => ({
+        id: 63001 + i,
+        url: `renren-${i + 1}`,
+        title: `【renren】 第${String(i + 1).padStart(2, '0')}集`
+      }))
+    });
+    addAnime({
+      animeId: 402,
+      bangumiId: 'merge-402',
+      animeTitle: '春夜(2019)【电视剧】from aiyifan',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2019-01-01T00:00:00.000Z',
+      episodeCount: 16,
+      rating: 0,
+      isFavorited: false,
+      source: 'aiyifan',
+      links: Array.from({ length: 16 }, (_, i) => ({
+        id: 64001 + i,
+        url: `aiyifan-${i + 1}`,
+        title: `【aiyifan】 ${String((i * 2) + 1).padStart(2, '0')}-${String((i * 2) + 2).padStart(2, '0')}`
+      }))
+    });
+
+    const curAnimes = globals.animes.map(anime => ({
+      animeId: anime.animeId,
+      bangumiId: anime.bangumiId,
+      animeTitle: anime.animeTitle,
+      type: anime.type,
+      typeDescription: anime.typeDescription,
+      imageUrl: anime.imageUrl,
+      startDate: anime.startDate,
+      episodeCount: anime.episodeCount,
+      rating: anime.rating,
+      isFavorited: anime.isFavorited,
+      source: anime.source,
+      links: anime.links.map(link => ({ ...link }))
+    }));
+
+    await assert.doesNotReject(async () => {
+      await applyMergeLogic(curAnimes);
+    });
+
+    assert.equal(curAnimes.length, 1);
+    const [mergedAnime] = curAnimes;
+    assert.ok(mergedAnime, 'Expected merged anime to be retained as the only result');
+    assert.equal(mergedAnime.source, 'renren');
+    assert.ok(mergedAnime.animeTitle.includes('from renren&aiyifan'));
+    assert.equal(mergedAnime.links.length, 16);
+    assert.equal(
+      mergedAnime.links.filter(link => String(link.url).includes(MERGE_DELIMITER)).length,
+      16
+    );
+    assert.equal(
+      mergedAnime.links[0].url,
+      `renren:renren-1${MERGE_DELIMITER}aiyifan:aiyifan-1`
+    );
+    assert.equal(
+      mergedAnime.links[15].url,
+      `renren:renren-16${MERGE_DELIMITER}aiyifan:aiyifan-16`
+    );
+  });
+
   // await t.test('Test ai cilent', async () => {
   //   const ai = new AIClient({
   //     apiKey: 'xxxxxxxxxxxxxxxxxxxxx',

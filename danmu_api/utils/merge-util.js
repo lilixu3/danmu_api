@@ -1270,6 +1270,74 @@ function extractEpisodeInfo(title, sourceName = '') {
 }
 
 /**
+ * 解析类似 "01-02" / "第01-02集" 的分段编号标题
+ * 仅用于整组模式识别，避免把展示编号误当作真实集序
+ * @param {string} title
+ * @returns {{start: number, end: number} | null}
+ */
+function extractEpisodeRange(title) {
+  if (!title) return null;
+  const raw = simplized(title)
+    .replace(RegexStore.Clean.SOURCE_TAG, '')
+    .replace(RegexStore.Clean.FROM_SUFFIX, '')
+    .trim();
+
+  const match = raw.match(/(?:^|\s)第?\s*(\d{1,4})\s*[-~～—–]+\s*(\d{1,4})(?:\s*[话話集])?(?:\s|$)/i);
+  if (!match) return null;
+
+  const start = parseInt(match[1], 10);
+  const end = parseInt(match[2], 10);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start <= 0 || end <= start) return null;
+
+  return { start, end };
+}
+
+/**
+ * 检测整组是否属于 "01-02 / 03-04 / ... / 31-32" 这种分段编号但实际仍为单播放项的模式
+ * 命中后返回逻辑集序映射，供 offset 计算使用
+ * @param {Array} links
+ * @param {string} source
+ * @param {string} redundantTitle
+ * @returns {Map<number, number>}
+ */
+function buildLogicalEpisodeMap(links, source, redundantTitle = '') {
+  if (!Array.isArray(links) || links.length < 4) return new Map();
+
+  const entries = [];
+  for (let index = 0; index < links.length; index++) {
+    const rawTitle = links[index]?.link?.title || links[index]?.link?.name || '';
+    const cleanTitle = redundantTitle && rawTitle.includes(redundantTitle)
+      ? rawTitle.replace(redundantTitle, '')
+      : rawTitle;
+    const info = extractEpisodeInfo(cleanTitle, source);
+    if (info.isSpecial || info.isPV || info.isStrictSpecial) continue;
+
+    const range = extractEpisodeRange(cleanTitle);
+    if (!range) return new Map();
+    if ((range.end - range.start) !== 1) return new Map();
+
+    entries.push({ index, start: range.start, end: range.end });
+  }
+
+  if (entries.length < 4 || entries.length !== links.length) return new Map();
+
+  const step = entries[1].start - entries[0].start;
+  if (step !== 2) return new Map();
+
+  for (let i = 1; i < entries.length; i++) {
+    if ((entries[i].start - entries[i - 1].start) !== step) return new Map();
+    if ((entries[i].end - entries[i].start) !== 1) return new Map();
+  }
+
+  const logicalMap = new Map();
+  entries.forEach((entry, idx) => {
+    logicalMap.set(entry.index, idx + 1);
+  });
+  return logicalMap;
+}
+
+/**
  * 过滤无效剧集 (基于标题正则)
  * 特定高置信度源跳过正则过滤，防止常规集数因命中全局正则而丢失
  * @param {Array} links 集数对象列表
@@ -1398,15 +1466,20 @@ function findBestAlignmentOffset(primaryLinks, secondaryLinks, seriesLangA = 'Un
   if (primaryLinks.length === 0 || secondaryLinks.length === 0) return 0;
   const redundantA = identifyRedundantTitle(primaryLinks, primarySeriesTitle, sourceA);
   const redundantB = identifyRedundantTitle(secondaryLinks, secondarySeriesTitle, sourceB);
+  const logicalNumsA = buildLogicalEpisodeMap(primaryLinks, sourceA, redundantA);
+  const logicalNumsB = buildLogicalEpisodeMap(secondaryLinks, sourceB, redundantB);
   const getTempTitle = (rawTitle, redundantStr) => {
       if (!rawTitle) return "";
       if (redundantStr && rawTitle.includes(redundantStr)) return rawTitle.replace(redundantStr, ''); 
       return rawTitle;
   };
-  const processLink = (item, source, seriesLang, red) => {
+  const processLink = (item, source, seriesLang, red, logicalNumMap, index) => {
       const rawTitle = item.link.title || "";
       const cleanTitle = getTempTitle(rawTitle, red);
       const info = extractEpisodeInfo(cleanTitle, source);
+      if (logicalNumMap.has(index) && !info.isSpecial && !info.isPV && !info.isStrictSpecial) {
+          info.num = logicalNumMap.get(index);
+      }
       const epLang = getLanguageType(cleanTitle);
       const effLang = epLang !== 'Unspecified' ? epLang : seriesLang;
       const finalLang = (effLang === 'Unspecified' && /^(dandan|animeko)$/i.test(source)) ? 'JP' : effLang;
@@ -1414,8 +1487,8 @@ function findBestAlignmentOffset(primaryLinks, secondaryLinks, seriesLangA = 'Un
       const strictCnCore = (finalLang === 'CN') ? cleanTitle.replace(RegexStore.Similarity.CN_STRICT_CORE_REMOVE, "") : null;
       return { info, effLang: finalLang, specialType: getSpecialEpisodeType(cleanTitle), cleanEpText, strictCnCore };
   };
-  const pInfos = primaryLinks.map(item => processLink(item, sourceA, seriesLangA, redundantA));
-  const sInfos = secondaryLinks.map(item => processLink(item, sourceB, seriesLangB, redundantB));
+  const pInfos = primaryLinks.map((item, index) => processLink(item, sourceA, seriesLangA, redundantA, logicalNumsA, index));
+  const sInfos = secondaryLinks.map((item, index) => processLink(item, sourceB, seriesLangB, redundantB, logicalNumsB, index));
 
   let bestOffset = 0, maxScore = -9999; 
   let minNormalA = null, minNormalB = null;
