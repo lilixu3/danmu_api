@@ -7,6 +7,7 @@ import {
   finishRuntimeUpdate,
   getRuntimeState,
   pushRuntimeUpdateLog,
+  setRuntimeUpdateState,
   setRuntimeUpdateHelperContainer,
   startRuntimeUpdate
 } from './runtime-state.js';
@@ -156,16 +157,16 @@ export class DockerRuntimeHandler extends BaseRuntimeHandler {
     }
 
     try {
-      const { containerName, imageName } = await this.resolveTargetContainer();
+      const { containerName, imageName, inspectData } = await this.resolveTargetContainer();
       const state = getRuntimeState();
-      if (state.update?.state === 'running') {
+      if (['queued', 'pulling', 'recreating'].includes(String(state.update?.state || ''))) {
         return {
           success: false,
           message: '已有更新任务在执行中，请稍后再试'
         };
       }
 
-      startRuntimeUpdate('已提交后台更新任务', '');
+      startRuntimeUpdate('更新任务已提交，等待后台容器接管', '');
       pushRuntimeUpdateLog(`准备更新容器 ${containerName}`);
       pushRuntimeUpdateLog(`目标镜像 ${imageName}`);
 
@@ -186,7 +187,10 @@ export class DockerRuntimeHandler extends BaseRuntimeHandler {
         ],
         HostConfig: {
           AutoRemove: true,
-          Binds: [`${this.socketPath}:${this.socketPath}`],
+          Binds: Array.from(new Set([
+            ...(inspectData?.HostConfig?.Binds || []),
+            `${this.socketPath}:${this.socketPath}`
+          ])),
           NetworkMode: 'bridge'
         }
       };
@@ -196,11 +200,11 @@ export class DockerRuntimeHandler extends BaseRuntimeHandler {
       await this.docker.startContainer(created.Id);
       setRuntimeUpdateHelperContainer(created.Id);
       pushRuntimeUpdateLog(`后台 helper 已启动: ${created.Id.slice(0, 12)}`);
-      finishRuntimeUpdate(true, '后台更新任务已启动，服务将在重建后自动恢复', '');
+      setRuntimeUpdateState('queued', '后台更新任务已启动，正在准备拉取镜像');
 
       return {
         success: true,
-        message: '更新任务已启动，页面将在容器重建后恢复可用',
+        message: '更新任务已启动，正在后台拉取镜像并准备重建容器',
         helperContainerId: created.Id
       };
     } catch (error) {

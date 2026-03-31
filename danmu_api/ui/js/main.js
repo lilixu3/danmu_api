@@ -1447,6 +1447,12 @@ async function loadRuntimeInfo(forceCheck) {
             return enrichedInfo;
         })
         .catch(function(error) {
+            if (!forceCheck) {
+                const pendingInfo = markRuntimeUpdateAsWaiting(error);
+                if (pendingInfo) {
+                    return pendingInfo;
+                }
+            }
             updateVersionStatusAll('failed', '检查失败');
             updateSidebarInfoCard({
                 versionState: 'failed',
@@ -1569,12 +1575,61 @@ function enrichRuntimeInfo(info) {
     };
 }
 
+function isRuntimeUpdateActiveState(state) {
+    return ['queued', 'pulling', 'recreating', 'waiting'].includes(String(state || ''));
+}
+
 function getRuntimeUpdateStateText(update) {
     const state = update && update.state ? update.state : 'idle';
-    if (state === 'running') return '进行中';
+    if (state === 'queued') return '已排队';
+    if (state === 'pulling') return '拉取镜像';
+    if (state === 'recreating') return '重建容器';
+    if (state === 'waiting') return '等待恢复';
     if (state === 'success') return '已完成';
     if (state === 'failed') return '失败';
     return '空闲';
+}
+
+function getRuntimeUpdateStateTone(update) {
+    const state = update && update.state ? update.state : 'idle';
+    if (state === 'failed') return 'danger';
+    if (state === 'success') return 'ok';
+    if (isRuntimeUpdateActiveState(state)) return 'warn';
+    return 'neutral';
+}
+
+function markRuntimeUpdateAsWaiting(error) {
+    if (!runtimeInfo || !runtimeInfo.update || !isRuntimeUpdateActiveState(runtimeInfo.update.state)) {
+        return null;
+    }
+
+    const waitingMessage = '服务正在重启，等待新容器恢复响应';
+    const logs = Array.isArray(runtimeInfo.update.logs) ? runtimeInfo.update.logs.slice() : [];
+    const lastLog = logs.length ? logs[logs.length - 1] : null;
+    if (!lastLog || lastLog.message !== waitingMessage) {
+        logs.push({
+            time: new Date().toISOString(),
+            message: waitingMessage
+        });
+    }
+
+    runtimeInfo = {
+        ...runtimeInfo,
+        update: {
+            ...runtimeInfo.update,
+            state: 'waiting',
+            message: error && error.message ? ('服务短暂不可达：' + error.message) : waitingMessage,
+            logs: logs.slice(-40)
+        },
+        display: {
+            ...(runtimeInfo.display || {}),
+            syncedAt: Date.now(),
+            syncedAtText: formatRuntimeClock(Date.now())
+        }
+    };
+
+    syncRuntimeSummary(runtimeInfo);
+    return runtimeInfo;
 }
 
 function getRuntimeHint(info) {
@@ -1582,6 +1637,11 @@ function getRuntimeHint(info) {
     if (!info) return '暂无可用的运行时信息。';
 
     if (info.runtimeType === 'docker') {
+        if (isRuntimeUpdateActiveState(info.update && info.update.state)) {
+            return info.update && info.update.state === 'waiting'
+                ? '容器正在重建或重启，页面会自动轮询并在服务恢复后同步最终结果。'
+                : '在线更新正在后台执行，页面会自动轮询镜像拉取和容器重建进度。';
+        }
         if (!info.supportsOnlineUpdate) {
             return '要启用 Docker 在线更新，需要把 docker.sock 挂载进容器，并设置 ENABLE_RUNTIME_CONTROL=true。';
         }
@@ -1620,7 +1680,7 @@ function buildRuntimeSummaryCards(info) {
             label: '更新状态',
             value: getRuntimeUpdateStateText(info.update || {}),
             meta: '在线更新任务',
-            tone: info.update && info.update.state === 'failed' ? 'danger' : (info.update && info.update.state === 'running' ? 'warn' : 'neutral')
+            tone: getRuntimeUpdateStateTone(info.update || {})
         },
         {
             label: '更新时间',
@@ -1747,8 +1807,13 @@ function resolveRuntimePrimaryAction(info) {
     }
 
     if (info.runtimeType === 'docker') {
-        if (updateState === 'running') {
-            return { type: 'none', label: '更新进行中', disabled: true, title: '后台更新任务已经启动' };
+        if (isRuntimeUpdateActiveState(updateState)) {
+            return {
+                type: 'none',
+                label: getRuntimeUpdateStateText(info.update || {}),
+                disabled: true,
+                title: '后台更新任务正在执行'
+            };
         }
         if (!info.supportsOnlineUpdate) {
             return { type: 'none', label: '未启用在线更新', disabled: true, title: '需要挂载 docker.sock 并开启 ENABLE_RUNTIME_CONTROL' };
@@ -1847,7 +1912,7 @@ function renderRuntimeStatusBody(info) {
                 '更新日志',
                 updateMessage,
                 buildRuntimeLogs(info),
-                updateState === 'running' || updateState === 'failed'
+                isRuntimeUpdateActiveState(updateState) || updateState === 'failed'
             ) +
         '</div>';
 
@@ -1971,11 +2036,17 @@ async function handleRuntimePrimaryAction() {
 
         if (!runtimeInfo) runtimeInfo = {};
         if (!runtimeInfo.update) runtimeInfo.update = {};
-        runtimeInfo.update.state = 'running';
-        runtimeInfo.update.message = payload.message || '后台更新任务已启动';
+        runtimeInfo.update.state = 'queued';
+        runtimeInfo.update.message = payload.message || '更新任务已启动，等待后台容器接管';
+        runtimeInfo.update.startedAt = new Date().toISOString();
+        runtimeInfo.update.endedAt = '';
+        runtimeInfo.update.logs = (Array.isArray(runtimeInfo.update.logs) ? runtimeInfo.update.logs : []).concat([{
+            time: new Date().toISOString(),
+            message: '已提交在线更新任务，等待后台容器接管'
+        }]).slice(-40);
         renderRuntimeStatusBody(runtimeInfo);
         shouldRestoreButton = false;
-        customAlert(payload.message || '在线更新任务已启动', '🚀 更新任务已启动');
+        customAlert(payload.message || '在线更新任务已启动，页面会自动刷新阶段状态', '🚀 更新任务已启动');
         addLog('🚀 已提交在线更新任务', 'info');
     } catch (error) {
         console.error('在线更新失败:', error);

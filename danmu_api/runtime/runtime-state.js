@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const defaultState = {
   latestVersion: '',
   latestCheckedAt: 0,
@@ -14,69 +18,155 @@ const defaultState = {
 };
 
 const globalKey = '__LOGVAR_DANMU_RUNTIME_STATE__';
+const stateFilePath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '.cache',
+  'runtime-state.json'
+);
 
 function createState() {
   return JSON.parse(JSON.stringify(defaultState));
 }
 
-function ensureState() {
-  if (!globalThis[globalKey]) {
-    globalThis[globalKey] = createState();
-  }
-  return globalThis[globalKey];
+function normalizeLogs(logs) {
+  if (!Array.isArray(logs)) return [];
+  return logs
+    .map((item) => ({
+      time: item?.time ? String(item.time) : '',
+      message: item?.message ? String(item.message) : ''
+    }))
+    .filter((item) => item.message)
+    .slice(-40);
 }
 
-export function getRuntimeState() {
-  return ensureState();
-}
-
-export function recordLatestVersion(latestVersion, checkedAt = new Date(), error = '') {
-  const state = ensureState();
-  state.latestVersion = latestVersion || '';
-  state.latestCheckedAt = checkedAt instanceof Date ? checkedAt.toISOString() : String(checkedAt || '');
-  state.latestError = error || '';
+function normalizeState(rawState = {}) {
+  const state = createState();
+  state.latestVersion = rawState?.latestVersion ? String(rawState.latestVersion) : '';
+  state.latestCheckedAt = rawState?.latestCheckedAt ? String(rawState.latestCheckedAt) : 0;
+  state.latestError = rawState?.latestError ? String(rawState.latestError) : '';
+  state.update = {
+    ...state.update,
+    ...(rawState?.update || {}),
+    state: rawState?.update?.state ? String(rawState.update.state) : 'idle',
+    message: rawState?.update?.message ? String(rawState.update.message) : '',
+    startedAt: rawState?.update?.startedAt ? String(rawState.update.startedAt) : '',
+    endedAt: rawState?.update?.endedAt ? String(rawState.update.endedAt) : '',
+    targetVersion: rawState?.update?.targetVersion ? String(rawState.update.targetVersion) : '',
+    helperContainerId: rawState?.update?.helperContainerId ? String(rawState.update.helperContainerId) : '',
+    logs: normalizeLogs(rawState?.update?.logs)
+  };
   return state;
 }
 
+function readStateFromDisk() {
+  try {
+    if (!fs.existsSync(stateFilePath)) {
+      return createState();
+    }
+    const rawText = fs.readFileSync(stateFilePath, 'utf8');
+    if (!rawText.trim()) {
+      return createState();
+    }
+    return normalizeState(JSON.parse(rawText));
+  } catch (_) {
+    return createState();
+  }
+}
+
+function writeStateToDisk(state) {
+  const normalized = normalizeState(state);
+  fs.mkdirSync(path.dirname(stateFilePath), { recursive: true });
+  const tempFilePath = `${stateFilePath}.tmp`;
+  fs.writeFileSync(tempFilePath, JSON.stringify(normalized, null, 2), 'utf8');
+  fs.renameSync(tempFilePath, stateFilePath);
+  globalThis[globalKey] = normalized;
+  return normalized;
+}
+
+function mutateState(mutator) {
+  const state = readStateFromDisk();
+  const result = mutator(state) || state;
+  writeStateToDisk(state);
+  return result;
+}
+
+export function getRuntimeState() {
+  const state = readStateFromDisk();
+  globalThis[globalKey] = state;
+  return state;
+}
+
+export function recordLatestVersion(latestVersion, checkedAt = new Date(), error = '') {
+  return mutateState((state) => {
+    state.latestVersion = latestVersion || '';
+    state.latestCheckedAt = checkedAt instanceof Date ? checkedAt.toISOString() : String(checkedAt || '');
+    state.latestError = error || '';
+    return state;
+  });
+}
+
 export function startRuntimeUpdate(message, targetVersion = '') {
-  const state = ensureState();
-  state.update = {
-    state: 'running',
-    message: message || '更新进行中',
-    startedAt: new Date().toISOString(),
-    endedAt: '',
-    targetVersion: targetVersion || '',
-    helperContainerId: '',
-    logs: []
-  };
-  return state.update;
+  return mutateState((state) => {
+    state.update = {
+      state: 'queued',
+      message: message || '更新任务已进入队列',
+      startedAt: new Date().toISOString(),
+      endedAt: '',
+      targetVersion: targetVersion || '',
+      helperContainerId: '',
+      logs: []
+    };
+    return state.update;
+  });
+}
+
+export function setRuntimeUpdateState(nextState, message = '', targetVersion = '') {
+  return mutateState((state) => {
+    state.update.state = nextState || state.update.state || 'queued';
+    if (!state.update.startedAt) {
+      state.update.startedAt = new Date().toISOString();
+    }
+    state.update.endedAt = '';
+    if (message) {
+      state.update.message = message;
+    }
+    if (targetVersion) {
+      state.update.targetVersion = targetVersion;
+    }
+    return state.update;
+  });
 }
 
 export function pushRuntimeUpdateLog(message) {
-  const state = ensureState();
   const text = String(message || '').trim();
-  if (!text) return state.update;
-  state.update.logs.push({
-    time: new Date().toISOString(),
-    message: text
+  if (!text) return getRuntimeState().update;
+  return mutateState((state) => {
+    state.update.logs.push({
+      time: new Date().toISOString(),
+      message: text
+    });
+    state.update.logs = state.update.logs.slice(-40);
+    return state.update;
   });
-  state.update.logs = state.update.logs.slice(-40);
-  return state.update;
 }
 
 export function setRuntimeUpdateHelperContainer(helperContainerId) {
-  const state = ensureState();
-  state.update.helperContainerId = helperContainerId || '';
-  return state.update;
+  return mutateState((state) => {
+    state.update.helperContainerId = helperContainerId || '';
+    return state.update;
+  });
 }
 
 export function finishRuntimeUpdate(success, message, targetVersion = '') {
-  const state = ensureState();
-  state.update.state = success ? 'success' : 'failed';
-  state.update.message = message || (success ? '更新完成' : '更新失败');
-  state.update.endedAt = new Date().toISOString();
-  if (targetVersion) {
-    state.update.targetVersion = targetVersion;
-  }
-  return state.update;
+  return mutateState((state) => {
+    state.update.state = success ? 'success' : 'failed';
+    state.update.message = message || (success ? '更新完成' : '更新失败');
+    state.update.endedAt = new Date().toISOString();
+    if (targetVersion) {
+      state.update.targetVersion = targetVersion;
+    }
+    return state.update;
+  });
 }
