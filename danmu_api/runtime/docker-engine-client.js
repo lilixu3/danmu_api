@@ -81,7 +81,95 @@ export function createDockerEngineClient(socketPath = '/var/run/docker.sock') {
       return request('DELETE', `/containers/${encodeURIComponent(containerId)}?force=${force ? '1' : '0'}`, { raw: true });
     },
     async pullImage(imageName) {
-      return request('POST', `/images/create?fromImage=${encodeURIComponent(imageName)}`, { raw: true });
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        let buffer = '';
+        let responseText = '';
+        let inactivityTimer = null;
+
+        function cleanup() {
+          if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+          }
+        }
+
+        function finish(fn, value, req, res) {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (res && !res.destroyed) {
+            res.destroy();
+          }
+          if (req && !req.destroyed) {
+            req.destroy();
+          }
+          fn(value);
+        }
+
+        function refreshTimeout(req, res) {
+          cleanup();
+          inactivityTimer = setTimeout(() => {
+            finish(reject, new Error(`docker image pull timeout for ${imageName}`), req, res);
+          }, 120000);
+        }
+
+        const req = http.request({
+          method: 'POST',
+          socketPath,
+          path: `/images/create?fromImage=${encodeURIComponent(imageName)}`
+        }, (res) => {
+          refreshTimeout(req, res);
+
+          res.on('data', (chunk) => {
+            refreshTimeout(req, res);
+            const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+            responseText += text;
+            buffer += text;
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || '';
+
+            for (const rawLine of lines) {
+              const line = rawLine.trim();
+              if (!line) continue;
+
+              let payload;
+              try {
+                payload = JSON.parse(line);
+              } catch (_) {
+                continue;
+              }
+
+              if (payload.error || payload.errorDetail?.message) {
+                finish(reject, new Error(payload.errorDetail?.message || payload.error), req, res);
+                return;
+              }
+
+              const status = String(payload.status || '');
+              if (
+                status.startsWith('Status: Downloaded newer image') ||
+                status.startsWith('Status: Image is up to date')
+              ) {
+                finish(resolve, responseText, req, res);
+                return;
+              }
+            }
+          });
+
+          res.on('end', () => {
+            if ((res.statusCode || 500) >= 400) {
+              finish(reject, new Error(`docker api POST /images/create failed: HTTP ${res.statusCode} ${responseText}`), req, res);
+              return;
+            }
+            finish(resolve, responseText, req, res);
+          });
+
+          res.on('error', (error) => finish(reject, error, req, res));
+        });
+
+        req.on('error', (error) => finish(reject, error, req, null));
+        req.end();
+      });
     }
   };
 }
