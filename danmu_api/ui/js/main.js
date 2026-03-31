@@ -15,10 +15,14 @@ let runtimePollTimer = null;
 let runtimeTrafficSample = null;
 let runtimeLastSyncedAt = 0;
 let sidebarRefreshTimer = null;
+let runtimePollInFlight = false;
+let sidebarRefreshInFlight = false;
 let activeSectionId = 'preview';
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
+const RUNTIME_MODAL_REFRESH_INTERVAL_MS = 1000;
+const SIDEBAR_REFRESH_INTERVAL_MS = 1000;
 let sidebarInfoState = {
     runtimeLabel: '运行时检测中',
     versionState: 'checking',
@@ -364,8 +368,14 @@ function startSidebarRefreshLoop() {
             stopSidebarRefreshLoop();
             return;
         }
-        refreshSidebarSnapshot();
-    }, 8000);
+        if (sidebarRefreshInFlight) {
+            return;
+        }
+        sidebarRefreshInFlight = true;
+        refreshSidebarSnapshot().finally(function() {
+            sidebarRefreshInFlight = false;
+        });
+    }, SIDEBAR_REFRESH_INTERVAL_MS);
 }
 
 function stopSidebarRefreshLoop() {
@@ -1747,14 +1757,52 @@ function buildRuntimeMetricCards(info) {
     }).join('');
 }
 
-function buildRuntimeDisclosure(title, meta, content, open) {
-    return '<details class="runtime-disclosure"' + (open ? ' open' : '') + '>' +
+function buildRuntimeDisclosure(key, title, meta, content, open) {
+    return '<details class="runtime-disclosure" data-disclosure-key="' + escapeRuntimeHtml(key || title || '') + '"' + (open ? ' open' : '') + '>' +
         '<summary class="runtime-disclosure-summary">' +
             '<span class="runtime-disclosure-title">' + escapeRuntimeHtml(title) + '</span>' +
             '<span class="runtime-disclosure-meta">' + escapeRuntimeHtml(meta || '') + '</span>' +
         '</summary>' +
         '<div class="runtime-disclosure-content">' + content + '</div>' +
     '</details>';
+}
+
+function captureRuntimeStatusViewState() {
+    const body = document.getElementById('runtime-status-body');
+    if (!body) {
+        return { openKeys: [], scrollTop: 0 };
+    }
+
+    const openKeys = Array.from(body.querySelectorAll('.runtime-disclosure[open]')).map(function(item) {
+        return item.dataset.disclosureKey || '';
+    }).filter(Boolean);
+
+    return {
+        openKeys: openKeys,
+        scrollTop: body.scrollTop || 0
+    };
+}
+
+function restoreRuntimeStatusViewState(viewState) {
+    if (!viewState) {
+        return;
+    }
+
+    const body = document.getElementById('runtime-status-body');
+    if (!body) {
+        return;
+    }
+
+    if (Array.isArray(viewState.openKeys)) {
+        Array.from(body.querySelectorAll('.runtime-disclosure')).forEach(function(item) {
+            const key = item.dataset.disclosureKey || '';
+            item.open = viewState.openKeys.includes(key);
+        });
+    }
+
+    if (typeof viewState.scrollTop === 'number') {
+        body.scrollTop = viewState.scrollTop;
+    }
 }
 
 function buildRuntimeDetailItems(info) {
@@ -1897,18 +1945,20 @@ function renderRuntimeStatusBody(info) {
             '<section class="runtime-status-section runtime-status-section-metrics">' +
                 '<div class="runtime-status-section-header">' +
                     '<h4 class="runtime-status-section-title">资源指标</h4>' +
-                    '<span class="runtime-status-section-meta">打开弹窗后每 5 秒自动刷新</span>' +
+                    '<span class="runtime-status-section-meta">打开弹窗后每秒自动刷新</span>' +
                 '</div>' +
                 '<div class="runtime-metrics-grid">' + buildRuntimeMetricCards(info) + '</div>' +
             '</section>' +
             '<div class="runtime-status-note runtime-status-note-inline">' + escapeRuntimeHtml(updateHint) + '</div>' +
             buildRuntimeDisclosure(
+                'service-detail',
                 '服务详情',
                 '容器与运行环境',
                 '<div class="runtime-status-detail-grid">' + buildRuntimeDetailItems(info) + '</div>',
                 false
             ) +
             buildRuntimeDisclosure(
+                'update-logs',
                 '更新日志',
                 updateMessage,
                 buildRuntimeLogs(info),
@@ -1939,12 +1989,17 @@ async function openRuntimeStatusModal(forceCheck) {
     const modal = document.getElementById('runtime-status-modal');
     if (!modal) return;
 
+    const modalWasActive = modal.classList.contains('active');
+    const viewState = modalWasActive ? captureRuntimeStatusViewState() : null;
     modal.classList.add('active');
-    setRuntimeStatusLoading(forceCheck ? '正在重新检查版本与运行状态...' : '正在加载运行时信息...');
+    if (!modalWasActive || !runtimeInfo) {
+        setRuntimeStatusLoading(forceCheck ? '正在重新检查版本与运行状态...' : '正在加载运行时信息...');
+    }
 
     try {
         const info = await loadRuntimeInfo(Boolean(forceCheck));
         renderRuntimeStatusBody(info);
+        restoreRuntimeStatusViewState(viewState);
         startRuntimePolling();
     } catch (error) {
         console.error('打开运行状态面板失败:', error);
@@ -1979,13 +2034,22 @@ function startRuntimePolling() {
             return;
         }
 
+        if (runtimePollInFlight) {
+            return;
+        }
+
         try {
+            runtimePollInFlight = true;
+            const viewState = captureRuntimeStatusViewState();
             const info = await loadRuntimeInfo(false);
             renderRuntimeStatusBody(info);
+            restoreRuntimeStatusViewState(viewState);
         } catch (error) {
             console.error('运行时轮询失败:', error);
+        } finally {
+            runtimePollInFlight = false;
         }
-    }, 5000);
+    }, RUNTIME_MODAL_REFRESH_INTERVAL_MS);
 }
 
 async function handleRuntimePrimaryAction() {
