@@ -48,6 +48,25 @@ function detectCurrentContainerIdentifier(globals) {
   }
 }
 
+function mergeBindsByTarget(existingBinds = [], requiredBinds = []) {
+  const merged = [];
+  const seenTargets = new Set();
+
+  function append(bindText) {
+    const bind = String(bindText || '').trim();
+    if (!bind) return;
+    const segments = bind.split(':');
+    const target = segments.length >= 2 ? segments[1] : bind;
+    if (!target || seenTargets.has(target)) return;
+    seenTargets.add(target);
+    merged.push(bind);
+  }
+
+  existingBinds.forEach(append);
+  requiredBinds.forEach(append);
+  return merged;
+}
+
 export class DockerRuntimeHandler extends BaseRuntimeHandler {
   constructor(globals) {
     super(globals);
@@ -187,10 +206,10 @@ export class DockerRuntimeHandler extends BaseRuntimeHandler {
         ],
         HostConfig: {
           AutoRemove: true,
-          Binds: Array.from(new Set([
-            ...(inspectData?.HostConfig?.Binds || []),
-            `${this.socketPath}:${this.socketPath}`
-          ])),
+          Binds: mergeBindsByTarget(
+            inspectData?.HostConfig?.Binds || [],
+            [`${this.socketPath}:${this.socketPath}`]
+          ),
           NetworkMode: 'bridge'
         }
       };
