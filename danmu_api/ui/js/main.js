@@ -11,6 +11,9 @@ let currentVersion = '';
 let latestVersion = '';
 let runtimeInfo = null;
 let runtimeInfoRequest = null;
+let runtimePollTimer = null;
+let runtimeTrafficSample = null;
+let runtimeLastSyncedAt = 0;
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
@@ -1203,9 +1206,10 @@ async function loadRuntimeInfo(forceCheck) {
 
     const request = requestRuntimeInfo(Boolean(forceCheck))
         .then(function(info) {
-            runtimeInfo = info;
-            syncRuntimeSummary(info);
-            return info;
+            const enrichedInfo = enrichRuntimeInfo(info);
+            runtimeInfo = enrichedInfo;
+            syncRuntimeSummary(enrichedInfo);
+            return enrichedInfo;
         })
         .catch(function(error) {
             updateVersionStatusAll('failed', '检查失败');
@@ -1247,6 +1251,85 @@ function formatRuntimeTimestamp(value) {
     return date.toLocaleString('zh-CN', { hour12: false });
 }
 
+function formatRuntimeClock(value) {
+    if (!value) return '--:--:--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--:--:--';
+    return date.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+function formatRuntimeBytes(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) return '不可用';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = number;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+    }
+    return (size >= 100 ? size.toFixed(0) : size.toFixed(1)) + ' ' + units[unitIndex];
+}
+
+function formatRuntimeRate(bytesPerSecond) {
+    const number = Number(bytesPerSecond);
+    if (!Number.isFinite(number) || number < 0) return '-- B/s';
+    return formatRuntimeBytes(number) + '/s';
+}
+
+function clampRuntimePercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, Math.min(number, 100));
+}
+
+function enrichRuntimeInfo(info) {
+    const metrics = info && info.metrics ? info.metrics : {};
+    const now = Date.now();
+    const currentRx = Number(metrics.networkRx);
+    const currentTx = Number(metrics.networkTx);
+    let rxRate = null;
+    let txRate = null;
+
+    if (runtimeTrafficSample && Number.isFinite(currentRx) && Number.isFinite(currentTx)) {
+        const elapsedMs = now - runtimeTrafficSample.time;
+        if (elapsedMs > 0 && elapsedMs <= 15000) {
+            rxRate = Math.max(0, (currentRx - runtimeTrafficSample.rx) * 1000 / elapsedMs);
+            txRate = Math.max(0, (currentTx - runtimeTrafficSample.tx) * 1000 / elapsedMs);
+        }
+    }
+
+    if (Number.isFinite(currentRx) && Number.isFinite(currentTx)) {
+        runtimeTrafficSample = { time: now, rx: currentRx, tx: currentTx };
+    } else {
+        runtimeTrafficSample = null;
+    }
+
+    runtimeLastSyncedAt = now;
+
+    const memoryUsed = Number(metrics.memoryUsed);
+    const memoryLimit = Number(metrics.memoryLimit);
+    const display = {
+        syncedAt: now,
+        syncedAtText: formatRuntimeClock(now),
+        cpuPercent: clampRuntimePercent(metrics.cpuPercent),
+        memoryPercent: (Number.isFinite(memoryUsed) && Number.isFinite(memoryLimit) && memoryLimit > 0)
+            ? clampRuntimePercent(memoryUsed * 100 / memoryLimit)
+            : 0,
+        memoryUsedText: Number.isFinite(memoryUsed) ? formatRuntimeBytes(memoryUsed) : '不可用',
+        memoryLimitText: Number.isFinite(memoryLimit) && memoryLimit > 0 ? formatRuntimeBytes(memoryLimit) : '不可用',
+        networkRxRateText: formatRuntimeRate(rxRate),
+        networkTxRateText: formatRuntimeRate(txRate),
+        networkRxTotalText: Number.isFinite(currentRx) ? formatRuntimeBytes(currentRx) : '不可用',
+        networkTxTotalText: Number.isFinite(currentTx) ? formatRuntimeBytes(currentTx) : '不可用'
+    };
+
+    return {
+        ...info,
+        display
+    };
+}
+
 function getRuntimeUpdateStateText(update) {
     const state = update && update.state ? update.state : 'idle';
     if (state === 'running') return '进行中';
@@ -1278,22 +1361,101 @@ function getRuntimeHint(info) {
 
 function buildRuntimeSummaryCards(info) {
     const versionInfo = info.version || {};
-    const metrics = info.metrics || {};
+    const display = info.display || {};
     const cards = [
-        { label: '当前版本', value: versionInfo.current || '未知', mono: true },
-        { label: '最新版本', value: versionInfo.latest || (versionInfo.error ? '检查失败' : '未知'), mono: true },
-        { label: '更新状态', value: getRuntimeUpdateStateText(info.update || {}) },
-        { label: 'CPU', value: metrics.cpuText || '不可用' },
-        { label: '内存', value: metrics.memoryText || '不可用' },
-        { label: '网络', value: (metrics.networkRxText || '不可用') + ' / ' + (metrics.networkTxText || '不可用') }
+        {
+            label: '当前版本',
+            value: versionInfo.current || '未知',
+            meta: '服务版本',
+            tone: 'neutral',
+            mono: true
+        },
+        {
+            label: '最新版本',
+            value: versionInfo.latest || (versionInfo.error ? '检查失败' : '未知'),
+            meta: versionInfo.hasUpdate ? '发现可更新版本' : '镜像检查结果',
+            tone: versionInfo.hasUpdate ? 'warn' : (versionInfo.error ? 'danger' : 'neutral'),
+            mono: true
+        },
+        {
+            label: '更新状态',
+            value: getRuntimeUpdateStateText(info.update || {}),
+            meta: '在线更新任务',
+            tone: info.update && info.update.state === 'failed' ? 'danger' : (info.update && info.update.state === 'running' ? 'warn' : 'neutral')
+        },
+        {
+            label: '更新时间',
+            value: display.syncedAtText || '--:--:--',
+            meta: '最近一次采样',
+            tone: 'neutral',
+            mono: true
+        }
     ];
 
     return cards.map(function(card) {
-        return '<div class="runtime-status-card">' +
+        return '<div class="runtime-status-card runtime-status-card-' + escapeRuntimeHtml(card.tone || 'neutral') + '">' +
             '<span class="runtime-status-card-label">' + escapeRuntimeHtml(card.label) + '</span>' +
             '<div class="runtime-status-card-value' + (card.mono ? ' mono' : '') + '">' + escapeRuntimeHtml(card.value) + '</div>' +
+            '<div class="runtime-status-card-meta">' + escapeRuntimeHtml(card.meta || '') + '</div>' +
         '</div>';
     }).join('');
+}
+
+function buildRuntimeMetricCards(info) {
+    const metrics = info.metrics || {};
+    const display = info.display || {};
+    const cards = [
+        {
+            label: 'CPU',
+            value: metrics.cpuText || '不可用',
+            meta: '容器处理器占用',
+            percent: display.cpuPercent || 0,
+            tone: 'cpu'
+        },
+        {
+            label: '内存',
+            value: display.memoryUsedText || '不可用',
+            meta: '总上限 ' + (display.memoryLimitText || '不可用'),
+            percent: display.memoryPercent || 0,
+            tone: 'memory'
+        },
+        {
+            label: '网络接收',
+            value: display.networkRxRateText || '-- B/s',
+            meta: '累计 ' + (display.networkRxTotalText || '不可用'),
+            percent: 0,
+            tone: 'rx'
+        },
+        {
+            label: '网络发送',
+            value: display.networkTxRateText || '-- B/s',
+            meta: '累计 ' + (display.networkTxTotalText || '不可用'),
+            percent: 0,
+            tone: 'tx'
+        }
+    ];
+
+    return cards.map(function(card) {
+        return '<div class="runtime-metric-card runtime-metric-card-' + escapeRuntimeHtml(card.tone) + '">' +
+            '<div class="runtime-metric-head">' +
+                '<span class="runtime-metric-label">' + escapeRuntimeHtml(card.label) + '</span>' +
+                '<span class="runtime-metric-badge">' + escapeRuntimeHtml(card.label === 'CPU' || card.label === '内存' ? Math.round(card.percent) + '%' : '实时') + '</span>' +
+            '</div>' +
+            '<div class="runtime-metric-value">' + escapeRuntimeHtml(card.value) + '</div>' +
+            '<div class="runtime-metric-meta">' + escapeRuntimeHtml(card.meta) + '</div>' +
+            '<div class="runtime-metric-bar"><span style="width:' + escapeRuntimeHtml(String(clampRuntimePercent(card.percent))) + '%"></span></div>' +
+        '</div>';
+    }).join('');
+}
+
+function buildRuntimeDisclosure(title, meta, content, open) {
+    return '<details class="runtime-disclosure"' + (open ? ' open' : '') + '>' +
+        '<summary class="runtime-disclosure-summary">' +
+            '<span class="runtime-disclosure-title">' + escapeRuntimeHtml(title) + '</span>' +
+            '<span class="runtime-disclosure-meta">' + escapeRuntimeHtml(meta || '') + '</span>' +
+        '</summary>' +
+        '<div class="runtime-disclosure-content">' + content + '</div>' +
+    '</details>';
 }
 
 function buildRuntimeDetailItems(info) {
@@ -1396,45 +1558,58 @@ function renderRuntimeStatusBody(info) {
     if (!body) return;
 
     const versionInfo = info.version || {};
+    const service = info.service || {};
+    const display = info.display || {};
     const statusText = info.status && info.status.text ? info.status.text : '未知';
     const heroClass = versionInfo.error ? 'error' : (versionInfo.hasUpdate ? 'has-update' : '');
     const updateMessage = info.update && info.update.message ? info.update.message : '暂无更新任务。';
     const chipClass = versionInfo.error ? 'error' : (versionInfo.hasUpdate ? 'warn' : 'ok');
+    const updateState = info.update && info.update.state ? info.update.state : 'idle';
+    const serviceMeta = service.containerName || service.platformLabel || service.platform || service.name || 'danmu-api';
+    const updateHint = getRuntimeHint(info);
 
     body.innerHTML =
         '<div class="runtime-status-stack">' +
-            '<div class="runtime-status-hero ' + heroClass + '">' +
+            '<section class="runtime-status-hero ' + heroClass + '">' +
                 '<div class="runtime-status-hero-content">' +
-                    '<span class="runtime-status-eyebrow">Runtime Panel</span>' +
+                    '<div class="runtime-status-topbar">' +
+                        '<span class="runtime-status-eyebrow">' + escapeRuntimeHtml(getRuntimeTypeLabel(info.runtimeType, info)) + '</span>' +
+                        '<span class="runtime-status-live-dot">实时刷新</span>' +
+                    '</div>' +
                     '<div class="runtime-status-title-row">' +
-                        '<div>' +
-                            '<h4 class="runtime-status-title">' + escapeRuntimeHtml(getRuntimeTypeLabel(info.runtimeType, info)) + ' · ' + escapeRuntimeHtml(statusText) + '</h4>' +
-                            '<p class="runtime-status-subtitle">当前版本 ' + escapeRuntimeHtml(versionInfo.current || '未知') + (versionInfo.latest ? '，最新版本 ' + escapeRuntimeHtml(versionInfo.latest) : '') + '。</p>' +
+                        '<div class="runtime-status-title-block">' +
+                            '<h4 class="runtime-status-title">' + escapeRuntimeHtml(statusText) + '</h4>' +
+                            '<p class="runtime-status-subtitle">' + escapeRuntimeHtml(serviceMeta) + ' · ' + escapeRuntimeHtml(display.syncedAtText || '--:--:--') + '</p>' +
+                        '</div>' +
+                        '<div class="runtime-status-chip-row">' +
+                            '<span class="runtime-status-chip ' + chipClass + '">' + escapeRuntimeHtml(versionInfo.hasUpdate ? '可更新' : (versionInfo.error ? '检查失败' : '版本正常')) + '</span>' +
+                            '<span class="runtime-status-chip">' + escapeRuntimeHtml(getRuntimeUpdateStateText(info.update || {})) + '</span>' +
+                            '<span class="runtime-status-chip">' + escapeRuntimeHtml((info.auth && info.auth.isAdmin) ? '管理员' : '只读') + '</span>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="runtime-status-chip-row">' +
-                        '<span class="runtime-status-chip ' + chipClass + '">' + escapeRuntimeHtml(versionInfo.hasUpdate ? '发现可更新版本' : (versionInfo.error ? '版本检查失败' : '版本状态正常')) + '</span>' +
-                        '<span class="runtime-status-chip">' + escapeRuntimeHtml('更新状态：' + getRuntimeUpdateStateText(info.update || {})) + '</span>' +
-                        '<span class="runtime-status-chip">' + escapeRuntimeHtml('操作权限：' + ((info.auth && info.auth.isAdmin) ? '管理员' : '只读')) + '</span>' +
-                    '</div>' +
                 '</div>' +
-            '</div>' +
+            '</section>' +
             '<div class="runtime-status-summary-grid">' + buildRuntimeSummaryCards(info) + '</div>' +
-            '<div class="runtime-status-section">' +
+            '<section class="runtime-status-section runtime-status-section-metrics">' +
                 '<div class="runtime-status-section-header">' +
-                    '<h4 class="runtime-status-section-title">服务详情</h4>' +
-                    '<span class="runtime-status-section-meta">从后端实时读取运行形态与宿主信息</span>' +
+                    '<h4 class="runtime-status-section-title">资源指标</h4>' +
+                    '<span class="runtime-status-section-meta">打开弹窗后每 5 秒自动刷新</span>' +
                 '</div>' +
-                '<div class="runtime-status-detail-grid">' + buildRuntimeDetailItems(info) + '</div>' +
-            '</div>' +
-            '<div class="runtime-status-section">' +
-                '<div class="runtime-status-section-header">' +
-                    '<h4 class="runtime-status-section-title">最近更新记录</h4>' +
-                    '<span class="runtime-status-section-meta">' + escapeRuntimeHtml(updateMessage) + '</span>' +
-                '</div>' +
-                buildRuntimeLogs(info) +
-            '</div>' +
-            '<div class="runtime-status-note">' + escapeRuntimeHtml(getRuntimeHint(info)) + '</div>' +
+                '<div class="runtime-metrics-grid">' + buildRuntimeMetricCards(info) + '</div>' +
+            '</section>' +
+            '<div class="runtime-status-note runtime-status-note-inline">' + escapeRuntimeHtml(updateHint) + '</div>' +
+            buildRuntimeDisclosure(
+                '服务详情',
+                '容器与运行环境',
+                '<div class="runtime-status-detail-grid">' + buildRuntimeDetailItems(info) + '</div>',
+                false
+            ) +
+            buildRuntimeDisclosure(
+                '更新日志',
+                updateMessage,
+                buildRuntimeLogs(info),
+                updateState === 'running' || updateState === 'failed'
+            ) +
         '</div>';
 
     updateRuntimePrimaryActionButton(info);
@@ -1466,6 +1641,7 @@ async function openRuntimeStatusModal(forceCheck) {
     try {
         const info = await loadRuntimeInfo(Boolean(forceCheck));
         renderRuntimeStatusBody(info);
+        startRuntimePolling();
     } catch (error) {
         console.error('打开运行状态面板失败:', error);
         renderRuntimeStatusError(error);
@@ -1473,6 +1649,7 @@ async function openRuntimeStatusModal(forceCheck) {
 }
 
 function closeRuntimeStatusModal() {
+    stopRuntimePolling();
     const modal = document.getElementById('runtime-status-modal');
     if (modal) {
         modal.classList.remove('active');
@@ -1481,6 +1658,30 @@ function closeRuntimeStatusModal() {
 
 async function refreshRuntimeStatusModal() {
     await openRuntimeStatusModal(true);
+}
+
+function stopRuntimePolling() {
+    if (runtimePollTimer) {
+        clearInterval(runtimePollTimer);
+        runtimePollTimer = null;
+    }
+}
+
+function startRuntimePolling() {
+    stopRuntimePolling();
+    runtimePollTimer = setInterval(async function() {
+        const modal = document.getElementById('runtime-status-modal');
+        if (!modal || !modal.classList.contains('active') || document.hidden) {
+            return;
+        }
+
+        try {
+            const info = await loadRuntimeInfo(false);
+            renderRuntimeStatusBody(info);
+        } catch (error) {
+            console.error('运行时轮询失败:', error);
+        }
+    }, 5000);
 }
 
 async function handleRuntimePrimaryAction() {

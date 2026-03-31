@@ -2228,275 +2228,494 @@ export const settingsCssContent = /* css */ `/* ================================
     line-height: 1.6;
 }
 
+.runtime-status-modal {
+    width: min(680px, calc(100vw - 18px));
+    max-height: min(88vh, 820px);
+}
+
 .runtime-status-modal .modal-body {
-    padding-top: 0.75rem;
+    padding: 0.75rem 1rem 0.35rem;
+    overflow-y: auto;
 }
 
 .runtime-status-stack {
     display: grid;
-    gap: 0.95rem;
+    gap: 0.8rem;
 }
 
 .runtime-status-hero {
     position: relative;
     overflow: hidden;
-    padding: 1.2rem 1.2rem 1.1rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    padding: 1rem;
+    border-radius: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
 }
 
 .runtime-status-hero::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 18% 18%, rgba(59, 130, 246, 0.18), transparent 48%),
-                radial-gradient(circle at 82% 78%, rgba(129, 140, 248, 0.14), transparent 48%);
+    background: radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.14), transparent 42%),
+                radial-gradient(circle at 82% 78%, rgba(129, 140, 248, 0.12), transparent 44%);
     pointer-events: none;
 }
 
 .runtime-status-hero.has-update::before {
-    background: radial-gradient(circle at 18% 18%, rgba(99, 102, 241, 0.24), transparent 50%),
-                radial-gradient(circle at 82% 78%, rgba(236, 72, 153, 0.16), transparent 50%);
+    background: radial-gradient(circle at 16% 12%, rgba(99, 102, 241, 0.18), transparent 46%),
+                radial-gradient(circle at 82% 78%, rgba(236, 72, 153, 0.14), transparent 46%);
 }
 
 .runtime-status-hero.error::before {
-    background: radial-gradient(circle at 18% 18%, rgba(239, 68, 68, 0.2), transparent 50%),
-                radial-gradient(circle at 82% 78%, rgba(251, 146, 60, 0.15), transparent 50%);
+    background: radial-gradient(circle at 16% 12%, rgba(239, 68, 68, 0.18), transparent 46%),
+                radial-gradient(circle at 82% 78%, rgba(251, 146, 60, 0.12), transparent 46%);
 }
 
 .runtime-status-hero-content {
     position: relative;
     display: grid;
-    gap: 0.85rem;
+    gap: 0.72rem;
+}
+
+.runtime-status-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    flex-wrap: wrap;
 }
 
 .runtime-status-eyebrow {
     display: inline-flex;
     align-items: center;
     width: fit-content;
-    padding: 0.28rem 0.62rem;
+    padding: 0.28rem 0.68rem;
     border-radius: 999px;
-    background: rgba(var(--primary-rgb), 0.08);
-    border: 1px solid rgba(var(--primary-rgb), 0.14);
-    color: var(--primary-color);
-    font-size: 0.76rem;
+    background: rgba(99, 102, 241, 0.09);
+    border: 1px solid rgba(99, 102, 241, 0.14);
+    color: #4f46e5;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
+}
+
+.runtime-status-live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.26rem 0.58rem;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    color: #047857;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.runtime-status-live-dot::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.12);
 }
 
 .runtime-status-title-row {
     display: flex;
-    align-items: flex-start;
+    align-items: end;
     justify-content: space-between;
-    gap: 0.85rem;
+    gap: 0.75rem;
     flex-wrap: wrap;
+}
+
+.runtime-status-title-block {
+    min-width: 0;
 }
 
 .runtime-status-title {
     margin: 0;
-    font-size: 1.14rem;
-    font-weight: 700;
+    font-size: 1.22rem;
+    font-weight: 800;
     color: var(--text-primary);
+    line-height: 1.12;
 }
 
 .runtime-status-subtitle {
-    margin: 0.32rem 0 0;
+    margin: 0.24rem 0 0;
     color: var(--text-secondary);
-    font-size: 0.92rem;
-    line-height: 1.6;
+    font-size: 0.82rem;
+    line-height: 1.45;
 }
 
 .runtime-status-chip-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.42rem;
+    justify-content: flex-end;
 }
 
 .runtime-status-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.38rem;
-    padding: 0.34rem 0.68rem;
+    justify-content: center;
+    min-height: 30px;
+    gap: 0.36rem;
+    padding: 0.28rem 0.62rem;
     border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.88);
+    color: #475569;
+    font-size: 0.74rem;
     font-weight: 600;
 }
 
 .runtime-status-chip.ok {
-    color: var(--success-color);
-    border-color: rgba(34, 197, 94, 0.25);
+    color: #047857;
+    border-color: rgba(34, 197, 94, 0.2);
     background: rgba(34, 197, 94, 0.08);
 }
 
 .runtime-status-chip.warn {
-    color: #4338ca;
-    border-color: rgba(99, 102, 241, 0.24);
+    color: #4f46e5;
+    border-color: rgba(99, 102, 241, 0.2);
     background: rgba(99, 102, 241, 0.08);
 }
 
 .runtime-status-chip.error {
-    color: var(--danger-color);
-    border-color: rgba(239, 68, 68, 0.25);
+    color: #dc2626;
+    border-color: rgba(239, 68, 68, 0.2);
     background: rgba(239, 68, 68, 0.08);
 }
 
 .runtime-status-summary-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 0.55rem;
 }
 
 .runtime-status-card {
-    padding: 0.9rem 0.95rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    padding: 0.72rem 0.78rem;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
 
 .runtime-status-card-label {
     display: block;
-    color: var(--text-secondary);
-    font-size: 0.76rem;
+    color: #64748b;
+    font-size: 0.7rem;
     font-weight: 600;
-    margin-bottom: 0.48rem;
+    margin-bottom: 0.32rem;
 }
 
 .runtime-status-card-value {
     color: var(--text-primary);
-    font-size: 0.95rem;
-    font-weight: 700;
-    line-height: 1.4;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.25;
     word-break: break-word;
 }
 
 .runtime-status-card-value.mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.88rem;
+    font-size: 0.84rem;
+}
+
+.runtime-status-card-meta {
+    margin-top: 0.24rem;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+
+.runtime-status-card-warn {
+    border-color: rgba(99, 102, 241, 0.16);
+    background: rgba(238, 242, 255, 0.9);
+}
+
+.runtime-status-card-danger {
+    border-color: rgba(239, 68, 68, 0.16);
+    background: rgba(254, 242, 242, 0.92);
 }
 
 .runtime-status-section {
-    padding: 1rem 1.05rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
+    padding: 0.9rem;
+    border-radius: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .runtime-status-section-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.8rem;
+    gap: 0.65rem;
     flex-wrap: wrap;
-    margin-bottom: 0.8rem;
+    margin-bottom: 0.72rem;
 }
 
 .runtime-status-section-title {
     margin: 0;
     color: var(--text-primary);
-    font-size: 0.98rem;
-    font-weight: 700;
+    font-size: 0.92rem;
+    font-weight: 800;
 }
 
 .runtime-status-section-meta {
-    color: var(--text-tertiary);
-    font-size: 0.8rem;
+    color: #94a3b8;
+    font-size: 0.72rem;
+}
+
+.runtime-status-section-metrics {
+    padding-bottom: 0.82rem;
+}
+
+.runtime-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.62rem;
+}
+
+.runtime-metric-card {
+    position: relative;
+    overflow: hidden;
+    padding: 0.8rem 0.82rem 0.74rem;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.runtime-metric-card::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 40px;
+    background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.6));
+    pointer-events: none;
+}
+
+.runtime-metric-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.38rem;
+}
+
+.runtime-metric-label {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.runtime-metric-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    min-height: 22px;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.04);
+    color: #64748b;
+    font-size: 0.66rem;
+    font-weight: 700;
+}
+
+.runtime-metric-value {
+    color: var(--text-primary);
+    font-size: 1.02rem;
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+}
+
+.runtime-metric-meta {
+    margin-top: 0.28rem;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+
+.runtime-metric-bar {
+    margin-top: 0.62rem;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.12);
+    overflow: hidden;
+}
+
+.runtime-metric-bar span {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    transition: width 0.45s ease;
+}
+
+.runtime-metric-card-cpu .runtime-metric-bar span {
+    background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+.runtime-metric-card-memory .runtime-metric-bar span {
+    background: linear-gradient(90deg, #7c3aed, #c084fc);
+}
+
+.runtime-metric-card-rx .runtime-metric-bar span {
+    width: 100%;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.62));
+}
+
+.runtime-metric-card-tx .runtime-metric-bar span {
+    width: 100%;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.62));
+}
+
+.runtime-disclosure {
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+.runtime-disclosure-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.88rem 0.95rem;
+    cursor: pointer;
+}
+
+.runtime-disclosure-summary::-webkit-details-marker {
+    display: none;
+}
+
+.runtime-disclosure-title {
+    color: var(--text-primary);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+.runtime-disclosure-meta {
+    color: #94a3b8;
+    font-size: 0.72rem;
+    text-align: right;
+    line-height: 1.35;
+}
+
+.runtime-disclosure-content {
+    padding: 0 0.95rem 0.95rem;
 }
 
 .runtime-status-detail-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.72rem;
+    gap: 0.55rem;
 }
 
 .runtime-status-detail-item {
-    padding: 0.82rem 0.88rem;
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    padding: 0.72rem 0.78rem;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(248, 250, 252, 0.84);
 }
 
 .runtime-status-detail-key {
     display: block;
-    color: var(--text-secondary);
-    font-size: 0.76rem;
+    color: #64748b;
+    font-size: 0.7rem;
     font-weight: 600;
-    margin-bottom: 0.42rem;
+    margin-bottom: 0.32rem;
 }
 
 .runtime-status-detail-value {
     color: var(--text-primary);
-    font-size: 0.88rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    line-height: 1.5;
+    line-height: 1.4;
     word-break: break-word;
 }
 
 .runtime-status-detail-value.mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.82rem;
+    font-size: 0.76rem;
 }
 
 .runtime-status-log-list {
     display: grid;
-    gap: 0.62rem;
-    max-height: 240px;
+    gap: 0.52rem;
+    max-height: 220px;
     overflow: auto;
 }
 
 .runtime-status-log-item {
-    padding: 0.82rem 0.9rem;
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    padding: 0.72rem 0.78rem;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(248, 250, 252, 0.84);
 }
 
 .runtime-status-log-time {
     display: block;
-    margin-bottom: 0.38rem;
-    color: var(--text-tertiary);
-    font-size: 0.74rem;
+    margin-bottom: 0.24rem;
+    color: #94a3b8;
+    font-size: 0.68rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .runtime-status-log-message {
     margin: 0;
     color: var(--text-primary);
-    font-size: 0.84rem;
-    line-height: 1.6;
+    font-size: 0.76rem;
+    line-height: 1.5;
     word-break: break-word;
 }
 
 .runtime-status-empty,
 .runtime-status-loading,
 .runtime-status-error {
-    padding: 1.15rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1px dashed var(--border-color);
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    line-height: 1.7;
+    padding: 0.9rem;
+    border-radius: 16px;
+    border: 1px dashed rgba(148, 163, 184, 0.18);
+    background: rgba(248, 250, 252, 0.84);
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.55;
 }
 
 .runtime-status-error {
-    color: var(--danger-color);
+    color: #dc2626;
     border-color: rgba(239, 68, 68, 0.24);
     background: rgba(239, 68, 68, 0.06);
 }
 
 .runtime-status-note {
-    margin-top: 0.9rem;
-    padding: 0.9rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1px dashed var(--border-color);
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    font-size: 0.86rem;
-    line-height: 1.65;
+    padding: 0.72rem 0.82rem;
+    border-radius: 16px;
+    border: 1px dashed rgba(148, 163, 184, 0.18);
+    background: rgba(248, 250, 252, 0.84);
+    color: #64748b;
+    font-size: 0.74rem;
+    line-height: 1.5;
+}
+
+.runtime-status-note-inline {
+    margin: 0;
+}
+
+.runtime-status-modal .modal-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 0.55rem;
+    padding-top: 0.8rem;
 }
 
 [data-theme="dark"] .runtime-status-chip.ok {
@@ -2514,17 +2733,98 @@ export const settingsCssContent = /* css */ `/* ================================
     background: rgba(239, 68, 68, 0.14);
 }
 
+[data-theme="dark"] .runtime-status-hero,
+[data-theme="dark"] .runtime-status-card,
+[data-theme="dark"] .runtime-status-section,
+[data-theme="dark"] .runtime-disclosure,
+[data-theme="dark"] .runtime-metric-card {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(129, 140, 248, 0.14);
+    box-shadow: 0 16px 32px rgba(2, 6, 23, 0.45);
+}
+
+[data-theme="dark"] .runtime-status-card-warn {
+    background: rgba(49, 46, 129, 0.4);
+}
+
+[data-theme="dark"] .runtime-status-card-danger {
+    background: rgba(127, 29, 29, 0.34);
+}
+
+[data-theme="dark"] .runtime-status-chip,
+[data-theme="dark"] .runtime-status-detail-item,
+[data-theme="dark"] .runtime-status-log-item,
+[data-theme="dark"] .runtime-status-empty,
+[data-theme="dark"] .runtime-status-loading,
+[data-theme="dark"] .runtime-status-note,
+[data-theme="dark"] .runtime-status-error {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: rgba(129, 140, 248, 0.12);
+}
+
+[data-theme="dark"] .runtime-status-eyebrow {
+    color: #c7d2fe;
+    background: rgba(129, 140, 248, 0.14);
+    border-color: rgba(129, 140, 248, 0.2);
+}
+
+[data-theme="dark"] .runtime-status-live-dot {
+    color: #6ee7b7;
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.18);
+}
+
+[data-theme="dark"] .runtime-metric-badge {
+    background: rgba(148, 163, 184, 0.12);
+    color: #cbd5e1;
+}
+
 @media (max-width: 860px) {
-    .runtime-status-summary-grid,
-    .runtime-status-detail-grid {
+    .runtime-status-summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .runtime-status-chip-row {
+        justify-content: flex-start;
     }
 }
 
 @media (max-width: 560px) {
-    .runtime-status-summary-grid,
+    .runtime-status-modal {
+        width: calc(100vw - 12px);
+    }
+
+    .runtime-status-modal .modal-body {
+        padding: 0.7rem 0.72rem 0.28rem;
+    }
+
     .runtime-status-detail-grid {
         grid-template-columns: 1fr;
+    }
+
+    .runtime-status-summary-grid,
+    .runtime-metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .runtime-status-title {
+        font-size: 1.08rem;
+    }
+
+    .runtime-status-subtitle {
+        font-size: 0.76rem;
+    }
+
+    .runtime-metric-value {
+        font-size: 0.9rem;
+    }
+
+    .runtime-status-modal .modal-footer {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .runtime-status-modal .modal-footer > :last-child {
+        grid-column: 1 / -1;
     }
 }
 
