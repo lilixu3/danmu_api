@@ -139,6 +139,57 @@ test('AiyifanSigningProvider keeps custom headers and success hooks after fw com
   assert.ok(calls[1].url.includes('vv='));
 });
 
+test('runtime info and version check should allow public read access on custom-token deployments', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async function(url) {
+    if (String(url).startsWith('https://img.shields.io/docker/v/')) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return '<svg><text>version</text><text>v9.9.9</text></svg>';
+        }
+      };
+    }
+    throw new Error('unexpected fetch: ' + url);
+  };
+
+  try {
+    const env = { TOKEN: 'user-token', ADMIN_TOKEN: 'admin-token', VERSION: '1.18.2' };
+
+    const infoReq = new MockRequest(urlPrefix + '/api/runtime/info', { method: 'GET' });
+    const infoRes = await handleRequest(infoReq, env, 'vercel');
+    const infoBody = await parseResponse(infoRes);
+
+    assert.equal(infoRes.status, 200);
+    assert.equal(infoBody.success, true);
+    assert.equal(infoBody.runtimeType, 'cloud');
+    assert.equal(infoBody.service.platformLabel, 'Vercel');
+    assert.equal(infoBody.auth.isAdmin, false);
+
+    const checkReq = new MockRequest(urlPrefix + '/api/runtime/check-update', { method: 'POST' });
+    const checkRes = await handleRequest(checkReq, env, 'vercel');
+    const checkBody = await parseResponse(checkRes);
+
+    assert.equal(checkRes.status, 200);
+    assert.equal(checkBody.success, true);
+    assert.equal(checkBody.version.latest, 'v9.9.9');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('runtime update should still require admin token after public runtime read access is enabled', async () => {
+  const env = { TOKEN: 'user-token', ADMIN_TOKEN: 'admin-token', ENABLE_RUNTIME_CONTROL: 'true' };
+  const req = new MockRequest(urlPrefix + '/user-token/api/runtime/update', { method: 'POST' });
+  const res = await handleRequest(req, env, 'docker');
+  const body = await parseResponse(res);
+
+  assert.equal(res.status, 403);
+  assert.equal(body.success, false);
+  assert.equal(body.errorMessage, 'Admin token required');
+});
+
 test('worker.js API endpoints', async (t) => {
   const renrenSource = new RenrenSource();
   const hanjutvSource = new HanjutvSource();

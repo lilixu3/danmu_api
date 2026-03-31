@@ -42,6 +42,11 @@ const AI_VERIFY_COOLDOWN_MS = 5 * 60 * 1000;
 let pendingAiVerify = null;
 let lastAiVerifyAttemptAt = 0;
 
+function isPublicRuntimeReadRoute(path, method) {
+  return (path === "/api/runtime/info" && method === "GET")
+    || (path === "/api/runtime/check-update" && method === "POST");
+}
+
 function buildAuthContext(currentToken) {
   const adminToken = globals?.adminToken || '';
   return {
@@ -290,6 +295,12 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
         if (path === "/api/config" && method === "GET") {
           return handleConfig(false, authContext); // 无权限
         }
+        if (isPublicRuntimeReadRoute(path, method)) {
+          if (path === "/api/runtime/info") {
+            return handleRuntimeInfo(authContext);
+          }
+          return handleRuntimeCheckUpdate(authContext);
+        }
         // 第一段不是已知的 API 路径，可能是错误的 token
         // 返回 401
         log("error", `Invalid token in path: ${path}`);
@@ -306,6 +317,12 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       // 对于 /api/config 路径，如果使用默认 token，我们允许无 token 访问，但返回有限信息
       if (path === "/api/config" && method === "GET") {
         return handleConfig(false, authContext); // 无权限
+      }
+      if (isPublicRuntimeReadRoute(path, method)) {
+        if (path === "/api/runtime/info") {
+          return handleRuntimeInfo(authContext);
+        }
+        return handleRuntimeCheckUpdate(authContext);
       }
       log("error", `Invalid or missing token in path: ${path}`);
       return jsonResponse(

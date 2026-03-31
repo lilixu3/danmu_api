@@ -1671,18 +1671,19 @@ function getRuntimeHint(info) {
 function buildRuntimeSummaryCards(info) {
     const versionInfo = info.version || {};
     const display = info.display || {};
+    const isCloudRuntime = info && info.runtimeType === 'cloud';
     const cards = [
         {
             label: '当前版本',
             value: versionInfo.current || '未知',
-            meta: '服务版本',
+            meta: isCloudRuntime ? '当前部署版本' : '服务版本',
             tone: 'neutral',
             mono: true
         },
         {
-            label: '最新版本',
+            label: isCloudRuntime ? '最新发布' : '最新版本',
             value: versionInfo.latest || (versionInfo.error ? '检查失败' : '未知'),
-            meta: versionInfo.hasUpdate ? '发现可更新版本' : '镜像检查结果',
+            meta: versionInfo.hasUpdate ? '发现可更新版本' : (isCloudRuntime ? '版本检查结果' : '镜像检查结果'),
             tone: versionInfo.hasUpdate ? 'warn' : (versionInfo.error ? 'danger' : 'neutral'),
             mono: true
         },
