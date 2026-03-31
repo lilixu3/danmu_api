@@ -15,8 +15,8 @@ import { globals } from '../configs/globals.js';
 export default class AiyifanSource extends BaseSource {
   constructor() {
     super();
-    this.PUBLIC_KEY = "CJStD3WpEJKqCouuC3TVL5TVCZGmDZfaOJ5ZEZXaEMOwPZ4mC3euEMHYEZGnEMOwDZbcPJetOpWpNpGnP69aOJ8tP30tOpGqCp8uE31YDJGnPJSoP31aCZXcNpOpD64nEMOuOpWrP6CuCpbcD3KnC3DcCcPcC68qE3Ha";
-    this.SALT = "StD3JStD3WpEJKqCouuC";
+    this.FALLBACK_PUBLIC_KEY = "CJStD3WpEJKqCouuC3TVL5TVCZGmDZfaOJ5ZEZXaEMOwPZ4mC3euEMHYEZGnEMOwDZbcPJetOpWpNpGnP69aOJ8tP30tOpGqCp8uE31YDJGnPJSoP31aCZXcNpOpD64nEMOuOpWrP6CuCpbcD3KnC3DcCcPcC68qE3Ha";
+    this.FALLBACK_SALT = "StD3JStD3WpEJKqCouuC";
 
     this.USER_AGENT = (
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
@@ -29,17 +29,28 @@ export default class AiyifanSource extends BaseSource {
     this.VIDEO_API = "https://m10.yfsp.tv/v3/video/play";
     this.DANMU_API = "https://m10.yfsp.tv/api/video/getBarrage";
     this.DOMAIN_API = "https://www.yfsp.tv/play";
+    this.CONFIG_PAGE_API = "https://www.yfsp.tv/";
     this.DEFAULT_DN_CONFIG = "dn_config=device=desktop&player=CkPlayer&tech=HLS&region=JP&country=JP&lang=none&v=1&isDark=1&volume=0.8";
     const uidSeed = md5(`${Date.now()}_${Math.random()}_aiyifan`);
     this.DEFAULT_UID = `_uid=${uidSeed.slice(0, 8)}-${uidSeed.slice(8, 12)}-${uidSeed.slice(12, 16)}-${uidSeed.slice(16, 20)}-${uidSeed.slice(20, 32)}`;
+    this.signingConfig = null;
+    this.signingConfigFetchedAt = 0;
+    this.SIGNING_CONFIG_TTL_MS = 60 * 1000;
   }
 
-  computeVv(params) {
+  computeVv(params, signingConfig) {
     const sortedParams = Object.keys(params)
       .map(k => `${k}=${params[k]}`)
       .join('&');
-    const raw = this.PUBLIC_KEY + "&" + sortedParams.toLowerCase() + "&" + this.SALT;
+    const raw = signingConfig.publicKey + "&" + sortedParams.toLowerCase() + "&" + signingConfig.privateKey;
     return md5(raw);
+  }
+
+  getFallbackSigningConfig() {
+    return {
+      publicKey: this.FALLBACK_PUBLIC_KEY,
+      privateKey: this.FALLBACK_SALT
+    };
   }
 
   buildCookieHeader() {
@@ -64,11 +75,99 @@ export default class AiyifanSource extends BaseSource {
     return epKey ? `${this.DOMAIN_API}/${vid}?id=${epKey}` : `${this.DOMAIN_API}/${vid}`;
   }
 
-  async requestApi(apiUrl, baseParams, actionLabel, previewLength = 200, referer = "https://www.yfsp.tv/") {
+  extractSigningConfig(html) {
+    const match = html.match(/"pConfig":\{"publicKey":"([^"]+)","privateKey":\[(.*?)\]\}/);
+    if (!match) {
+      return null;
+    }
+
+    let privateKeys = [];
+    try {
+      privateKeys = JSON.parse(`[${match[2]}]`);
+    } catch (error) {
+      log("error", `[Aiyifan] 解析桌面站 privateKey 失败: ${error.message}`);
+      return null;
+    }
+
+    if (!match[1] || !privateKeys.length) {
+      return null;
+    }
+
+    return {
+      publicKey: match[1],
+      privateKey: privateKeys[0]
+    };
+  }
+
+  async getSigningConfig(forceRefresh = false, sourceUrl = this.CONFIG_PAGE_API) {
+    const now = Date.now();
+    const cacheValid = this.signingConfig && now - this.signingConfigFetchedAt < this.SIGNING_CONFIG_TTL_MS;
+    if (!forceRefresh && cacheValid) {
+      return this.signingConfig;
+    }
+
+    const pageUrl = /^https:\/\/www\.yfsp\.tv\//.test(sourceUrl) ? sourceUrl : this.CONFIG_PAGE_API;
+    const headers = {
+      "User-Agent": this.USER_AGENT,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    };
+
+    const cookieHeader = this.buildCookieHeader();
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+    }
+
+    try {
+      const response = await httpGet(globals.makeProxyUrl(pageUrl), { headers });
+      const html = typeof response.data === "string" ? response.data : String(response.data ?? "");
+      const signingConfig = this.extractSigningConfig(html);
+      if (!signingConfig) {
+        throw new Error("未能从桌面站页面解析到 pConfig");
+      }
+
+      this.signingConfig = signingConfig;
+      this.signingConfigFetchedAt = now;
+      log("info", `[Aiyifan] 已更新桌面站签名配置: ${signingConfig.publicKey.slice(0, 12)}...`);
+      return signingConfig;
+    } catch (error) {
+      if (this.signingConfig && !forceRefresh) {
+        log("warn", `[Aiyifan] 获取桌面站签名配置失败，继续使用缓存: ${error.message}`);
+        return this.signingConfig;
+      }
+
+      const fallbackConfig = this.getFallbackSigningConfig();
+      log("warn", `[Aiyifan] 获取桌面站签名配置失败，回退到固定签名: ${error.message}`);
+      return fallbackConfig;
+    }
+  }
+
+  isRequestSuccessful(data) {
+    const hasRet = data && Object.prototype.hasOwnProperty.call(data, "ret");
+    if (hasRet && data.ret !== 200) {
+      return false;
+    }
+
+    const businessCode = data && data.data && typeof data.data === "object" ? data.data.code : undefined;
+    if (businessCode !== undefined && businessCode !== 0 && businessCode !== 200) {
+      return false;
+    }
+
+    return true;
+  }
+
+  getRequestFailureMessage(data) {
+    if (!data) {
+      return "空响应";
+    }
+    return (data.data && data.data.msg) || data.msg || "未知错误";
+  }
+
+  async requestApi(apiUrl, baseParams, actionLabel, previewLength = 200, referer = "https://www.yfsp.tv/", forceRefresh = false) {
+    const signingConfig = await this.getSigningConfig(forceRefresh, referer);
     const params = {
       ...baseParams,
-      vv: this.computeVv(baseParams),
-      pub: this.PUBLIC_KEY
+      vv: this.computeVv(baseParams, signingConfig),
+      pub: signingConfig.publicKey
     };
 
     try {
@@ -99,8 +198,13 @@ export default class AiyifanSource extends BaseSource {
       }
 
       const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (data && Object.prototype.hasOwnProperty.call(data, "ret") && data.ret !== 200) {
-        log("error", `[${actionLabel}失败] 返回码: ${data.ret}, msg: ${data.msg}`);
+      if (!this.isRequestSuccessful(data)) {
+        const message = this.getRequestFailureMessage(data);
+        if (!forceRefresh) {
+          log("warn", `[${actionLabel}] 当前签名配置请求失败，尝试刷新后重试: ${message}`);
+          return await this.requestApi(apiUrl, baseParams, actionLabel, previewLength, referer, true);
+        }
+        log("error", `[${actionLabel}失败] ${message}`);
         return null;
       }
 
@@ -205,8 +309,6 @@ export default class AiyifanSource extends BaseSource {
 
     const epInfo = epId ? `(ID:${epId})` : "";
     log("info", `[视频信息] 请求 key: ${epKey} ${epInfo}`);
-    const vv = this.computeVv(baseParams);
-    log("info", `[视频信息] vv签名: ${vv.substring(0, 16)}...`);
 
     const data = await this.requestApi(this.VIDEO_API, baseParams, "视频信息", 200, referer);
     if (!data) {
@@ -246,9 +348,7 @@ export default class AiyifanSource extends BaseSource {
       uniqueKey,
     };
 
-    const vv = this.computeVv(baseParams);
     log("info", `[弹幕] 请求 uniqueKey: ${uniqueKey}`);
-    log("info", `[弹幕] vv签名: ${vv.substring(0, 16)}...`);
 
     const data = await this.requestApi(this.DANMU_API, baseParams, "弹幕", 400, referer);
     if (!data) {
@@ -302,12 +402,10 @@ export default class AiyifanSource extends BaseSource {
   async getEpisodes(id, embeddedPlaylist = null) {
     log("info", `[Aiyifan] 获取剧集详情: ${id}`);
 
-    let episodes = [];
-    if (Array.isArray(embeddedPlaylist) && embeddedPlaylist.length > 0) {
-      log("info", `[Aiyifan] 使用搜索结果内嵌播放列表: ${embeddedPlaylist.length} 集`);
+    let episodes = await this.getPlaylist(id);
+    if (!episodes.length && Array.isArray(embeddedPlaylist) && embeddedPlaylist.length > 0) {
+      log("info", `[Aiyifan] 完整播放列表获取失败，回退到搜索结果内嵌播放列表: ${embeddedPlaylist.length} 集`);
       episodes = embeddedPlaylist;
-    } else {
-      episodes = await this.getPlaylist(id);
     }
 
     if (!episodes.length) {
