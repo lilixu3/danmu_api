@@ -25,9 +25,17 @@ const stateFilePath = path.join(
   '.cache',
   'runtime-state.json'
 );
+let diskStateWritable = true;
 
 function createState() {
   return JSON.parse(JSON.stringify(defaultState));
+}
+
+function getMemoryState() {
+  if (!globalThis[globalKey]) {
+    globalThis[globalKey] = createState();
+  }
+  return normalizeState(globalThis[globalKey]);
 }
 
 function normalizeLogs(logs) {
@@ -62,26 +70,40 @@ function normalizeState(rawState = {}) {
 
 function readStateFromDisk() {
   try {
+    if (!diskStateWritable) {
+      return getMemoryState();
+    }
     if (!fs.existsSync(stateFilePath)) {
-      return createState();
+      return getMemoryState();
     }
     const rawText = fs.readFileSync(stateFilePath, 'utf8');
     if (!rawText.trim()) {
-      return createState();
+      return getMemoryState();
     }
-    return normalizeState(JSON.parse(rawText));
-  } catch (_) {
-    return createState();
+    const normalized = normalizeState(JSON.parse(rawText));
+    globalThis[globalKey] = normalized;
+    return normalized;
+  } catch (error) {
+    return getMemoryState();
   }
 }
 
 function writeStateToDisk(state) {
   const normalized = normalizeState(state);
-  fs.mkdirSync(path.dirname(stateFilePath), { recursive: true });
-  const tempFilePath = `${stateFilePath}.tmp`;
-  fs.writeFileSync(tempFilePath, JSON.stringify(normalized, null, 2), 'utf8');
-  fs.renameSync(tempFilePath, stateFilePath);
   globalThis[globalKey] = normalized;
+  if (!diskStateWritable) {
+    return normalized;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(stateFilePath), { recursive: true });
+    const tempFilePath = `${stateFilePath}.tmp`;
+    fs.writeFileSync(tempFilePath, JSON.stringify(normalized, null, 2), 'utf8');
+    fs.renameSync(tempFilePath, stateFilePath);
+  } catch (error) {
+    diskStateWritable = false;
+  }
+
   return normalized;
 }
 
