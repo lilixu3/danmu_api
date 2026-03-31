@@ -7,7 +7,7 @@ import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
 import { getBangumi, getComment, getCommentByUrl, getCommentDuration, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
-import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords } from "./apis/system-api.js";
+import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleRuntimeInfo, handleRuntimeCheckUpdate, handleRuntimeUpdate } from "./apis/system-api.js";
 import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
 import { Segment } from "./models/dandan-model.js";
 import {
@@ -28,6 +28,7 @@ const ADMIN_MUTATION_ROUTES = new Set([
   'POST /api/env/del',
   'POST /api/deploy',
   'POST /api/cache/clear',
+  'POST /api/runtime/update',
   'POST /api/cookie/qr/generate',
   'POST /api/cookie/qr/check',
   'POST /api/cookie/verify',
@@ -326,12 +327,23 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     return handleReqRecords(authContext);
   }
 
+  // GET /api/runtime/info - 获取运行时信息 (需要 token)
+  if (path === "/api/runtime/info" && method === "GET") {
+    return handleRuntimeInfo(authContext);
+  }
+
+  // POST /api/runtime/check-update - 强制检查最新版本 (需要 token)
+  if (path === "/api/runtime/check-update" && method === "POST") {
+    return handleRuntimeCheckUpdate(authContext);
+  }
+
   log("info", path);
 
   // 智能处理API路径前缀，确保最终有一个正确的 /api/v2
   if (path !== "/" && path !== "/api/logs" && !path.startsWith('/api/env') 
     && !path.startsWith('/api/deploy') && !path.startsWith('/api/cache')
     && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
+    && !path.startsWith('/api/runtime')
     && !path.startsWith('/api/ai')) {
       log("info", `[Path Check] Starting path normalization for: "${path}"`);
       const pathBeforeCleanup = path; // 保存清理前的路径检查是否修改
@@ -363,6 +375,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
       if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs') 
         && !path.startsWith('/api/env') && !path.startsWith('/api/cache')
         && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
+        && !path.startsWith('/api/runtime')
         && !path.startsWith('/api/ai')) {
           if (path.startsWith('/v2/') || path === '/v2') {
               log("info", `[Path Check] Path is missing /api prefix. Adding /api...`);
@@ -599,6 +612,11 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // POST /api/deploy - 重新部署
   if (path === "/api/deploy" && method === "POST") {
     return handleDeploy(authContext);
+  }
+
+  // POST /api/runtime/update - 在线更新/重建
+  if (path === "/api/runtime/update" && method === "POST") {
+    return handleRuntimeUpdate(authContext);
   }
 
   // POST /api/cache/clear - 清理缓存

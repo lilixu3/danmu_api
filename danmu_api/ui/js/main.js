@@ -9,6 +9,8 @@ let editingKey = null;
 let logs = [];
 let currentVersion = '';
 let latestVersion = '';
+let runtimeInfo = null;
+let runtimeInfoRequest = null;
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
@@ -1084,52 +1086,26 @@ function updateApiEndpoint() {
 }
 
 /* ========================================
-   获取Docker版本并检查更新
+   Runtime 版本与运行状态
    ======================================== */
-function getDockerVersion() {
-    const url = "https://img.shields.io/docker/v/lilixu3/danmu-api?sort=semver";
-
-    fetch(url)
-        .then(response => response.text())
-        .then(svgContent => {
-            const versionMatch = svgContent.match(/version<\\/text><text.*?>(v[\\d\\.]+)/);
-
-            if (versionMatch && versionMatch[1]) {
-                const latest = versionMatch[1];
-                // 更新所有最新版本显示元素
-                updateAllLatestVersionElements(latest);
-                // 检查是否有新版本
-                checkForUpdate(latest);
-            }
-        })
-        .catch(error => {
-            console.error("Error fetching the SVG:", error);
-            // 所有位置显示检查失败
-            updateAllLatestVersionElements('获取失败');
-            updateVersionStatusAll('failed', '检查失败');
-        });
+function escapeRuntimeHtml(value) {
+    const text = value == null ? '' : String(value);
+    if (typeof escapeHtml === 'function') {
+        return escapeHtml(text);
+    }
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
-/* ========================================
-   更新所有最新版本显示元素
-   ======================================== */
 function updateAllLatestVersionElements(text) {
-    latestVersion = text;
-    const ids = [];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.textContent = text;
-            el.style.animation = 'pulse 0.6s ease-out';
-        }
-    });
+    latestVersion = text || '';
 }
 
-/* ========================================
-   更新所有版本状态徽章
-   state: 'uptodate' | 'update' | 'failed' | 'checking'
-   ======================================== */
-function updateVersionStatusAll(state, text, latestVer) {
+function updateVersionStatusAll(state, text) {
     const statusEls = [
         { el: document.getElementById('version-status'), prefix: 'version-status' },
         { el: document.getElementById('mobile-version-status'), prefix: 'mvb-status' },
@@ -1137,98 +1113,448 @@ function updateVersionStatusAll(state, text, latestVer) {
     ];
 
     const stateClass = {
-        'uptodate': '-uptodate',
-        'update': '-update',
-        'failed': '-failed',
-        'checking': '-checking'
+        uptodate: '-uptodate',
+        update: '-update',
+        failed: '-failed',
+        checking: '-checking'
     };
 
-    statusEls.forEach(({ el, prefix }) => {
-        if (!el) return;
-        el.className = prefix + ' ' + prefix + (stateClass[state] || '');
-        el.textContent = text;
-        if (state === 'update' && latestVer) {
-            el.style.cursor = 'pointer';
-            el.onclick = function() { showUpdateGuide(); };
-        } else {
-            el.style.cursor = '';
-            el.onclick = null;
+    statusEls.forEach(function(item) {
+        if (!item.el) return;
+        item.el.className = item.prefix + ' ' + item.prefix + (stateClass[state] || '');
+        item.el.textContent = text;
+    });
+}
+
+function syncCurrentVersionElements(version) {
+    ['hero-current-version', 'mobile-current-version'].forEach(function(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = version;
         }
     });
 }
 
-/* ========================================
-   检查版本更新
-   ======================================== */
-function checkForUpdate(latestVer) {
-    const currentVersionElement = document.getElementById('hero-current-version');
-    if (!currentVersionElement) return;
-
-    const curVer = currentVersionElement.textContent.trim();
-    currentVersion = curVer;
-    latestVersion = latestVer;
-
-    // 比较版本号
-    if (compareVersions(latestVer, curVer) > 0) {
-        updateVersionStatusAll('update', '\\u2191 有新版本 ' + latestVer, latestVer);
-        addLog(\`🎉 发现新版本: \${latestVer} (当前: \${curVer})\`, 'info');
-    } else {
-        updateVersionStatusAll('uptodate', '\\u2713 已是最新');
-        addLog(\`✅ 当前已是最新版本: \${curVer}\`, 'success');
-    }
-}
-
-/* ========================================
-   版本号比较函数
-   ======================================== */
 function compareVersions(v1, v2) {
-    // 移除 'v' 前缀
-    const cleanV1 = v1.replace(/^v/, '');
-    const cleanV2 = v2.replace(/^v/, '');
-    
+    const cleanV1 = String(v1 || '').replace(/^v/, '');
+    const cleanV2 = String(v2 || '').replace(/^v/, '');
     const parts1 = cleanV1.split('.').map(Number);
     const parts2 = cleanV2.split('.').map(Number);
-    
+
     for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
         const part1 = parts1[i] || 0;
         const part2 = parts2[i] || 0;
-        
         if (part1 > part2) return 1;
         if (part1 < part2) return -1;
     }
-    
+
     return 0;
 }
 
-/* ========================================
-   显示更新指南
-   ======================================== */
+function syncRuntimeSummary(info) {
+    if (!info) return;
+
+    const versionInfo = info.version || {};
+    currentVersion = String(versionInfo.current || currentVersion || '未知');
+    latestVersion = String(versionInfo.latest || '');
+    syncCurrentVersionElements(currentVersion);
+    updateAllLatestVersionElements(latestVersion);
+
+    if (versionInfo.error) {
+        updateVersionStatusAll('failed', '检查失败');
+        return;
+    }
+
+    if (versionInfo.hasUpdate && latestVersion) {
+        updateVersionStatusAll('update', '可更新 ' + latestVersion);
+        return;
+    }
+
+    if (latestVersion) {
+        updateVersionStatusAll('uptodate', '已是最新');
+        return;
+    }
+
+    updateVersionStatusAll('checking', '检查中...');
+}
+
+async function requestRuntimeInfo(forceCheck) {
+    const endpoint = buildApiUrl(forceCheck ? '/api/runtime/check-update' : '/api/runtime/info');
+    const response = await fetch(endpoint, forceCheck ? { method: 'POST' } : undefined);
+    let payload = {};
+
+    try {
+        payload = await response.json();
+    } catch (error) {
+        payload = {};
+    }
+
+    if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || payload.errorMessage || ('HTTP ' + response.status));
+    }
+
+    return payload;
+}
+
+async function loadRuntimeInfo(forceCheck) {
+    if (!forceCheck && runtimeInfoRequest) {
+        return runtimeInfoRequest;
+    }
+
+    const request = requestRuntimeInfo(Boolean(forceCheck))
+        .then(function(info) {
+            runtimeInfo = info;
+            syncRuntimeSummary(info);
+            return info;
+        })
+        .catch(function(error) {
+            updateVersionStatusAll('failed', '检查失败');
+            throw error;
+        })
+        .finally(function() {
+            if (runtimeInfoRequest === request) {
+                runtimeInfoRequest = null;
+            }
+        });
+
+    if (!forceCheck) {
+        runtimeInfoRequest = request;
+    }
+
+    return request;
+}
+
+async function refreshRuntimeSummary(forceCheck) {
+    try {
+        return await loadRuntimeInfo(Boolean(forceCheck));
+    } catch (error) {
+        console.error('加载运行时信息失败:', error);
+        return null;
+    }
+}
+
+function getRuntimeTypeLabel(type, info) {
+    if (type === 'docker') return 'Docker 容器';
+    if (type === 'node') return 'Node 本地进程';
+    if (type === 'cloud') return (info && info.service && info.service.platformLabel) ? info.service.platformLabel + ' 云部署' : '云平台部署';
+    return '未知运行时';
+}
+
+function formatRuntimeTimestamp(value) {
+    if (!value) return '暂无';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function getRuntimeUpdateStateText(update) {
+    const state = update && update.state ? update.state : 'idle';
+    if (state === 'running') return '进行中';
+    if (state === 'success') return '已完成';
+    if (state === 'failed') return '失败';
+    return '空闲';
+}
+
+function getRuntimeHint(info) {
+    const isAdmin = Boolean(info && info.auth && info.auth.isAdmin);
+    if (!info) return '暂无可用的运行时信息。';
+
+    if (info.runtimeType === 'docker') {
+        if (!info.supportsOnlineUpdate) {
+            return '要启用 Docker 在线更新，需要把 docker.sock 挂载进容器，并设置 ENABLE_RUNTIME_CONTROL=true。';
+        }
+        if (!isAdmin) {
+            return '当前仅可查看状态。使用 ADMIN_TOKEN 访问后，才能执行在线更新。';
+        }
+        return '在线更新会拉取最新镜像并重建当前容器。是否保留旧容器备份由 DOCKER_KEEP_BACKUP 控制。';
+    }
+
+    if (info.runtimeType === 'cloud') {
+        return isAdmin ? '云平台模式下支持直接触发重新部署。' : '当前仅可查看状态。使用 ADMIN_TOKEN 访问后，才能触发重新部署。';
+    }
+
+    return 'Node 模式当前支持查看进程状态与资源占用，暂不支持在线更新。';
+}
+
+function buildRuntimeSummaryCards(info) {
+    const versionInfo = info.version || {};
+    const metrics = info.metrics || {};
+    const cards = [
+        { label: '当前版本', value: versionInfo.current || '未知', mono: true },
+        { label: '最新版本', value: versionInfo.latest || (versionInfo.error ? '检查失败' : '未知'), mono: true },
+        { label: '更新状态', value: getRuntimeUpdateStateText(info.update || {}) },
+        { label: 'CPU', value: metrics.cpuText || '不可用' },
+        { label: '内存', value: metrics.memoryText || '不可用' },
+        { label: '网络', value: (metrics.networkRxText || '不可用') + ' / ' + (metrics.networkTxText || '不可用') }
+    ];
+
+    return cards.map(function(card) {
+        return '<div class="runtime-status-card">' +
+            '<span class="runtime-status-card-label">' + escapeRuntimeHtml(card.label) + '</span>' +
+            '<div class="runtime-status-card-value' + (card.mono ? ' mono' : '') + '">' + escapeRuntimeHtml(card.value) + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function buildRuntimeDetailItems(info) {
+    const service = info.service || {};
+    const items = [
+        { key: '运行时类型', value: getRuntimeTypeLabel(info.runtimeType, info) },
+        { key: '当前状态', value: (info.status && info.status.text) || '未知' }
+    ];
+
+    if (service.containerName) items.push({ key: '容器名称', value: service.containerName, mono: true });
+    if (service.image) items.push({ key: '镜像名称', value: service.image, mono: true });
+    if (service.composeProject) items.push({ key: 'Compose Project', value: service.composeProject, mono: true });
+    if (service.composeService) items.push({ key: 'Compose Service', value: service.composeService, mono: true });
+    if (service.processId) items.push({ key: '进程 PID', value: String(service.processId), mono: true });
+    if (service.nodeVersion) items.push({ key: 'Node 版本', value: service.nodeVersion, mono: true });
+    if (service.platform) items.push({ key: '平台信息', value: service.platform });
+    if (service.startedAt) items.push({ key: '启动时间', value: formatRuntimeTimestamp(service.startedAt) });
+    if (service.uptimeSeconds != null) items.push({ key: '运行时长', value: String(service.uptimeSeconds) + ' 秒' });
+    if (info.update && info.update.startedAt) items.push({ key: '最近更新开始', value: formatRuntimeTimestamp(info.update.startedAt) });
+    if (info.update && info.update.endedAt) items.push({ key: '最近更新结束', value: formatRuntimeTimestamp(info.update.endedAt) });
+
+    return items.map(function(item) {
+        return '<div class="runtime-status-detail-item">' +
+            '<span class="runtime-status-detail-key">' + escapeRuntimeHtml(item.key) + '</span>' +
+            '<div class="runtime-status-detail-value' + (item.mono ? ' mono' : '') + '">' + escapeRuntimeHtml(item.value) + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function buildRuntimeLogs(info) {
+    const logsList = info && info.update && Array.isArray(info.update.logs) ? info.update.logs : [];
+    if (!logsList.length) {
+        return '<div class="runtime-status-empty">当前还没有更新日志。触发在线更新后，这里会显示最近的进度记录。</div>';
+    }
+
+    return '<div class="runtime-status-log-list">' + logsList.map(function(item) {
+        return '<div class="runtime-status-log-item">' +
+            '<span class="runtime-status-log-time">' + escapeRuntimeHtml(formatRuntimeTimestamp(item.time)) + '</span>' +
+            '<p class="runtime-status-log-message">' + escapeRuntimeHtml(item.message) + '</p>' +
+        '</div>';
+    }).join('') + '</div>';
+}
+
+function resolveRuntimePrimaryAction(info) {
+    const isAdmin = Boolean(info && info.auth && info.auth.isAdmin);
+    const updateState = info && info.update ? info.update.state : 'idle';
+
+    if (!info) {
+        return { type: 'none', label: '加载中', disabled: true, title: '' };
+    }
+
+    if (info.runtimeType === 'docker') {
+        if (updateState === 'running') {
+            return { type: 'none', label: '更新进行中', disabled: true, title: '后台更新任务已经启动' };
+        }
+        if (!info.supportsOnlineUpdate) {
+            return { type: 'none', label: '未启用在线更新', disabled: true, title: '需要挂载 docker.sock 并开启 ENABLE_RUNTIME_CONTROL' };
+        }
+        if (!isAdmin) {
+            return { type: 'none', label: '需要管理员权限', disabled: true, title: '请使用 ADMIN_TOKEN 访问后操作' };
+        }
+        if (!(info.version && info.version.hasUpdate)) {
+            return { type: 'none', label: '已是最新版本', disabled: true, title: '当前镜像无需在线更新' };
+        }
+        return { type: 'update', label: '在线更新', disabled: false, title: '拉取最新镜像并重建当前容器' };
+    }
+
+    if (info.runtimeType === 'cloud') {
+        if (!info.supportsRedeploy) {
+            return { type: 'none', label: '当前不可操作', disabled: true, title: '' };
+        }
+        if (!isAdmin) {
+            return { type: 'none', label: '需要管理员权限', disabled: true, title: '请使用 ADMIN_TOKEN 访问后操作' };
+        }
+        return { type: 'redeploy', label: '重新部署', disabled: false, title: '调用现有部署流程重新发布服务' };
+    }
+
+    return { type: 'none', label: 'Node 模式暂不支持', disabled: true, title: '当前仅支持查看本地进程状态' };
+}
+
+function updateRuntimePrimaryActionButton(info) {
+    const button = document.getElementById('runtime-primary-action-btn');
+    if (!button) return;
+
+    const action = resolveRuntimePrimaryAction(info);
+    const text = button.querySelector('span');
+    button.dataset.action = action.type;
+    button.disabled = Boolean(action.disabled);
+    button.title = action.title || '';
+    button.className = 'btn ' + (action.type === 'update' || action.type === 'redeploy' ? 'btn-success' : 'btn-primary') + ' btn-modal';
+    if (text) {
+        text.textContent = action.label;
+    } else {
+        button.textContent = action.label;
+    }
+}
+
+function renderRuntimeStatusBody(info) {
+    const body = document.getElementById('runtime-status-body');
+    if (!body) return;
+
+    const versionInfo = info.version || {};
+    const statusText = info.status && info.status.text ? info.status.text : '未知';
+    const heroClass = versionInfo.error ? 'error' : (versionInfo.hasUpdate ? 'has-update' : '');
+    const updateMessage = info.update && info.update.message ? info.update.message : '暂无更新任务。';
+    const chipClass = versionInfo.error ? 'error' : (versionInfo.hasUpdate ? 'warn' : 'ok');
+
+    body.innerHTML =
+        '<div class="runtime-status-stack">' +
+            '<div class="runtime-status-hero ' + heroClass + '">' +
+                '<div class="runtime-status-hero-content">' +
+                    '<span class="runtime-status-eyebrow">Runtime Panel</span>' +
+                    '<div class="runtime-status-title-row">' +
+                        '<div>' +
+                            '<h4 class="runtime-status-title">' + escapeRuntimeHtml(getRuntimeTypeLabel(info.runtimeType, info)) + ' · ' + escapeRuntimeHtml(statusText) + '</h4>' +
+                            '<p class="runtime-status-subtitle">当前版本 ' + escapeRuntimeHtml(versionInfo.current || '未知') + (versionInfo.latest ? '，最新版本 ' + escapeRuntimeHtml(versionInfo.latest) : '') + '。</p>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="runtime-status-chip-row">' +
+                        '<span class="runtime-status-chip ' + chipClass + '">' + escapeRuntimeHtml(versionInfo.hasUpdate ? '发现可更新版本' : (versionInfo.error ? '版本检查失败' : '版本状态正常')) + '</span>' +
+                        '<span class="runtime-status-chip">' + escapeRuntimeHtml('更新状态：' + getRuntimeUpdateStateText(info.update || {})) + '</span>' +
+                        '<span class="runtime-status-chip">' + escapeRuntimeHtml('操作权限：' + ((info.auth && info.auth.isAdmin) ? '管理员' : '只读')) + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="runtime-status-summary-grid">' + buildRuntimeSummaryCards(info) + '</div>' +
+            '<div class="runtime-status-section">' +
+                '<div class="runtime-status-section-header">' +
+                    '<h4 class="runtime-status-section-title">服务详情</h4>' +
+                    '<span class="runtime-status-section-meta">从后端实时读取运行形态与宿主信息</span>' +
+                '</div>' +
+                '<div class="runtime-status-detail-grid">' + buildRuntimeDetailItems(info) + '</div>' +
+            '</div>' +
+            '<div class="runtime-status-section">' +
+                '<div class="runtime-status-section-header">' +
+                    '<h4 class="runtime-status-section-title">最近更新记录</h4>' +
+                    '<span class="runtime-status-section-meta">' + escapeRuntimeHtml(updateMessage) + '</span>' +
+                '</div>' +
+                buildRuntimeLogs(info) +
+            '</div>' +
+            '<div class="runtime-status-note">' + escapeRuntimeHtml(getRuntimeHint(info)) + '</div>' +
+        '</div>';
+
+    updateRuntimePrimaryActionButton(info);
+}
+
+function renderRuntimeStatusError(error) {
+    const body = document.getElementById('runtime-status-body');
+    if (!body) return;
+
+    body.innerHTML = '<div class="runtime-status-error">加载运行时信息失败：' + escapeRuntimeHtml(error && error.message ? error.message : '未知错误') + '</div>';
+    updateRuntimePrimaryActionButton(null);
+}
+
+function setRuntimeStatusLoading(message) {
+    const body = document.getElementById('runtime-status-body');
+    if (!body) return;
+
+    body.innerHTML = '<div class="runtime-status-loading">' + escapeRuntimeHtml(message || '正在加载运行时信息...') + '</div>';
+    updateRuntimePrimaryActionButton(null);
+}
+
+async function openRuntimeStatusModal(forceCheck) {
+    const modal = document.getElementById('runtime-status-modal');
+    if (!modal) return;
+
+    modal.classList.add('active');
+    setRuntimeStatusLoading(forceCheck ? '正在重新检查版本与运行状态...' : '正在加载运行时信息...');
+
+    try {
+        const info = await loadRuntimeInfo(Boolean(forceCheck));
+        renderRuntimeStatusBody(info);
+    } catch (error) {
+        console.error('打开运行状态面板失败:', error);
+        renderRuntimeStatusError(error);
+    }
+}
+
+function closeRuntimeStatusModal() {
+    const modal = document.getElementById('runtime-status-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function refreshRuntimeStatusModal() {
+    await openRuntimeStatusModal(true);
+}
+
+async function handleRuntimePrimaryAction() {
+    const action = resolveRuntimePrimaryAction(runtimeInfo);
+    if (action.disabled) return;
+
+    if (action.type === 'redeploy') {
+        closeRuntimeStatusModal();
+        if (typeof showDeploySystemModal === 'function') {
+            showDeploySystemModal();
+        }
+        return;
+    }
+
+    if (action.type !== 'update') {
+        return;
+    }
+
+    const confirmed = await customConfirm(
+        '将拉取最新镜像并重建当前容器，期间服务会短暂中断。是否继续？',
+        '🚀 在线更新'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const button = document.getElementById('runtime-primary-action-btn');
+    const label = button ? button.querySelector('span') : null;
+    const oldText = label ? label.textContent : '';
+    let shouldRestoreButton = true;
+
+    if (button) button.disabled = true;
+    if (label) label.textContent = '提交中...';
+
+    try {
+        const response = await fetch(buildApiUrl('/api/runtime/update', true), { method: 'POST' });
+        let payload = {};
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = {};
+        }
+
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.message || payload.errorMessage || ('HTTP ' + response.status));
+        }
+
+        if (!runtimeInfo) runtimeInfo = {};
+        if (!runtimeInfo.update) runtimeInfo.update = {};
+        runtimeInfo.update.state = 'running';
+        runtimeInfo.update.message = payload.message || '后台更新任务已启动';
+        renderRuntimeStatusBody(runtimeInfo);
+        shouldRestoreButton = false;
+        customAlert(payload.message || '在线更新任务已启动', '🚀 更新任务已启动');
+        addLog('🚀 已提交在线更新任务', 'info');
+    } catch (error) {
+        console.error('在线更新失败:', error);
+        customAlert('在线更新失败：' + error.message, '❌ 更新失败');
+        if (runtimeInfo) {
+            renderRuntimeStatusBody(runtimeInfo);
+        } else {
+            renderRuntimeStatusError(error);
+        }
+    } finally {
+        if (shouldRestoreButton) {
+            if (button) button.disabled = false;
+            if (label && oldText) label.textContent = oldText;
+        }
+    }
+}
+
 function showUpdateGuide() {
-    const curVer = currentVersion || '未知';
-    const latVer = latestVersion || '未知';
-
-    const guideMessage = \`
-📦 版本更新提示
-
-当前版本: \${curVer}
-最新版本: \${latVer}
-
-更新方法：
-
-🐳 Docker 部署：
-1. 停止当前容器: docker stop danmu-api
-2. 拉取最新镜像: docker pull lilixu3/danmu-api:latest
-3. 重新启动容器
-
-☁️ 云平台部署 (Vercel/Netlify/Cloudflare)：
-1. 进入项目仓库
-2. 拉取最新代码: git pull origin main
-3. 推送到部署分支触发自动部署
-
-💡 提示：更新前请备份重要配置！
-    \`.trim();
-    
-    customAlert(guideMessage, '🔄 更新指南');
+    openRuntimeStatusModal(true);
 }
 
 /* ========================================
@@ -1322,7 +1648,7 @@ async function init() {
     try {
         await updateApiEndpoint();
         updateCurrentModeDisplay();
-        getDockerVersion();
+        await refreshRuntimeSummary();
         const config = await fetchAndSetConfig();
         updateDeployEnvStatusBadgeFromConfig(config);
         setDefaultPushUrl(config);
@@ -1376,6 +1702,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 1. 优先初始化主题 (防止颜色闪烁)
     initTheme();
+
+    ['hero-version-panel', 'mobile-version-badge'].forEach(function(id) {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openRuntimeStatusModal();
+            }
+        });
+    });
+
+    const runtimeModal = document.getElementById('runtime-status-modal');
+    if (runtimeModal) {
+        runtimeModal.addEventListener('click', function(event) {
+            if (event.target === runtimeModal) {
+                closeRuntimeStatusModal();
+            }
+        });
+    }
 
 
     // 2. 无闪烁页面恢复逻辑 (核心优化)

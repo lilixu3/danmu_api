@@ -2228,6 +2228,306 @@ export const settingsCssContent = /* css */ `/* ================================
     line-height: 1.6;
 }
 
+.runtime-status-modal .modal-body {
+    padding-top: 0.75rem;
+}
+
+.runtime-status-stack {
+    display: grid;
+    gap: 0.95rem;
+}
+
+.runtime-status-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 1.2rem 1.2rem 1.1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.runtime-status-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 18% 18%, rgba(59, 130, 246, 0.18), transparent 48%),
+                radial-gradient(circle at 82% 78%, rgba(129, 140, 248, 0.14), transparent 48%);
+    pointer-events: none;
+}
+
+.runtime-status-hero.has-update::before {
+    background: radial-gradient(circle at 18% 18%, rgba(99, 102, 241, 0.24), transparent 50%),
+                radial-gradient(circle at 82% 78%, rgba(236, 72, 153, 0.16), transparent 50%);
+}
+
+.runtime-status-hero.error::before {
+    background: radial-gradient(circle at 18% 18%, rgba(239, 68, 68, 0.2), transparent 50%),
+                radial-gradient(circle at 82% 78%, rgba(251, 146, 60, 0.15), transparent 50%);
+}
+
+.runtime-status-hero-content {
+    position: relative;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.runtime-status-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.28rem 0.62rem;
+    border-radius: 999px;
+    background: rgba(var(--primary-rgb), 0.08);
+    border: 1px solid rgba(var(--primary-rgb), 0.14);
+    color: var(--primary-color);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.runtime-status-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.runtime-status-title {
+    margin: 0;
+    font-size: 1.14rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.runtime-status-subtitle {
+    margin: 0.32rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+.runtime-status-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.runtime-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.34rem 0.68rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.runtime-status-chip.ok {
+    color: var(--success-color);
+    border-color: rgba(34, 197, 94, 0.25);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.runtime-status-chip.warn {
+    color: #4338ca;
+    border-color: rgba(99, 102, 241, 0.24);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.runtime-status-chip.error {
+    color: var(--danger-color);
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.runtime-status-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.runtime-status-card {
+    padding: 0.9rem 0.95rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.runtime-status-card-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    font-weight: 600;
+    margin-bottom: 0.48rem;
+}
+
+.runtime-status-card-value {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.runtime-status-card-value.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.88rem;
+}
+
+.runtime-status-section {
+    padding: 1rem 1.05rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.runtime-status-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.8rem;
+}
+
+.runtime-status-section-title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.98rem;
+    font-weight: 700;
+}
+
+.runtime-status-section-meta {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
+.runtime-status-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.72rem;
+}
+
+.runtime-status-detail-item {
+    padding: 0.82rem 0.88rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.runtime-status-detail-key {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    font-weight: 600;
+    margin-bottom: 0.42rem;
+}
+
+.runtime-status-detail-value {
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.runtime-status-detail-value.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.82rem;
+}
+
+.runtime-status-log-list {
+    display: grid;
+    gap: 0.62rem;
+    max-height: 240px;
+    overflow: auto;
+}
+
+.runtime-status-log-item {
+    padding: 0.82rem 0.9rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.runtime-status-log-time {
+    display: block;
+    margin-bottom: 0.38rem;
+    color: var(--text-tertiary);
+    font-size: 0.74rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.runtime-status-log-message {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.84rem;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.runtime-status-empty,
+.runtime-status-loading,
+.runtime-status-error {
+    padding: 1.15rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px dashed var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.7;
+}
+
+.runtime-status-error {
+    color: var(--danger-color);
+    border-color: rgba(239, 68, 68, 0.24);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.runtime-status-note {
+    margin-top: 0.9rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px dashed var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.65;
+}
+
+[data-theme="dark"] .runtime-status-chip.ok {
+    border-color: rgba(34, 197, 94, 0.34);
+    background: rgba(34, 197, 94, 0.12);
+}
+
+[data-theme="dark"] .runtime-status-chip.warn {
+    border-color: rgba(129, 140, 248, 0.34);
+    background: rgba(129, 140, 248, 0.14);
+}
+
+[data-theme="dark"] .runtime-status-chip.error {
+    border-color: rgba(239, 68, 68, 0.34);
+    background: rgba(239, 68, 68, 0.14);
+}
+
+@media (max-width: 860px) {
+    .runtime-status-summary-grid,
+    .runtime-status-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .runtime-status-summary-grid,
+    .runtime-status-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 
 /* ========================================
    2026 配置页与响应面板统一重构

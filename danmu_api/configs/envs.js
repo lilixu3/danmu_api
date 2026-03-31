@@ -616,6 +616,12 @@ export class Envs {
       'DEPLOY_PLATFROM_ACCOUNT': { category: 'system', type: 'text', description: '部署平台账号ID' },
       'DEPLOY_PLATFROM_PROJECT': { category: 'system', type: 'text', description: '部署平台项目名称' },
       'DEPLOY_PLATFROM_TOKEN': { category: 'system', type: 'text', description: '部署平台访问令牌' },
+      'RUNTIME_MODE': { category: 'system', type: 'select', options: ['docker', 'node', 'cloud'], description: '运行时类型，留空则自动识别' },
+      'ENABLE_RUNTIME_CONTROL': { category: 'system', type: 'boolean', description: '是否启用运行状态面板中的在线控制能力，默认 false' },
+      'DOCKER_SOCKET_PATH': { category: 'system', type: 'text', description: 'Docker Socket 路径，默认 /var/run/docker.sock' },
+      'DOCKER_CONTAINER_NAME': { category: 'system', type: 'text', description: 'Docker 容器名称；未配置时尝试自动识别当前容器 ID/hostname' },
+      'DOCKER_IMAGE_NAME': { category: 'system', type: 'text', description: 'Docker 镜像名称，用于版本检查与在线更新，默认 lilixu3/danmu-api' },
+      'DOCKER_KEEP_BACKUP': { category: 'system', type: 'boolean', description: 'Docker 在线更新后是否保留旧容器备份，默认 false' },
       'NODE_TLS_REJECT_UNAUTHORIZED': { category: 'system', type: 'number', description: '在建立 HTTPS 连接时是否验证服务器的 SSL/TLS 证书，0表示忽略，默认为1', min: 0, max: 1 },
       'IP_BLACKLIST': { category: 'system', type: 'text', description: 'IP 黑名单列表，支持逗号/分号/换行分隔，支持 /regex/ 或 /regex/i 正则，支持 IPv4/IPv6 CIDR（如 10.0.0.0/4、2001:db8::/64）' },
       'ALLOW_PRIVATE_URLS': { category: 'system', type: 'boolean', description: '是否允许访问本地/内网 URL（默认 false，开启可能存在 SSRF 风险）' },
@@ -689,6 +695,12 @@ export class Envs {
       deployPlatformAccount: this.get('DEPLOY_PLATFROM_ACCOUNT', '', 'string', true), // 部署平台账号ID配置（默认空）
       deployPlatformProject: this.get('DEPLOY_PLATFROM_PROJECT', '', 'string', true), // 部署平台项目名称配置（默认空）
       deployPlatformToken: this.get('DEPLOY_PLATFROM_TOKEN', '', 'string', true), // 部署平台项目名称配置（默认空）
+      runtimeMode: this.get('RUNTIME_MODE', '', 'string'), // 运行时类型，默认自动识别
+      enableRuntimeControl: this.get('ENABLE_RUNTIME_CONTROL', false, 'boolean'), // 是否启用运行时在线控制
+      dockerSocketPath: this.get('DOCKER_SOCKET_PATH', '', 'string'), // Docker Socket 路径
+      dockerContainerName: this.get('DOCKER_CONTAINER_NAME', '', 'string', true), // Docker 容器名
+      dockerImageName: this.get('DOCKER_IMAGE_NAME', '', 'string'), // Docker 镜像名
+      dockerKeepBackup: this.get('DOCKER_KEEP_BACKUP', false, 'boolean'), // 在线更新后是否保留旧容器备份
       NODE_TLS_REJECT_UNAUTHORIZED: this.get('NODE_TLS_REJECT_UNAUTHORIZED', 1, 'number'), // 在建立 HTTPS 连接时是否验证服务器的 SSL/TLS 证书，0表示忽略，默认为1
       envVarConfig: envVarConfig // 环境变量分类和描述映射
     };

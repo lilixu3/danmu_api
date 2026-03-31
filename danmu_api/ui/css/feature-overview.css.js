@@ -1623,6 +1623,14 @@ export const overviewCssContent = /* css */ `/* ================================
     font-size: 0.72rem;
     line-height: 1;
     white-space: nowrap;
+    cursor: pointer;
+    transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.hero-version-tag:hover {
+    transform: translateY(-1px);
+    background: rgba(var(--primary-rgb), 0.06);
+    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
 }
 
 .hero-version-badge {

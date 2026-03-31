@@ -831,6 +831,14 @@ export const shellCssContent = /* css */ `/* ===================================
     border: 1px solid rgba(148, 163, 184, 0.16);
     background: rgba(248, 250, 252, 0.92);
     white-space: nowrap;
+    cursor: pointer;
+    transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.mobile-version-badge:hover {
+    transform: translateY(-1px);
+    border-color: rgba(var(--primary-rgb), 0.22);
+    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
 }
 
 .mvb-version {

@@ -3,6 +3,7 @@ import { jsonResponse } from "../utils/http-util.js";
 import { HTML_TEMPLATE } from "../ui/template.js";
 import { formatLogMessage, log } from "../utils/log-util.js";
 import { HandlerFactory } from "../configs/handlers/handler-factory.js";
+import { createRuntimeHandler } from "../runtime/runtime-handler-factory.js";
 
 function escapeForSingleQuotedJsString(value) {
   return String(value || "")
@@ -133,6 +134,59 @@ export async function handleDeploy() {
   } catch (error) {
     log("error", `[server] Deployment error: ${error.message}`);
     return jsonResponse({ success: false, message: `Deployment failed: ${error.message}` }, 500);
+  }
+}
+
+async function getRuntimeHandler() {
+  return createRuntimeHandler(globals);
+}
+
+export async function handleRuntimeInfo(auth = {}) {
+  try {
+    const handler = await getRuntimeHandler();
+    const info = await handler.getInfo();
+    return jsonResponse({
+      success: true,
+      ...info,
+      auth: {
+        isAdmin: Boolean(auth?.isAdmin)
+      }
+    }, 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown error');
+    log("error", `[server] Runtime info error: ${message}`);
+    return jsonResponse({ success: false, message: `Runtime info failed: ${message}` }, 500);
+  }
+}
+
+export async function handleRuntimeCheckUpdate(auth = {}) {
+  try {
+    const handler = await getRuntimeHandler();
+    const info = await handler.checkUpdate();
+    return jsonResponse({
+      success: true,
+      ...info,
+      auth: {
+        isAdmin: Boolean(auth?.isAdmin)
+      }
+    }, 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown error');
+    log("error", `[server] Runtime update check error: ${message}`);
+    return jsonResponse({ success: false, message: `Runtime check failed: ${message}` }, 500);
+  }
+}
+
+export async function handleRuntimeUpdate() {
+  try {
+    const handler = await getRuntimeHandler();
+    const result = await handler.triggerUpdate();
+    const status = result?.success ? 200 : 400;
+    return jsonResponse(result, status);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown error');
+    log("error", `[server] Runtime update error: ${message}`);
+    return jsonResponse({ success: false, message: `Runtime update failed: ${message}` }, 500);
   }
 }
 

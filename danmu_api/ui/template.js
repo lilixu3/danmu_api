@@ -223,7 +223,7 @@ export const HTML_TEMPLATE = /* html */ `
                         </div>
                     </div>
                     <div class="mobile-header-right">
-                        <div class="mobile-version-badge" id="mobile-version-badge">
+                        <div class="mobile-version-badge" id="mobile-version-badge" onclick="openRuntimeStatusModal()" role="button" tabindex="0" title="查看运行状态与版本信息">
                             <span class="mvb-version" id="mobile-current-version">v${globals.version}</span>
                             <span class="mvb-status mvb-status-checking" id="mobile-version-status">检查中...</span>
                         </div>
@@ -281,7 +281,7 @@ export const HTML_TEMPLATE = /* html */ `
                                 <div class="hero-brand-block">
                                     <div class="hero-overview-topline">
                                         <span class="preview-hero-eyebrow">首页概览</span>
-                                        <div class="hero-version-tag" id="hero-version-panel">
+                                        <div class="hero-version-tag" id="hero-version-panel" onclick="openRuntimeStatusModal()" role="button" tabindex="0" title="查看运行状态与版本信息">
                                             <span class="hero-version-badge" id="hero-current-version">v${globals.version}</span>
                                             <span class="hero-version-divider">·</span>
                                             <span class="hero-version-status hero-version-status-checking" id="hero-version-status">检查中...</span>
@@ -1016,6 +1016,40 @@ export const HTML_TEMPLATE = /* html */ `
             </div>
             <div class="modal-footer modal-footer-compact">
                 <button class="btn btn-primary btn-modal" onclick="closeDeployEnvStatusModal()">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span>关闭</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：运行时状态 -->
+    <div class="modal-overlay" id="runtime-status-modal">
+        <div class="modal-container modal-lg runtime-status-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">运行状态与版本</h3>
+                <button class="modal-close" onclick="closeRuntimeStatusModal()">×</button>
+            </div>
+            <div class="modal-body" id="runtime-status-body">
+                <!-- 动态内容由 JS 渲染 -->
+            </div>
+            <div class="modal-footer modal-footer-compact">
+                <button class="btn btn-secondary btn-modal" id="runtime-refresh-btn" onclick="refreshRuntimeStatusModal()" type="button">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M21 12a9 9 0 1 1-2.64-6.36" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M21 3v6h-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>重新检查</span>
+                </button>
+                <button class="btn btn-primary btn-modal" id="runtime-primary-action-btn" onclick="handleRuntimePrimaryAction()" type="button" disabled>
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>加载中</span>
+                </button>
+                <button class="btn btn-primary btn-modal" onclick="closeRuntimeStatusModal()" type="button">
                     <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
                     </svg>
