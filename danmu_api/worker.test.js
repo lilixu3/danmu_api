@@ -40,6 +40,7 @@ import { convertToAsciiSum } from "./utils/codec-util.js";
 import { handleDanmusLike } from "./utils/danmu-util.js";
 import { Segment, SegmentListResponse } from "./models/dandan-model.js"
 import { HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "./utils/hanjutv-util.js";
+import { AiyifanSigningProvider } from "./utils/aiyifan-util.js";
 
 // Mock Request class for testing
 class MockRequest {
@@ -97,6 +98,45 @@ test('Aiyifan searchDrama tolerates fw-style responses without status/ret fields
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('AiyifanSigningProvider keeps custom headers and success hooks after fw compatibility refactor', async () => {
+  const calls = [];
+  const provider = new AiyifanSigningProvider({
+    request: async (url, options = {}) => {
+      calls.push({ url, options });
+
+      if (calls.length === 1) {
+        return {
+          status: 200,
+          data: '<script>var injectJson = {"config":[{"pConfig":{"publicKey":"pub-key","privateKey":["priv-key"]}}]};</script>'
+        };
+      }
+
+      return {
+        status: undefined,
+        data: { data: { info: [] } }
+      };
+    },
+    proxyUrlBuilder: url => url,
+    getConfigHeaders: () => ({ Cookie: 'foo=bar' }),
+    isResponseSuccessful: payload => Boolean(payload && payload.data),
+    getFailureMessage: () => 'unexpected failure'
+  });
+
+  const result = await provider.signedGetJson(
+    'https://api.example.com/v3/test?foo=bar',
+    { foo: 'bar' },
+    { Referer: 'https://ref.example.com/' },
+    'Aiyifan'
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.headers.Cookie, 'foo=bar');
+  assert.equal(calls[1].options.headers.Referer, 'https://ref.example.com/');
+  assert.equal(result.signingConfig.publicKey, 'pub-key');
+  assert.ok(calls[1].url.includes('pub=pub-key'));
+  assert.ok(calls[1].url.includes('vv='));
 });
 
 test('worker.js API endpoints', async (t) => {
