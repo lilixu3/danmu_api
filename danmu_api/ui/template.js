@@ -79,88 +79,113 @@ export const HTML_TEMPLATE = /* html */ `
                 </button>
             </div>
 
-            <div class="sidebar-brief">
-                <div class="sidebar-brief-head">
-                    <span class="sidebar-brief-label">快速开始</span>
-                    <span class="sidebar-brief-chip">01 · 首页</span>
-                </div>
-                <p class="sidebar-brief-title">先查看接入地址和当前状态，再进入测试、日志或访问记录。</p>
-                <div class="sidebar-brief-actions">
-                    <button class="brief-action" onclick="switchSection('api')" type="button">接口测试</button>
-                    <button class="brief-action" onclick="switchSection('request-records')" type="button">访问记录</button>
-                </div>
-            </div>
+            <div class="sidebar-surface">
+                <section class="sidebar-info-card" aria-label="服务状态总览">
+                    <div class="sidebar-info-head">
+                        <span class="sidebar-info-kicker">LogVar Control</span>
+                        <span class="sidebar-info-runtime" id="sidebar-info-runtime" data-state="checking">运行时检测中</span>
+                    </div>
+                    <div class="sidebar-info-copy">
+                        <h2 class="sidebar-info-title">弹幕服务工作台</h2>
+                        <p class="sidebar-info-subtitle" id="sidebar-info-status">正在同步服务状态与版本信息</p>
+                    </div>
+                    <div class="sidebar-info-chip-grid">
+                        <div class="sidebar-info-chip">
+                            <span class="sidebar-info-chip-label">版本</span>
+                            <strong class="sidebar-info-chip-value" id="sidebar-info-version">版本检测中</strong>
+                        </div>
+                        <div class="sidebar-info-chip">
+                            <span class="sidebar-info-chip-label">访问</span>
+                            <strong class="sidebar-info-chip-value" id="sidebar-info-mode">公开访问</strong>
+                        </div>
+                        <div class="sidebar-info-chip">
+                            <span class="sidebar-info-chip-label">CPU</span>
+                            <strong class="sidebar-info-chip-value" id="sidebar-info-cpu">--</strong>
+                        </div>
+                        <div class="sidebar-info-chip">
+                            <span class="sidebar-info-chip-label">内存</span>
+                            <strong class="sidebar-info-chip-value" id="sidebar-info-memory">--</strong>
+                        </div>
+                    </div>
+                    <button class="sidebar-info-detail" onclick="openRuntimeStatusModal()" type="button" aria-label="查看运行状态与版本详情">
+                        <span class="sidebar-info-detail-copy">
+                            <span class="sidebar-info-detail-label">查看详情</span>
+                            <strong class="sidebar-info-detail-value">运行状态与版本</strong>
+                        </span>
+                        <span class="sidebar-info-detail-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </button>
+                </section>
 
-            <nav class="nav-menu">
-                <div class="nav-group-label">Workspace</div>
-                <a href="#preview" class="nav-item active" data-section="preview" onclick="switchSection('preview'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">服务概览</span>
-                        <span class="nav-meta">接入地址、状态与基础设置</span>
-                    </span>
-                    <span class="nav-index">01</span>
-                </a>
-                <a href="#logs" class="nav-item" data-section="logs" onclick="switchSection('logs'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">运行日志</span>
-                        <span class="nav-meta">最近动态与异常提醒</span>
-                    </span>
-                    <span class="nav-index">02</span>
-                </a>
-                <a href="#api" class="nav-item" data-section="api" onclick="switchSection('api'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">接口测试</span>
-                        <span class="nav-meta">测试接口与返回结果</span>
-                    </span>
-                    <span class="nav-index">03</span>
-                </a>
-                <a href="#push" class="nav-item" data-section="push" onclick="switchSection('push'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">推送弹幕</span>
-                        <span class="nav-meta">联动播放器刷新弹幕</span>
-                    </span>
-                    <span class="nav-index">04</span>
-                </a>
-                <a href="#request-records" class="nav-item" data-section="request-records" onclick="switchSection('request-records'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <circle cx="12" cy="12" r="9"/>
-                        <path d="M12 7v5l3 2"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">访问记录</span>
-                        <span class="nav-meta">最近访问与调用情况</span>
-                    </span>
-                    <span class="nav-index">05</span>
-                </a>
-                <a href="#env" class="nav-item" data-section="env" id="env-nav-btn" onclick="switchSection('env'); return false;">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    <span class="nav-copy">
-                        <span class="nav-text">系统设置</span>
-                        <span class="nav-meta">服务设置与部署操作</span>
-                    </span>
-                    <span class="nav-index">06</span>
-                </a>
-            </nav>
+                <nav class="nav-menu">
+                    <div class="nav-group-label">Workspace</div>
+                    <a href="#preview" class="nav-item active" data-section="preview" onclick="switchSection('preview'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">服务概览</span>
+                            <span class="nav-meta">接入地址、状态与基础设置</span>
+                        </span>
+                        <span class="nav-index">01</span>
+                    </a>
+                    <a href="#logs" class="nav-item" data-section="logs" onclick="switchSection('logs'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">运行日志</span>
+                            <span class="nav-meta">最近动态与异常提醒</span>
+                        </span>
+                        <span class="nav-index">02</span>
+                    </a>
+                    <a href="#api" class="nav-item" data-section="api" onclick="switchSection('api'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">接口测试</span>
+                            <span class="nav-meta">测试接口与返回结果</span>
+                        </span>
+                        <span class="nav-index">03</span>
+                    </a>
+                    <a href="#push" class="nav-item" data-section="push" onclick="switchSection('push'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">推送弹幕</span>
+                            <span class="nav-meta">联动播放器刷新弹幕</span>
+                        </span>
+                        <span class="nav-index">04</span>
+                    </a>
+                    <a href="#request-records" class="nav-item" data-section="request-records" onclick="switchSection('request-records'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 7v5l3 2"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">访问记录</span>
+                            <span class="nav-meta">最近访问与调用情况</span>
+                        </span>
+                        <span class="nav-index">05</span>
+                    </a>
+                    <a href="#env" class="nav-item" data-section="env" id="env-nav-btn" onclick="switchSection('env'); return false;">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                        <span class="nav-copy">
+                            <span class="nav-text">系统设置</span>
+                            <span class="nav-meta">服务设置与部署操作</span>
+                        </span>
+                        <span class="nav-index">06</span>
+                    </a>
+                </nav>
 
-            <div class="sidebar-footer-card">
-                <span class="sidebar-footer-kicker">Adaptive Layout</span>
-                <p class="sidebar-footer-title">适合播放器接入与日常维护的统一工作台。</p>
-                <p class="sidebar-footer-text">桌面端突出概览与设置，移动端保留常用入口与轻量操作。</p>
             </div>
         </aside>
 
@@ -211,6 +236,11 @@ export const HTML_TEMPLATE = /* html */ `
             <header class="mobile-header" id="mobile-header">
                 <div class="mobile-header-inner">
                     <div class="mobile-header-left">
+                        <button class="mobile-menu-btn" onclick="toggleSidebar()" type="button" aria-label="打开导航菜单">
+                            <span class="menu-line"></span>
+                            <span class="menu-line"></span>
+                            <span class="menu-line"></span>
+                        </button>
                         <div class="mobile-logo-wrapper">
                             <span class="mobile-service-mark">LV</span>
                             <div class="mobile-title-group">
@@ -899,34 +929,6 @@ export const HTML_TEMPLATE = /* html */ `
             </section>
             </div>
 
-            <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="移动端导航">
-                <div class="mobile-bottom-nav-scroll">
-                    <button class="mobile-nav-item active" data-section="preview" onclick="switchSection('preview')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-                        <span>总览</span>
-                    </button>
-                    <button class="mobile-nav-item" data-section="logs" onclick="switchSection('logs')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        <span>日志</span>
-                    </button>
-                    <button class="mobile-nav-item" data-section="api" onclick="switchSection('api')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        <span>测试</span>
-                    </button>
-                    <button class="mobile-nav-item" data-section="push" onclick="switchSection('push')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-                        <span>推送</span>
-                    </button>
-                    <button class="mobile-nav-item" data-section="request-records" onclick="switchSection('request-records')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                        <span>访问</span>
-                    </button>
-                    <button class="mobile-nav-item" data-section="env" onclick="switchSection('env')" type="button">
-                        <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <span>设置</span>
-                    </button>
-                </div>
-            </nav>
         </main>
     </div>
 

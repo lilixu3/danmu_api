@@ -51,6 +51,12 @@ function renderPreview() {
             if (manualConfigsEl) {
                 animateNumber('manual-configs', 0, manualConfigs, 700);
             }
+
+            if (typeof updateSidebarInfoCard === 'function') {
+                updateSidebarInfoCard({
+                    configuredCount: manualConfigs
+                });
+            }
             
             // 检测系统状态
             checkSystemStatus();
@@ -241,9 +247,15 @@ function checkSystemStatus() {
     // 设置检测中状态
     statusEl.textContent = '检测中...';
     statusEl.className = 'stat-value stat-value-status';
+
+    if (typeof updateSidebarInfoCard === 'function') {
+        updateSidebarInfoCard({
+            serviceStatus: '正在检测服务状态'
+        });
+    }
     
     // 检测API是否正常
-    fetch('/api/config', { method: 'GET' })
+    fetch(buildApiUrl('/api/config'), { method: 'GET' })
         .then(response => {
             if (response.ok) {
                 updateSystemStatusUI('running', '可正常使用');
@@ -303,6 +315,12 @@ function updateSystemStatusUI(status, text) {
     addLog('🔍 服务状态: ' + text, logTypes[status] || 'info');
     // 同步更新移动端状态指示器
     updateMobileStatusIndicator(status);
+
+    if (typeof updateSidebarInfoCard === 'function') {
+        updateSidebarInfoCard({
+            serviceStatus: text
+        });
+    }
 }
 
 /* ========================================
@@ -355,6 +373,12 @@ function updateCurrentModeDisplay() {
         modeIconWrapper.dataset.mode = modeClass;
         modeIconWrapper.innerHTML = getModeIconSvg(modeClass);
         modeIconWrapper.setAttribute('aria-label', modeName);
+    }
+
+    if (typeof updateSidebarInfoCard === 'function') {
+        updateSidebarInfoCard({
+            accessMode: modeName
+        });
     }
     
     addLog('🔐 当前访问: ' + modeName, 'info');

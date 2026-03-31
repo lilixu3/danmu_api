@@ -14,9 +14,23 @@ let runtimeInfoRequest = null;
 let runtimePollTimer = null;
 let runtimeTrafficSample = null;
 let runtimeLastSyncedAt = 0;
+let sidebarRefreshTimer = null;
+let activeSectionId = 'preview';
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
+let sidebarInfoState = {
+    runtimeLabel: '运行时检测中',
+    versionState: 'checking',
+    versionText: '版本检测中',
+    configuredCount: null,
+    accessMode: '公开访问',
+    serviceStatus: '正在同步服务状态与版本信息',
+    deployPlatform: '等待同步',
+    resourceText: '等待同步',
+    cpuText: '--',
+    memoryText: '--'
+};
 
 // 反向代理/API基础路径配置
 // 从LocalStorage获取用户自定义的Base URL
@@ -127,27 +141,13 @@ let mobileChromeTicking = false;
 function syncMobileNavigationChrome(forceShow = false) {
     const isMobile = window.innerWidth <= 860;
     document.body.classList.toggle('mobile-nav-enabled', isMobile);
+    document.body.classList.remove('mobile-nav-hidden');
 
     if (!isMobile) {
-        document.body.classList.remove('mobile-nav-hidden');
+        toggleSidebar(false);
         return;
     }
-
-    const currentScrollY = window.scrollY || window.pageYOffset || 0;
-    if (forceShow || currentScrollY < 24) {
-        document.body.classList.remove('mobile-nav-hidden');
-        lastMobileChromeScrollY = currentScrollY;
-        return;
-    }
-
-    const delta = currentScrollY - lastMobileChromeScrollY;
-    if (delta > 14) {
-        document.body.classList.add('mobile-nav-hidden');
-    } else if (delta < -10) {
-        document.body.classList.remove('mobile-nav-hidden');
-    }
-
-    lastMobileChromeScrollY = currentScrollY;
+    lastMobileChromeScrollY = forceShow ? 0 : (window.scrollY || window.pageYOffset || 0);
 }
 
 function initMobileNavigationChrome() {
@@ -270,6 +270,110 @@ let deployEnvStatus = {
     lastUpdated: 0
 };
 
+function updateSidebarInfoCard(partial) {
+    sidebarInfoState = Object.assign({}, sidebarInfoState, partial || {});
+
+    const runtimeEl = document.getElementById('sidebar-info-runtime');
+    const statusEl = document.getElementById('sidebar-info-status');
+    const versionEl = document.getElementById('sidebar-info-version');
+    const modeEl = document.getElementById('sidebar-info-mode');
+    const cpuEl = document.getElementById('sidebar-info-cpu');
+    const memoryEl = document.getElementById('sidebar-info-memory');
+
+    if (runtimeEl) {
+        runtimeEl.textContent = sidebarInfoState.runtimeLabel || '运行时检测中';
+        runtimeEl.dataset.state = sidebarInfoState.versionState || 'checking';
+    }
+
+    if (statusEl) {
+        statusEl.textContent = sidebarInfoState.serviceStatus || '正在同步服务状态与版本信息';
+    }
+
+    if (versionEl) {
+        versionEl.textContent = sidebarInfoState.versionText || '版本检测中';
+        versionEl.dataset.state = sidebarInfoState.versionState || 'checking';
+    }
+
+    if (modeEl) {
+        modeEl.textContent = sidebarInfoState.accessMode || '公开访问';
+    }
+
+    if (cpuEl) {
+        cpuEl.textContent = sidebarInfoState.cpuText || '--';
+    }
+
+    if (memoryEl) {
+        memoryEl.textContent = sidebarInfoState.memoryText || '--';
+    }
+}
+
+async function refreshSidebarConfiguredCount() {
+    try {
+        const response = await fetch(buildApiUrl('/api/config'));
+        if (!response.ok) return;
+        const config = await response.json();
+        const originalEnvVars = config && config.originalEnvVars ? config.originalEnvVars : {};
+        const manualConfigs = Object.values(originalEnvVars).filter(function(value) {
+            return value !== '' && value !== null && value !== undefined;
+        }).length;
+        updateSidebarInfoCard({
+            configuredCount: manualConfigs
+        });
+    } catch (error) {
+        console.error('刷新侧栏配置计数失败:', error);
+    }
+}
+
+function resolveCurrentAccessMode() {
+    const urlPath = window.location.pathname;
+    const pathParts = urlPath.split('/').filter(function(part) { return part !== ''; });
+    const urlToken = pathParts.length > 0 ? pathParts[0] : '';
+
+    if (urlToken) {
+        if (currentAdminToken && currentAdminToken.trim() !== '' && urlToken === currentAdminToken) {
+            return '管理访问';
+        }
+        if (originalToken && originalToken !== '87654321') {
+            return '用户访问';
+        }
+        return '用户访问';
+    }
+
+    return '公开访问';
+}
+
+async function refreshSidebarSnapshot() {
+    updateSidebarInfoCard({
+        accessMode: resolveCurrentAccessMode()
+    });
+
+    await Promise.allSettled([
+        refreshRuntimeSummary(),
+        refreshDeployEnvStatusBadge(true),
+        refreshSidebarConfiguredCount()
+    ]);
+}
+
+function startSidebarRefreshLoop() {
+    if (sidebarRefreshTimer) {
+        clearInterval(sidebarRefreshTimer);
+    }
+    sidebarRefreshTimer = setInterval(function() {
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar || !sidebar.classList.contains('active') || window.innerWidth > 860) {
+            stopSidebarRefreshLoop();
+            return;
+        }
+        refreshSidebarSnapshot();
+    }, 8000);
+}
+
+function stopSidebarRefreshLoop() {
+    if (!sidebarRefreshTimer) return;
+    clearInterval(sidebarRefreshTimer);
+    sidebarRefreshTimer = null;
+}
+
 function getDeployPlatformLabel(platform) {
     const p = (platform || 'node').toString().toLowerCase();
     const map = {
@@ -364,6 +468,10 @@ function applyDeployEnvStatusToBadge(status) {
             heroText.textContent = ok ? '状态' : '状态';
         }
     }
+
+    updateSidebarInfoCard({
+        deployPlatform: status.platformLabel || '等待同步'
+    });
 }
 
 function updateDeployEnvStatusBadgeFromConfig(config) {
@@ -481,52 +589,126 @@ async function openDeployEnvStatusModal() {
 /* ========================================
    侧边栏切换
    ======================================== */
-function toggleSidebar() {
+function removeSidebarOverlay() {
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (!overlay) return;
+    overlay.style.animation = 'overlayFadeOut 0.24s ease-out';
+    setTimeout(() => {
+        if (overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+        }
+    }, 220);
+}
+
+function applyMobileSidebarState(sidebar, open) {
+    if (!sidebar) return;
+    sidebar.style.display = 'flex';
+    sidebar.style.position = 'fixed';
+    sidebar.style.top = '0';
+    sidebar.style.left = '0';
+    sidebar.style.bottom = '0';
+    sidebar.style.width = 'min(80vw, 304px)';
+    sidebar.style.maxWidth = '304px';
+    sidebar.style.minWidth = '0';
+    sidebar.style.height = '100dvh';
+    sidebar.style.maxHeight = '100dvh';
+    sidebar.style.minHeight = '100dvh';
+    sidebar.style.borderRadius = '0';
+    sidebar.style.overflow = 'auto';
+    sidebar.style.zIndex = '1101';
+    sidebar.style.opacity = '1';
+    sidebar.style.visibility = 'visible';
+    sidebar.style.pointerEvents = 'auto';
+    sidebar.style.willChange = 'transform';
+    sidebar.style.transition = 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)';
+    sidebar.style.transform = open ? 'translate3d(0, 0, 0)' : 'translate3d(calc(-100% - 14px), 0, 0)';
+    document.body.classList.toggle('sidebar-drawer-open', open);
+    document.body.style.overflow = open ? 'hidden' : '';
+}
+
+function resetDesktopSidebarState(sidebar) {
+    if (!sidebar) return;
+    sidebar.style.display = '';
+    sidebar.style.position = '';
+    sidebar.style.top = '';
+    sidebar.style.left = '';
+    sidebar.style.bottom = '';
+    sidebar.style.width = '';
+    sidebar.style.maxWidth = '';
+    sidebar.style.minWidth = '';
+    sidebar.style.height = '';
+    sidebar.style.maxHeight = '';
+    sidebar.style.minHeight = '';
+    sidebar.style.borderRadius = '';
+    sidebar.style.overflow = '';
+    sidebar.style.zIndex = '';
+    sidebar.style.opacity = '';
+    sidebar.style.visibility = '';
+    sidebar.style.pointerEvents = '';
+    sidebar.style.willChange = '';
+    sidebar.style.transition = '';
+    sidebar.style.transform = '';
+    document.body.classList.remove('sidebar-drawer-open');
+    document.body.style.overflow = '';
+}
+
+function toggleSidebar(forceOpen) {
     const sidebar = document.getElementById('sidebar');
-    const isActive = sidebar.classList.contains('active');
-    
-    sidebar.classList.toggle('active');
-    
-    // 点击遮罩关闭侧边栏
-    if (!isActive) {
-        const overlay = document.createElement('div');
-        overlay.className = 'sidebar-overlay';
-        overlay.style.cssText = \`
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
-            z-index: 999;
-            animation: overlayFadeIn 0.3s ease-out;
+    if (!sidebar) return;
+
+    const isMobile = window.innerWidth <= 860;
+    const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('active');
+
+    if (!isMobile) {
+        sidebar.classList.remove('active');
+        sidebar.setAttribute('aria-hidden', 'false');
+        resetDesktopSidebarState(sidebar);
+        removeSidebarOverlay();
+        stopSidebarRefreshLoop();
+        return;
+    }
+
+    sidebar.classList.toggle('active', nextOpen);
+    sidebar.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    applyMobileSidebarState(sidebar, nextOpen);
+
+    if (!document.getElementById('overlay-animation-styles')) {
+        const style = document.createElement('style');
+        style.id = 'overlay-animation-styles';
+        style.textContent = \`
+            @keyframes overlayFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes overlayFadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
         \`;
-        overlay.onclick = toggleSidebar;
-        document.body.appendChild(overlay);
-        
-        // 添加动画样式
-        if (!document.getElementById('overlay-animation-styles')) {
-            const style = document.createElement('style');
-            style.id = 'overlay-animation-styles';
-            style.textContent = \`
-                @keyframes overlayFadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
-                @keyframes overlayFadeOut {
-                    from { opacity: 1; }
-                    to { opacity: 0; }
-                }
+        document.head.appendChild(style);
+    }
+
+    if (nextOpen) {
+        let overlay = document.querySelector('.sidebar-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'sidebar-overlay';
+            overlay.style.cssText = \`
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.42);
+                backdrop-filter: blur(6px);
+                z-index: 1099;
+                animation: overlayFadeIn 0.24s ease-out;
             \`;
-            document.head.appendChild(style);
+            overlay.onclick = function() { toggleSidebar(false); };
+            document.body.appendChild(overlay);
         }
+        refreshSidebarSnapshot();
+        startSidebarRefreshLoop();
     } else {
-        const overlay = document.querySelector('.sidebar-overlay');
-        if (overlay) {
-            overlay.style.animation = 'overlayFadeOut 0.3s ease-out';
-            setTimeout(() => overlay.remove(), 300);
-        }
+        removeSidebarOverlay();
+        stopSidebarRefreshLoop();
     }
 }
 
@@ -582,10 +764,20 @@ function switchSection(section) {
 }
 
 function performSectionSwitch(section, isInitialLoad = false) {
+    const isMobileView = window.innerWidth <= 860;
+    if (!isInitialLoad && activeSectionId === section) {
+        if (isMobileView) {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar && sidebar.classList.contains('active')) {
+                toggleSidebar(false);
+            }
+        }
+        return;
+    }
+
     // 移除所有active类
-    document.querySelectorAll('.content-section').forEach(s => {
+    document.querySelectorAll('.content-section.active').forEach(s => {
         s.classList.remove('active');
-        s.style.opacity = '0';
     });
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     
@@ -593,15 +785,11 @@ function performSectionSwitch(section, isInitialLoad = false) {
     const targetSection = document.getElementById(section + '-section');
     if (targetSection) {
         targetSection.classList.add('active');
-        // 如果是初始化加载，直接显示，不走淡入动画避免闪烁
-        targetSection.style.opacity = isInitialLoad ? '1' : '1'; 
     }
+    activeSectionId = section;
     
     const activeNav = document.querySelector(\`[data-section="\${section}"]\`);
     if (activeNav) activeNav.classList.add('active');
-    document.querySelectorAll('.mobile-nav-item').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.section === section);
-    });
     document.querySelectorAll('.desktop-command-bar .command-chip').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.section === section);
     });
@@ -670,10 +858,10 @@ function performSectionSwitch(section, isInitialLoad = false) {
     document.title = currentMeta.main + ' · LogVar弹幕API';
     
     // 仅在移动端且侧边栏已打开时才关闭，避免误触发打开抽屉
-    if (!isInitialLoad && window.innerWidth <= 860) {
+    if (!isInitialLoad && isMobileView) {
         const sidebar = document.getElementById('sidebar');
         if (sidebar && sidebar.classList.contains('active')) {
-            toggleSidebar();
+            toggleSidebar(false);
         }
     }
 
@@ -681,11 +869,11 @@ function performSectionSwitch(section, isInitialLoad = false) {
     
     // 滚动到顶部
     if (!isInitialLoad) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: isMobileView ? 'auto' : 'smooth' });
     }
     
     const sectionTitle = (titles && titles[section] && titles[section].main) ? titles[section].main : section;
-    if (!isInitialLoad) {
+    if (!isInitialLoad && !isMobileView) {
         addLog(\`切换到\${sectionTitle}模块 📍\`, 'info');
     }
 
@@ -1158,27 +1346,74 @@ function syncRuntimeSummary(info) {
     if (!info) return;
 
     const versionInfo = info.version || {};
+    const runtimeLabel = getRuntimeTypeLabel(info.runtimeType, info);
     currentVersion = String(versionInfo.current || currentVersion || '未知');
     latestVersion = String(versionInfo.latest || '');
     syncCurrentVersionElements(currentVersion);
     updateAllLatestVersionElements(latestVersion);
 
+    const display = info.display || {};
+    const platformText = (info.service && info.service.platformLabel) || deployEnvStatus.platformLabel || runtimeLabel;
+    const cpuText = Number.isFinite(display.cpuPercent) ? (Math.round(display.cpuPercent || 0) + '%') : '--';
+    const memoryText = Number.isFinite(display.memoryPercent) ? (Math.round(display.memoryPercent || 0) + '%') : '--';
+    const fallbackStatus = versionInfo.error
+        ? '运行时已同步，版本检查失败'
+        : (versionInfo.hasUpdate && latestVersion
+            ? ('运行时已同步，可更新至 ' + latestVersion)
+            : '运行时已同步，可查看实时资源指标');
+
     if (versionInfo.error) {
         updateVersionStatusAll('failed', '检查失败');
+        updateSidebarInfoCard({
+            runtimeLabel: runtimeLabel,
+            versionState: 'failed',
+            versionText: '版本检查失败',
+            deployPlatform: platformText,
+            cpuText: cpuText,
+            memoryText: memoryText,
+            serviceStatus: sidebarInfoState.serviceStatus === '正在同步服务状态与版本信息' ? fallbackStatus : sidebarInfoState.serviceStatus
+        });
         return;
     }
 
     if (versionInfo.hasUpdate && latestVersion) {
         updateVersionStatusAll('update', '可更新 ' + latestVersion);
+        updateSidebarInfoCard({
+            runtimeLabel: runtimeLabel,
+            versionState: 'update',
+            versionText: '新版本 ' + latestVersion,
+            deployPlatform: platformText,
+            cpuText: cpuText,
+            memoryText: memoryText,
+            serviceStatus: sidebarInfoState.serviceStatus === '正在同步服务状态与版本信息' ? fallbackStatus : sidebarInfoState.serviceStatus
+        });
         return;
     }
 
     if (latestVersion) {
         updateVersionStatusAll('uptodate', '已是最新');
+        updateSidebarInfoCard({
+            runtimeLabel: runtimeLabel,
+            versionState: 'uptodate',
+            versionText: '当前 ' + currentVersion,
+            deployPlatform: platformText,
+            cpuText: cpuText,
+            memoryText: memoryText,
+            serviceStatus: sidebarInfoState.serviceStatus === '正在同步服务状态与版本信息' ? fallbackStatus : sidebarInfoState.serviceStatus
+        });
         return;
     }
 
     updateVersionStatusAll('checking', '检查中...');
+    updateSidebarInfoCard({
+        runtimeLabel: runtimeLabel,
+        versionState: 'checking',
+        versionText: currentVersion ? ('当前 ' + currentVersion) : '版本检测中',
+        deployPlatform: platformText,
+        cpuText: cpuText,
+        memoryText: memoryText,
+        serviceStatus: sidebarInfoState.serviceStatus === '正在同步服务状态与版本信息' ? fallbackStatus : sidebarInfoState.serviceStatus
+    });
 }
 
 async function requestRuntimeInfo(forceCheck) {
@@ -1213,6 +1448,10 @@ async function loadRuntimeInfo(forceCheck) {
         })
         .catch(function(error) {
             updateVersionStatusAll('failed', '检查失败');
+            updateSidebarInfoCard({
+                versionState: 'failed',
+                versionText: '版本检查失败'
+            });
             throw error;
         })
         .finally(function() {
@@ -1900,6 +2139,7 @@ document.addEventListener('DOMContentLoaded', function() {
     createCustomAlert();
     initMobileViewportFixes();
     initMobileNavigationChrome();
+    updateSidebarInfoCard();
     
     // 1. 优先初始化主题 (防止颜色闪烁)
     initTheme();
