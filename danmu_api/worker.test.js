@@ -82,7 +82,7 @@ function createFetchResponse(body, overrides = {}) {
 const urlPrefix = "http://localhost:9321";
 const token = "87654321";
 
-test('Aiyifan requestApi tolerates fw-style responses without status/ret fields', async () => {
+test('Aiyifan searchDrama tolerates fw-style responses without status/ret fields', async () => {
   const source = new AiyifanSource();
   const originalFetch = globalThis.fetch;
 
@@ -92,11 +92,7 @@ test('Aiyifan requestApi tolerates fw-style responses without status/ret fields'
   );
 
   try {
-    const result = await source.requestApi(
-      source.SEARCH_API,
-      { tags: 'test', orderby: 4, page: 1, size: 10, desc: 1, isserial: -1 },
-      '搜索'
-    );
+    const result = await source.searchDrama('test');
     assert.deepEqual(result, { data: { info: [{ result: [] }] } });
   } finally {
     globalThis.fetch = originalFetch;

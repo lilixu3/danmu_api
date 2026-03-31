@@ -8,6 +8,7 @@ import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { titleMatches } from "../utils/common-util.js";
 import { simplized } from "../utils/zh-util.js";
 import { globals } from '../configs/globals.js';
+import { AiyifanSigningProvider } from '../utils/aiyifan-util.js';
 
 // =====================
 // 获取爱壹帆弹幕
@@ -15,9 +16,6 @@ import { globals } from '../configs/globals.js';
 export default class AiyifanSource extends BaseSource {
   constructor() {
     super();
-    this.FALLBACK_PUBLIC_KEY = "CJStD3WpEJKqCouuC3TVL5TVCZGmDZfaOJ5ZEZXaEMOwPZ4mC3euEMHYEZGnEMOwDZbcPJetOpWpNpGnP69aOJ8tP30tOpGqCp8uE31YDJGnPJSoP31aCZXcNpOpD64nEMOuOpWrP6CuCpbcD3KnC3DcCcPcC68qE3Ha";
-    this.FALLBACK_SALT = "StD3JStD3WpEJKqCouuC";
-
     this.USER_AGENT = (
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
       "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -33,24 +31,17 @@ export default class AiyifanSource extends BaseSource {
     this.DEFAULT_DN_CONFIG = "dn_config=device=desktop&player=CkPlayer&tech=HLS&region=JP&country=JP&lang=none&v=1&isDark=1&volume=0.8";
     const uidSeed = md5(`${Date.now()}_${Math.random()}_aiyifan`);
     this.DEFAULT_UID = `_uid=${uidSeed.slice(0, 8)}-${uidSeed.slice(8, 12)}-${uidSeed.slice(12, 16)}-${uidSeed.slice(16, 20)}-${uidSeed.slice(20, 32)}`;
-    this.signingConfig = null;
-    this.signingConfigFetchedAt = 0;
-    this.SIGNING_CONFIG_TTL_MS = 60 * 1000;
-  }
-
-  computeVv(params, signingConfig) {
-    const sortedParams = Object.keys(params)
-      .map(k => `${k}=${params[k]}`)
-      .join('&');
-    const raw = signingConfig.publicKey + "&" + sortedParams.toLowerCase() + "&" + signingConfig.privateKey;
-    return md5(raw);
-  }
-
-  getFallbackSigningConfig() {
-    return {
-      publicKey: this.FALLBACK_PUBLIC_KEY,
-      privateKey: this.FALLBACK_SALT
-    };
+    this.signingProvider = new AiyifanSigningProvider({
+      userAgent: this.USER_AGENT,
+      configPageUrl: this.CONFIG_PAGE_API,
+      getConfigHeaders: () => {
+        const cookieHeader = this.buildCookieHeader();
+        return cookieHeader ? { Cookie: cookieHeader } : {};
+      },
+      isResponseSuccessful: payload => this.isRequestSuccessful(payload),
+      getFailureMessage: (payload, status) => this.getRequestFailureMessage(payload, status)
+    });
+    this.inflightDanmuRequests = new Map();
   }
 
   buildCookieHeader() {
@@ -75,72 +66,6 @@ export default class AiyifanSource extends BaseSource {
     return epKey ? `${this.DOMAIN_API}/${vid}?id=${epKey}` : `${this.DOMAIN_API}/${vid}`;
   }
 
-  extractSigningConfig(html) {
-    const match = html.match(/"pConfig":\{"publicKey":"([^"]+)","privateKey":\[(.*?)\]\}/);
-    if (!match) {
-      return null;
-    }
-
-    let privateKeys = [];
-    try {
-      privateKeys = JSON.parse(`[${match[2]}]`);
-    } catch (error) {
-      log("error", `[Aiyifan] 解析桌面站 privateKey 失败: ${error.message}`);
-      return null;
-    }
-
-    if (!match[1] || !privateKeys.length) {
-      return null;
-    }
-
-    return {
-      publicKey: match[1],
-      privateKey: privateKeys[0]
-    };
-  }
-
-  async getSigningConfig(forceRefresh = false, sourceUrl = this.CONFIG_PAGE_API) {
-    const now = Date.now();
-    const cacheValid = this.signingConfig && now - this.signingConfigFetchedAt < this.SIGNING_CONFIG_TTL_MS;
-    if (!forceRefresh && cacheValid) {
-      return this.signingConfig;
-    }
-
-    const pageUrl = /^https:\/\/www\.yfsp\.tv\//.test(sourceUrl) ? sourceUrl : this.CONFIG_PAGE_API;
-    const headers = {
-      "User-Agent": this.USER_AGENT,
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    };
-
-    const cookieHeader = this.buildCookieHeader();
-    if (cookieHeader) {
-      headers.Cookie = cookieHeader;
-    }
-
-    try {
-      const response = await httpGet(globals.makeProxyUrl(pageUrl), { headers });
-      const html = typeof response.data === "string" ? response.data : String(response.data ?? "");
-      const signingConfig = this.extractSigningConfig(html);
-      if (!signingConfig) {
-        throw new Error("未能从桌面站页面解析到 pConfig");
-      }
-
-      this.signingConfig = signingConfig;
-      this.signingConfigFetchedAt = now;
-      log("info", `[Aiyifan] 已更新桌面站签名配置: ${signingConfig.publicKey.slice(0, 12)}...`);
-      return signingConfig;
-    } catch (error) {
-      if (this.signingConfig && !forceRefresh) {
-        log("warn", `[Aiyifan] 获取桌面站签名配置失败，继续使用缓存: ${error.message}`);
-        return this.signingConfig;
-      }
-
-      const fallbackConfig = this.getFallbackSigningConfig();
-      log("warn", `[Aiyifan] 获取桌面站签名配置失败，回退到固定签名: ${error.message}`);
-      return fallbackConfig;
-    }
-  }
-
   isRequestSuccessful(data) {
     const hasRet = data && Object.prototype.hasOwnProperty.call(data, "ret");
     if (hasRet && data.ret !== 200) {
@@ -155,63 +80,18 @@ export default class AiyifanSource extends BaseSource {
     return true;
   }
 
-  getRequestFailureMessage(data) {
+  getRequestFailureMessage(data, status = 200) {
     if (!data) {
-      return "空响应";
+      return `HTTP ${status}`;
     }
     return (data.data && data.data.msg) || data.msg || "未知错误";
   }
 
-  async requestApi(apiUrl, baseParams, actionLabel, previewLength = 200, referer = "https://www.yfsp.tv/", forceRefresh = false) {
-    const signingConfig = await this.getSigningConfig(forceRefresh, referer);
-    const params = {
-      ...baseParams,
-      vv: this.computeVv(baseParams, signingConfig),
-      pub: signingConfig.publicKey
-    };
-
+  extractEpisodeRequestKey(id) {
     try {
-      const urlWithParams = updateQueryString(apiUrl, params);
-      const headers = {
-        "User-Agent": this.USER_AGENT,
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://www.yfsp.tv",
-        "Referer": referer,
-        "X-Requested-With": "mark.via"
-      };
-
-      const cookieHeader = this.buildCookieHeader();
-      if (cookieHeader) {
-        headers.Cookie = cookieHeader;
-      }
-
-      const response = await httpGet(globals.makeProxyUrl(urlWithParams), {
-        headers
-      });
-
-      if (response.status !== undefined && response.status !== 200) {
-        const responsePreview = typeof response.data === "string"
-          ? response.data.slice(0, previewLength)
-          : response.statusText;
-        log("error", `[${actionLabel}失败] HTTP ${response.status}: ${responsePreview}`);
-        return null;
-      }
-
-      const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-      if (!this.isRequestSuccessful(data)) {
-        const message = this.getRequestFailureMessage(data);
-        if (!forceRefresh) {
-          log("warn", `[${actionLabel}] 当前签名配置请求失败，尝试刷新后重试: ${message}`);
-          return await this.requestApi(apiUrl, baseParams, actionLabel, previewLength, referer, true);
-        }
-        log("error", `[${actionLabel}失败] ${message}`);
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      log("error", `[${actionLabel}失败] 错误: ${error.message}`);
-      return null;
+      return new URL(id).searchParams.get("id") ?? id;
+    } catch {
+      return id;
     }
   }
 
@@ -226,7 +106,46 @@ export default class AiyifanSource extends BaseSource {
     };
 
     log("info", `[搜索] 关键词: ${keyword}, 页码: ${page}`);
-    return await this.requestApi(this.SEARCH_API, params, "搜索");
+
+    try {
+      const headers = {
+        "User-Agent": this.USER_AGENT,
+        "Accept": "application/json"
+      };
+      const cookieHeader = this.buildCookieHeader();
+      if (cookieHeader) {
+        headers.Cookie = cookieHeader;
+      }
+
+      const urlWithParams = updateQueryString(this.SEARCH_API, params);
+      const response = await httpGet(globals.makeProxyUrl(urlWithParams), { headers });
+      return typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+    } catch (error) {
+      log("error", `[搜索失败] 错误: ${error.message}`);
+      return null;
+    }
+  }
+
+  async requestApi(apiUrl, baseParams, actionLabel, referer = "https://www.yfsp.tv/") {
+    try {
+      const headers = {
+        "User-Agent": this.USER_AGENT,
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.yfsp.tv",
+        "Referer": referer,
+        "X-Requested-With": "mark.via"
+      };
+
+      const cookieHeader = this.buildCookieHeader();
+      if (cookieHeader) {
+        headers.Cookie = cookieHeader;
+      }
+
+      return await this.signingProvider.signedGetJson(apiUrl, baseParams, headers, actionLabel);
+    } catch (error) {
+      log("error", `[${actionLabel}失败] 错误: ${error.message}`);
+      return null;
+    }
   }
 
   extractDramaList(searchResult) {
@@ -278,12 +197,13 @@ export default class AiyifanSource extends BaseSource {
     };
 
     log("info", `[播放列表] 请求 vid: ${vid}`);
-    const data = await this.requestApi(this.PLAYLIST_API, baseParams, "播放列表", 200, this.buildPlayUrl(vid));
-    if (!data) {
+    const result = await this.requestApi(this.PLAYLIST_API, baseParams, "播放列表", this.buildPlayUrl(vid));
+    if (!result) {
       return [];
     }
 
     const episodes = [];
+    const data = result.data;
     const infoList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
     for (const info of infoList) {
       for (const ep of info.playList || []) {
@@ -310,11 +230,13 @@ export default class AiyifanSource extends BaseSource {
     const epInfo = epId ? `(ID:${epId})` : "";
     log("info", `[视频信息] 请求 key: ${epKey} ${epInfo}`);
 
-    const data = await this.requestApi(this.VIDEO_API, baseParams, "视频信息", 200, referer);
-    if (!data) {
+    const result = await this.requestApi(this.VIDEO_API, baseParams, "视频信息", referer);
+    if (!result) {
       return null;
     }
 
+    const data = result.data;
+    log("info", `[视频信息] vv签名: ${result.vv.substring(0, 16)}...`);
     if (
       data.data
       && typeof data.data === "object"
@@ -350,11 +272,13 @@ export default class AiyifanSource extends BaseSource {
 
     log("info", `[弹幕] 请求 uniqueKey: ${uniqueKey}`);
 
-    const data = await this.requestApi(this.DANMU_API, baseParams, "弹幕", 400, referer);
-    if (!data) {
+    const result = await this.requestApi(this.DANMU_API, baseParams, "弹幕", referer);
+    if (!result) {
       return [];
     }
 
+    const data = result.data;
+    log("info", `[弹幕] vv签名: ${result.vv.substring(0, 16)}...`);
     const danmuList = data && data.data && Array.isArray(data.data.info) ? data.data.info : [];
     log("info", `[弹幕] 获取到 ${danmuList.length} 条弹幕`);
     return danmuList;
@@ -481,45 +405,57 @@ export default class AiyifanSource extends BaseSource {
   async getEpisodeDanmu(id) {
     log("info", `[Aiyifan] 获取弹幕: ${id}`);
 
-    let videoId = id;
-    let bangumiId = "";
+    const requestKey = this.extractEpisodeRequestKey(id);
+    const inflightRequest = this.inflightDanmuRequests.get(requestKey);
+    if (inflightRequest) {
+      log("info", `[Aiyifan] 复用进行中的弹幕请求: ${requestKey}`);
+      return await inflightRequest;
+    }
+
+    const requestPromise = (async () => {
+      let videoId = requestKey;
+      let bangumiId = "";
+      try {
+        const parsedUrl = new URL(id);
+        const pathMatch = parsedUrl.pathname.match(/\/play\/([^/?#]+)/);
+        if (pathMatch && pathMatch[1]) {
+          bangumiId = pathMatch[1];
+        }
+      } catch {
+        videoId = requestKey;
+      }
+
+      const referer = this.buildPlayUrl(bangumiId, videoId);
+      const videoInfo = await this.getVideoInfo(videoId, null, referer);
+      if (!videoInfo) {
+        log("error", "获取视频信息失败");
+        return [];
+      }
+
+      const uniqueKey = this.extractUniqueKey(videoInfo);
+      if (!uniqueKey) {
+        log("error", "未获取到uniqueKey");
+        return [];
+      }
+
+      const danmuList = await this.fetchBarrage(uniqueKey, referer);
+      if (danmuList.length === 0) {
+        log("info", "未获取到弹幕");
+        return [];
+      }
+
+      danmuList.sort((a, b) => (a.second || 0) - (b.second || 0));
+
+      log("info", `[Aiyifan] 获取到 ${danmuList.length} 条弹幕`);
+      return danmuList;
+    })();
+
+    this.inflightDanmuRequests.set(requestKey, requestPromise);
     try {
-      const parsedUrl = new URL(id);
-      const queryId = parsedUrl.searchParams.get("id");
-      const pathMatch = parsedUrl.pathname.match(/\/play\/([^/?#]+)/);
-      if (queryId) {
-        videoId = queryId;
-      }
-      if (pathMatch && pathMatch[1]) {
-        bangumiId = pathMatch[1];
-      }
-    } catch (error) {
-      videoId = id;
+      return await requestPromise;
+    } finally {
+      this.inflightDanmuRequests.delete(requestKey);
     }
-
-    const referer = this.buildPlayUrl(bangumiId, videoId);
-    const videoInfo = await this.getVideoInfo(videoId, null, referer);
-    if (!videoInfo) {
-      log("error", "获取视频信息失败");
-      return [];
-    }
-
-    const uniqueKey = this.extractUniqueKey(videoInfo);
-    if (!uniqueKey) {
-      log("error", "未获取到uniqueKey");
-      return [];
-    }
-
-    const danmuList = await this.fetchBarrage(uniqueKey, referer);
-    if (danmuList.length === 0) {
-      log("info", "未获取到弹幕");
-      return [];
-    }
-
-    danmuList.sort((a, b) => (a.second || 0) - (b.second || 0));
-
-    log("info", `[Aiyifan] 获取到 ${danmuList.length} 条弹幕`);
-    return danmuList;
   }
 
   async getEpisodeDanmuSegments(id) {
