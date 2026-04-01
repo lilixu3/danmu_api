@@ -18,11 +18,16 @@ let sidebarRefreshTimer = null;
 let runtimePollInFlight = false;
 let sidebarRefreshInFlight = false;
 let activeSectionId = 'preview';
+let configRequest = null;
+let configCache = null;
+let configCacheFetchedAt = 0;
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
 const RUNTIME_MODAL_REFRESH_INTERVAL_MS = 1000;
 const SIDEBAR_REFRESH_INTERVAL_MS = 1000;
+const CONFIG_CACHE_TTL_MS = 5000;
+const SECTION_RENDER_STAGGER_LIMIT = 12;
 let sidebarInfoState = {
     runtimeLabel: '运行时检测中',
     versionState: 'checking',
@@ -34,6 +39,14 @@ let sidebarInfoState = {
     resourceText: '等待同步',
     cpuText: '--',
     memoryText: '--'
+};
+let sectionLoadedState = {
+    preview: false,
+    logs: false,
+    api: false,
+    push: false,
+    'request-records': false,
+    env: false
 };
 
 // 反向代理/API基础路径配置
@@ -311,12 +324,90 @@ function updateSidebarInfoCard(partial) {
     }
 }
 
-async function refreshSidebarConfiguredCount() {
+function getEntryAnimationStyle(index, stepSeconds = 0.05) {
+    if (!Number.isFinite(index) || index < 0 || index >= SECTION_RENDER_STAGGER_LIMIT) {
+        return '';
+    }
+    return ' style="animation: fadeInUp 0.3s ease-out ' + (index * stepSeconds) + 's backwards;"';
+}
+
+function applyConfigState(config) {
+    if (!config || typeof config !== 'object') {
+        return config;
+    }
+
+    currentAdminToken = config.originalEnvVars?.ADMIN_TOKEN || '';
+    originalToken = config.originalEnvVars?.TOKEN || '87654321';
+
+    const originalEnvVars = config.originalEnvVars || {};
+    envVariables = {};
+
+    Object.keys(originalEnvVars).forEach(key => {
+        const varConfig = config.envVarConfig?.[key] || { category: 'system', type: 'text', description: '未分类配置项' };
+        const category = varConfig.category || 'system';
+
+        if (!envVariables[category]) {
+            envVariables[category] = [];
+        }
+
+        envVariables[category].push({
+            key: key,
+            value: originalEnvVars[key],
+            description: varConfig.description || '',
+            type: varConfig.type || 'text',
+            min: varConfig.min,
+            max: varConfig.max,
+            options: varConfig.options || []
+        });
+    });
+
+    return config;
+}
+
+async function fetchUiConfig(options = {}) {
+    const force = Boolean(options.force);
+    const now = Date.now();
+
+    if (!force && configCache && (now - configCacheFetchedAt) < CONFIG_CACHE_TTL_MS) {
+        return configCache;
+    }
+
+    if (!force && configRequest) {
+        return configRequest;
+    }
+
+    const request = fetch(buildApiUrl('/api/config', true))
+        .then(response => {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.indexOf('application/json') === -1) {
+                return response.text().then(text => {
+                    throw new Error('Expected JSON, got ' + contentType + '. Content: ' + text.substring(0, 50) + '...');
+                });
+            }
+            if (!response.ok) {
+                throw new Error('HTTP error! status: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(config => {
+            configCache = applyConfigState(config);
+            configCacheFetchedAt = Date.now();
+            return configCache;
+        })
+        .finally(function() {
+            if (configRequest === request) {
+                configRequest = null;
+            }
+        });
+
+    configRequest = request;
+    return request;
+}
+
+async function refreshSidebarConfiguredCount(config) {
     try {
-        const response = await fetch(buildApiUrl('/api/config'));
-        if (!response.ok) return;
-        const config = await response.json();
-        const originalEnvVars = config && config.originalEnvVars ? config.originalEnvVars : {};
+        const resolvedConfig = config || await fetchUiConfig();
+        const originalEnvVars = resolvedConfig && resolvedConfig.originalEnvVars ? resolvedConfig.originalEnvVars : {};
         const manualConfigs = Object.values(originalEnvVars).filter(function(value) {
             return value !== '' && value !== null && value !== undefined;
         }).length;
@@ -351,10 +442,14 @@ async function refreshSidebarSnapshot() {
         accessMode: resolveCurrentAccessMode()
     });
 
+    const configPromise = fetchUiConfig();
+
     await Promise.allSettled([
         refreshRuntimeSummary(),
-        refreshDeployEnvStatusBadge(true),
-        refreshSidebarConfiguredCount()
+        configPromise.then(function(config) {
+            updateDeployEnvStatusBadgeFromConfig(config);
+            return refreshSidebarConfiguredCount(config);
+        })
     ]);
 }
 
@@ -364,7 +459,7 @@ function startSidebarRefreshLoop() {
     }
     sidebarRefreshTimer = setInterval(function() {
         const sidebar = document.getElementById('sidebar');
-        if (!sidebar || !sidebar.classList.contains('active') || window.innerWidth > 860) {
+        if (!sidebar || !sidebar.classList.contains('active') || window.innerWidth > 860 || document.hidden) {
             stopSidebarRefreshLoop();
             return;
         }
@@ -490,7 +585,7 @@ function updateDeployEnvStatusBadgeFromConfig(config) {
     applyDeployEnvStatusToBadge(deployEnvStatus);
 }
 
-async function refreshDeployEnvStatusBadge(force = false) {
+async function refreshDeployEnvStatusBadge(force = false, config) {
     try {
         const now = Date.now();
         if (!force && deployEnvStatus.lastUpdated && (now - deployEnvStatus.lastUpdated) < 5000) {
@@ -498,9 +593,8 @@ async function refreshDeployEnvStatusBadge(force = false) {
             return deployEnvStatus;
         }
 
-        const response = await fetch(buildApiUrl('/api/config'));
-        const config = await response.json();
-        const status = computeDeployEnvStatus(config);
+        const resolvedConfig = config || await fetchUiConfig({ force });
+        const status = computeDeployEnvStatus(resolvedConfig);
 
         deployEnvStatus = Object.assign({}, deployEnvStatus, status, { lastUpdated: now });
         applyDeployEnvStatusToBadge(deployEnvStatus);
@@ -722,6 +816,38 @@ function toggleSidebar(forceOpen) {
     }
 }
 
+function ensureSectionData(section, options = {}) {
+    const force = Boolean(options.force);
+    const preloadedConfig = options.config;
+
+    if (section === 'preview' && (force || !sectionLoadedState.preview)) {
+        sectionLoadedState.preview = true;
+        renderPreview(preloadedConfig);
+        return;
+    }
+
+    if (section === 'env' && (force || !sectionLoadedState.env)) {
+        sectionLoadedState.env = true;
+        if (preloadedConfig || !configCache) {
+            loadEnvVariables(preloadedConfig);
+        } else {
+            renderEnvList();
+        }
+        return;
+    }
+
+    if (section === 'logs' && hasProtectedUiAccessToken() && (force || !sectionLoadedState.logs)) {
+        sectionLoadedState.logs = true;
+        fetchRealLogs();
+        return;
+    }
+
+    if (section === 'request-records' && typeof refreshRequestRecords === 'function') {
+        sectionLoadedState['request-records'] = true;
+        refreshRequestRecords();
+    }
+}
+
 /* ========================================
    导航切换
    ======================================== */
@@ -887,8 +1013,8 @@ function performSectionSwitch(section, isInitialLoad = false) {
         addLog(\`切换到\${sectionTitle}模块 📍\`, 'info');
     }
 
-    if (section === 'request-records' && typeof refreshRequestRecords === 'function') {
-        refreshRequestRecords();
+    if (!isInitialLoad || configCache) {
+        ensureSectionData(section);
     }
 
     // 保存当前页面到存储，以便刷新后恢复
@@ -1094,39 +1220,16 @@ function hasProtectedUiAccessToken() {
 /* ========================================
    加载环境变量
    ======================================== */
-function loadEnvVariables() {
+function loadEnvVariables(preloadedConfig) {
     showLoadingIndicator('env-list');
-    
-    fetch(buildApiUrl('/api/config', true))
-        .then(response => response.json())
+
+    Promise.resolve(preloadedConfig || fetchUiConfig())
         .then(config => {
-            currentAdminToken = config.originalEnvVars?.ADMIN_TOKEN || '';
-            originalToken = config.originalEnvVars?.TOKEN || '87654321';
-            
-            const originalEnvVars = config.originalEnvVars || {};
-            envVariables = {};
-            
-            Object.keys(originalEnvVars).forEach(key => {
-                const varConfig = config.envVarConfig?.[key] || { category: 'system', type: 'text', description: '未分类配置项' };
-                const category = varConfig.category || 'system';
-                
-                if (!envVariables[category]) {
-                    envVariables[category] = [];
-                }
-                
-                envVariables[category].push({
-                    key: key,
-                    value: originalEnvVars[key],
-                    description: varConfig.description || '',
-                    type: varConfig.type || 'text',
-                    min: varConfig.min,
-                    max: varConfig.max,
-                    options: varConfig.options || []
-                });
-            });
-            
+            applyConfigState(config);
             hideLoadingIndicator('env-list');
-            renderEnvList();
+            if (activeSectionId === 'env') {
+                renderEnvList();
+            }
         })
         .catch(error => {
             console.error('Failed to load env variables:', error);
@@ -1169,19 +1272,8 @@ function showErrorMessage(containerId, message) {
 /* ========================================
    更新API端点信息
    ======================================== */
-function updateApiEndpoint() {
-  return fetch(buildApiUrl('/api/config', true))
-    .then(response => {
-        // 检查ContentType，如果是HTML说明可能是404页面或反代错误页面
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") === -1) {
-             throw new Error("Received HTML instead of JSON. Possible 404 or Proxy Error.");
-        }
-        if (!response.ok) {
-            throw new Error(\`HTTP error! status: \${response.status}\`);
-        }
-        return response.json();
-    })
+function updateApiEndpoint(preloadedConfig) {
+  return Promise.resolve(preloadedConfig || fetchUiConfig())
     .then(config => {
       let _reverseProxy = customBaseUrl; // 使用全局配置
 
@@ -1281,7 +1373,7 @@ function updateApiEndpoint() {
               document.getElementById('custom-base-url').value = customBaseUrl;
           }
       }
-      
+
       throw error; // 抛出错误，以便调用者可以处理
     });
 }
@@ -2222,20 +2314,17 @@ function copyApiEndpoint() {
 async function init() {
     // 注意：页面恢复逻辑已移至 DOMContentLoaded 以消除闪烁
     try {
-        await updateApiEndpoint();
+        const config = await fetchUiConfig({ force: true });
+        await updateApiEndpoint(config);
         updateCurrentModeDisplay();
         await refreshRuntimeSummary();
-        const config = await fetchAndSetConfig();
         updateDeployEnvStatusBadgeFromConfig(config);
+        refreshSidebarConfiguredCount(config);
         setDefaultPushUrl(config);
         checkAndHandleAdminToken();
-        loadEnvVariables();
-        renderEnvList();
-        renderPreview();
+        applyConfigState(config);
+        ensureSectionData(activeSectionId, { force: true, config });
         addLog('🎉 系统初始化完成', 'success');
-        if (hasProtectedUiAccessToken()) {
-            fetchRealLogs();
-        }
     } catch (error) {
         console.error('初始化失败:', error);
         addLog('❌ 系统初始化失败: ' + error.message, 'error');
@@ -2249,10 +2338,6 @@ async function init() {
             }
         }
         
-        // 即使初始化失败，也只在已鉴权时尝试获取日志
-        if (hasProtectedUiAccessToken()) {
-            fetchRealLogs();
-        }
     }
     // 初始化弹幕测试相关功能
     if (document.getElementById('danmu-heatmap-canvas')) {

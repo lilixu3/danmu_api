@@ -2,27 +2,14 @@
 export const previewJsContent = /* javascript */ `/* ========================================
    渲染配置预览
    ======================================== */
-function renderPreview() {
+function renderPreview(preloadedConfig) {
     const preview = document.getElementById('preview-area');
     const proxyConfigContainer = document.getElementById('proxy-config-container');
     
     // 显示加载状态
     showLoadingIndicator('preview-area');
     
-    fetch(buildApiUrl('/api/config'))
-        .then(response => {
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.indexOf('application/json') === -1) {
-                // 返回文本以便后续处理（例如显示HTML错误的前几个字符）
-                return response.text().then(text => {
-                    throw new Error('Expected JSON, got ' + contentType + '. Content: ' + text.substring(0, 50) + '...');
-                });
-            }
-            if (!response.ok) {
-                throw new Error('HTTP error! status: ' + response.status);
-            }
-            return response.json();
-        })
+    Promise.resolve(preloadedConfig || fetchUiConfig())
         .then(config => {
             // 成功加载，隐藏反代配置框
             if (proxyConfigContainer) {
@@ -58,8 +45,8 @@ function renderPreview() {
                 });
             }
             
-            // 检测系统状态
-            checkSystemStatus();
+            // 预览已成功加载配置，可直接视为服务可正常使用
+            updateSystemStatusUI('running', '可正常使用');
             
             sortedCategories.forEach((category, index) => {
                 const items = categorizedVars[category];
@@ -68,7 +55,7 @@ function renderPreview() {
                 const categoryColor = getCategoryColor(category);
                 
                 html += \`
-                    <div class="preview-category" style="animation: fadeInUp 0.4s ease-out \${index * 0.1}s backwards;">
+                    <div class="preview-category"\${getEntryAnimationStyle(index, 0.1)}>
                         <div class="preview-category-header">
                             <h3 class="preview-category-title">
                                 <span class="category-icon" style="background: \${categoryColor};">\${categoryIcon}</span>
@@ -81,7 +68,7 @@ function renderPreview() {
                                 const hasValue = hasConfigValue(item.value);
                                 const rawValue = hasValue ? String(item.value) : '未设置';
                                 return \`
-                                    <div class="preview-item \${hasValue ? 'preview-item-filled' : 'preview-item-empty'}" style="animation: fadeInUp 0.3s ease-out \${(index * 0.1) + (itemIndex * 0.05)}s backwards;">
+                                    <div class="preview-item \${hasValue ? 'preview-item-filled' : 'preview-item-empty'}"\${getEntryAnimationStyle(index * 6 + itemIndex, 0.05)}>
                                         <div class="preview-item-header">
                                             <strong class="preview-key">\${escapeHtml(item.key)}</strong>
                                             <span class="preview-type-badge">\${getTypeBadge(item.type || 'text')}</span>

@@ -507,12 +507,7 @@ async function checkDeployPlatformConfig() {
     }
     
     try {
-        const response = await fetch(buildApiUrl('/api/config', true));
-        if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
-        }
-        
-        const config = await response.json();
+        const config = await fetchUiConfig();
         const deployPlatform = config.envs.deployPlatform || 'node';
         
         const platform = deployPlatform.toLowerCase();
@@ -561,7 +556,7 @@ async function checkDeployPlatformConfig() {
    获取并设置配置信息
    ======================================== */
 async function fetchAndSetConfig() {
-    const config = await fetch(buildApiUrl('/api/config', true)).then(response => response.json());
+    const config = await fetchUiConfig({ force: true });
     currentAdminToken = config.originalEnvVars?.ADMIN_TOKEN || '';
     return config;
 }
@@ -609,7 +604,7 @@ function renderEnvList() {
                           (item.type === 'map' || item.type === 'timeline-offset') ? 'map' : '';
 
         return \`
-            <div class="env-item" style="animation: fadeInUp 0.3s ease-out \${index * 0.05}s backwards;">
+            <div class="env-item"\${getEntryAnimationStyle(index, 0.05)}>
                 <div class="env-info">
                     <div class="env-key">
                         <strong>\${item.key}</strong>
