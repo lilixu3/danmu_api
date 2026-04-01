@@ -22,37 +22,41 @@
 
 ## 快速开始
 
-### Docker 推荐用法
+### 推荐方式：Docker Compose
+
+按下面步骤操作即可直接启动。
+
+#### 第 1 步：准备配置目录和配置文件
+
+在项目根目录执行：
 
 ```bash
-docker pull lilixu3/danmu-api:latest
-
-docker run -d \
-  --name danmu-api \
-  -p 9321:9321 \
-  -v $(pwd)/config:/app/config \
-  -v $(pwd)/.cache:/app/.cache \
-  -e TOKEN=87654321 \
-  -e ADMIN_TOKEN=admin \
-  --restart unless-stopped \
-  lilixu3/danmu-api:latest
-```
-
-如果是 Docker 部署，建议先复制一份配置文件：
-
-```bash
+mkdir -p ./config
 cp ./config/.env.example ./config/.env
 ```
 
-启动后常用入口：
+然后编辑 `./config/.env`，至少确认下面这些变量：
 
-- API 根地址：`http://{ip}:9321`
-- 普通 UI：`http://{ip}:9321/{TOKEN}`
-- 管理员 UI：`http://{ip}:9321/{ADMIN_TOKEN}`
+```env
+TOKEN=87654321
 
-如果 `TOKEN` 仍为默认值 `87654321`，大多数 API 可以直接省略 token 前缀访问。
+# 管理员功能不是默认开启的，只有你自己显式设置后才可用
+ADMIN_TOKEN=your-admin-token
 
-### Docker Compose 示例
+# 如需在前端使用 Docker 在线更新，建议开启
+ENABLE_RUNTIME_CONTROL=true
+DOCKER_CONTAINER_NAME=danmu-api
+DOCKER_IMAGE_NAME=lilixu3/danmu-api
+```
+
+最少要理解这几个值：
+
+- `TOKEN`：普通 API 和普通 UI 访问令牌
+- `ADMIN_TOKEN`：管理员 UI 和管理操作令牌，没有默认值，不配置则管理员功能关闭
+- `ENABLE_RUNTIME_CONTROL=true`：启用运行状态面板里的 Docker 在线更新能力
+- `DOCKER_CONTAINER_NAME=danmu-api`：要和下面 `docker-compose.yml` 里的 `container_name` 保持一致
+
+#### 第 2 步：在项目根目录创建 `docker-compose.yml`
 
 ```yaml
 services:
@@ -64,11 +68,76 @@ services:
     volumes:
       - ./config:/app/config
       - ./.cache:/app/.cache
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 ```
 
+这个模板已经默认包含：
+
+- `./config:/app/config`
+  让容器直接读取你本地的 `config/.env`
+- `./.cache:/app/.cache`
+  让缓存能落盘，减少重复请求和冷启动影响
+- `/var/run/docker.sock:/var/run/docker.sock`
+  让前端运行状态面板可以读取 Docker 状态，并支持在线更新
+
+如果你不需要前端在线更新，可以删掉：
+
+- `ENABLE_RUNTIME_CONTROL=true`
+- `/var/run/docker.sock:/var/run/docker.sock`
+
+#### 第 3 步：启动服务
+
 ```bash
 docker compose up -d
+```
+
+查看状态：
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+#### 第 4 步：验证是否启动成功
+
+启动成功后，直接访问：
+
+- API 根地址：`http://{你的服务器IP}:9321`
+- 普通 UI：`http://{你的服务器IP}:9321/{TOKEN}`
+- 管理员 UI：`http://{你的服务器IP}:9321/{ADMIN_TOKEN}`（仅在你显式配置 `ADMIN_TOKEN` 后可用）
+
+例如你保持 `TOKEN` 默认值、并把 `ADMIN_TOKEN` 设成 `my-admin-token`：
+
+- 普通 UI：`http://{你的服务器IP}:9321/87654321`
+- 管理员 UI：`http://{你的服务器IP}:9321/my-admin-token`
+
+也可以直接测试搜索接口：
+
+```bash
+curl "http://127.0.0.1:9321/api/v2/search/anime?keyword=生万物"
+```
+
+如果 `TOKEN` 仍为默认值 `87654321`，大多数 API 可以直接省略 token 前缀访问。
+
+### 备选方式：docker run
+
+```bash
+docker pull lilixu3/danmu-api:latest
+
+docker run -d \
+  --name danmu-api \
+  -p 9321:9321 \
+  -v $(pwd)/config:/app/config \
+  -v $(pwd)/.cache:/app/.cache \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e TOKEN=87654321 \
+  -e ADMIN_TOKEN=your-admin-token \
+  -e ENABLE_RUNTIME_CONTROL=true \
+  -e DOCKER_CONTAINER_NAME=danmu-api \
+  -e DOCKER_IMAGE_NAME=lilixu3/danmu-api \
+  --restart unless-stopped \
+  lilixu3/danmu-api:latest
 ```
 
 ### 本地 Node.js 运行
@@ -95,7 +164,7 @@ npm start
 - 普通访问令牌：`TOKEN`
   用于普通 API、普通 UI、接口测试、日志查看、运行状态查看。
 - 管理员令牌：`ADMIN_TOKEN`
-  用于环境变量修改、清缓存、云端重部署、Docker 在线更新、Cookie 写入、AI 连通性验证等写操作。
+  没有默认值。只有你显式配置后，才能用于环境变量修改、清缓存、云端重部署、Docker 在线更新、Cookie 写入、AI 连通性验证等写操作。
 
 当前权限规则：
 
@@ -149,7 +218,7 @@ npm start
 
 - `ENABLE_RUNTIME_CONTROL=true`
 - 容器内能访问 Docker socket
-- 建议挂载：`-v /var/run/docker.sock:/var/run/docker.sock`
+- 默认模板中已经包含：`/var/run/docker.sock:/var/run/docker.sock`
 
 可选但推荐的变量：
 
@@ -187,34 +256,62 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 
 ## 常用 API
 
+说明：
+
+- 如果你自定义了 `TOKEN` 且不再使用默认值，通常需要带 `/{TOKEN}` 前缀访问。
+- 下列接口只列最常用的一组，完整能力可直接在 UI 的“接口测试”里查看。
+
 ### 兼容弹弹play 的业务接口
 
 - `GET /api/v2/search/anime?keyword=xxx`
+  按剧名关键字搜索番剧列表，返回可用于后续匹配和详情查询的候选结果。
 - `GET /api/v2/search/episodes?anime=xxx`
+  直接按剧名搜索剧集结果，适合快速拿到分集列表。
 - `POST /api/v2/match`
+  根据文件名或标题自动匹配番剧和集数，适合播放器自动刮削场景。
 - `GET /api/v2/bangumi/:animeId`
+  获取指定番剧详情和剧集列表。
 - `GET /api/v2/comment/:commentId?format=json|xml`
+  按 `commentId` 获取弹幕，可输出 `json` 或 `xml`。
 - `GET /api/v2/comment?url={videoUrl}&format=json|xml`
+  直接按视频链接获取弹幕，适合已知源站 URL 的场景。
 - `GET /api/v2/comment/:commentId/duration`
+  获取该剧集的时长信息，便于播放器校准时间轴。
 - `POST /api/v2/segmentcomment?format=json`
+  按分片信息拉取单个分片弹幕，适合需要分片加载的客户端。
 
 ### UI / 系统接口
 
 - `GET /api/config`
+  获取当前配置预览、环境变量分类信息和 UI 初始化所需数据。
 - `GET /api/logs`
+  读取最近日志。
 - `GET /api/reqrecords`
+  读取最近请求记录和今日请求总数。
 - `POST /api/logs/clear`
+  清空日志，仅管理员可用。
 - `POST /api/cache/clear`
+  清空内存 / 本地 / Redis 缓存，仅管理员可用。
 - `POST /api/deploy`
+  触发云平台重新部署，仅管理员可用。
 - `GET /api/runtime/info`
+  获取运行时状态、版本信息和资源指标，只读开放。
 - `POST /api/runtime/check-update`
+  主动检查最新版本，只读开放。
 - `POST /api/runtime/update`
+  执行 Docker 在线更新，仅管理员可用。
 - `POST /api/env/set`
+  修改现有环境变量，仅管理员可用。
 - `POST /api/env/add`
+  新增环境变量，仅管理员可用。
 - `POST /api/env/del`
+  删除环境变量，仅管理员可用。
 - `GET /api/cookie/status`
+  获取 Bilibili Cookie 当前状态。
 - `POST /api/cookie/*`
+  处理二维码登录、Cookie 校验、保存、清理、刷新等操作，仅管理员可用。
 - `POST /api/ai/verify`
+  测试 AI 配置连通性，仅管理员可用。
 
 ## 环境变量说明
 
