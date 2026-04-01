@@ -182,6 +182,193 @@
 - 云平台重部署依赖 `DEPLOY_PLATFROM_ACCOUNT`、`DEPLOY_PLATFROM_PROJECT`、`DEPLOY_PLATFROM_TOKEN`
 - 如果未配置这些参数，系统设置页会提示缺失项
 
+## 云平台环境变量与在线重部署
+
+这一节专门回答两个问题：
+
+- 哪些最小环境变量必须先手动配好，前端才能开始改配置
+- 各平台里的 `DEPLOY_PLATFROM_*` 到底分别该填什么
+
+先记住一条总规则：
+
+- 第一次启用管理员 UI 时，必须先在云平台控制台里手动写入 `ADMIN_TOKEN`
+- 然后使用 `/{ADMIN_TOKEN}` 打开页面
+- 只有这样，系统设置页里的环境变量写回、云端重部署、Cookie 保存、AI 连通性测试这些管理员操作才会出现并可执行
+
+### 所有云平台都要先满足的条件
+
+| 项目 | 是否必需 | 作用 |
+|---|---|---|
+| `TOKEN` | 建议 | 普通 UI / API 访问令牌 |
+| `ADMIN_TOKEN` | 必需 | 管理员 UI 入口，不配置就没有管理员能力 |
+| `DEPLOY_PLATFROM_*` | 视平台而定 | 让 UI 能调用平台 API 写回环境变量并触发重部署 |
+| `RUNTIME_MODE=cloud` | 可选 | 一般不需要；只有运行时识别失败时再补 |
+
+补充说明：
+
+- Vercel / Netlify / Cloudflare / EdgeOne 这类部署，真正生效的是平台控制台里的环境变量，不是本地 `config/.env`
+- Node / Docker 可以热加载多数配置；云平台通常要重新部署后，新实例才会读取到改动
+- 运行状态面板的只读信息不要求 `ADMIN_TOKEN`，但写操作一定要求
+
+### 平台字段含义总览
+
+| 平台 | `DEPLOY_PLATFROM_ACCOUNT` | `DEPLOY_PLATFROM_PROJECT` | `DEPLOY_PLATFROM_TOKEN` |
+|---|---|---|---|
+| Vercel | 不需要 | Vercel Project ID，通常以 `prj_` 开头 | Vercel Access Token |
+| Netlify | Team slug 或 account ID | Site ID，Netlify UI 中也叫 Project ID | Netlify Personal Access Token |
+| Cloudflare Workers | Cloudflare Account ID | Worker 脚本名 | Cloudflare API Token |
+| EdgeOne Pages | 当前实现不使用，可留空 | EdgeOne Pages `ProjectId` | EdgeOne Pages API Token |
+
+### Vercel
+
+推荐最小配置：
+
+```env
+TOKEN=your-token
+ADMIN_TOKEN=your-admin-token
+DEPLOY_PLATFROM_PROJECT=prj_xxxxxxxxxxxx
+DEPLOY_PLATFROM_TOKEN=your-vercel-access-token
+```
+
+在哪里找：
+
+- `DEPLOY_PLATFROM_PROJECT`
+  进入项目后打开 `Settings -> General -> Project ID`
+- `DEPLOY_PLATFROM_TOKEN`
+  进入账号 Token 页面：<https://vercel.com/account/tokens>
+- 环境变量页面
+  进入项目后打开 `Settings -> Environment Variables`
+- 部署记录页面
+  进入项目后打开 `Deployments`
+
+官方文档：
+
+- [Vercel Environment Variables](https://vercel.com/docs/environment-variables)
+- [Vercel General Settings](https://vercel.com/docs/projects/project-configuration/general-settings)
+- [How do I use a Vercel API access token?](https://examples.vercel.com/guides/how-do-i-use-a-vercel-api-access-token)
+
+实现说明：
+
+- 当前项目对 Vercel 的环境变量读写使用的是 Project API，所以这里必须填 Project ID，不是项目名。
+- 触发“重新部署”时，会基于最近一次生产部署重新发起部署。
+- 按 Vercel 官方说明，环境变量改动不会自动作用到旧部署，所以前端修改完后仍需要重部署，这也是 UI 里会继续提供“重新部署”按钮的原因。
+
+### Netlify
+
+推荐最小配置：
+
+```env
+TOKEN=your-token
+ADMIN_TOKEN=your-admin-token
+DEPLOY_PLATFROM_ACCOUNT=your-team-slug
+DEPLOY_PLATFROM_PROJECT=your-site-id
+DEPLOY_PLATFROM_TOKEN=your-netlify-pat
+```
+
+在哪里找：
+
+- `DEPLOY_PLATFROM_ACCOUNT`
+  推荐直接填 Team slug；按 `Team settings -> General -> Team information` 查找
+- `DEPLOY_PLATFROM_PROJECT`
+  按 `Project configuration -> General -> Project information` 查找 Project ID
+- `DEPLOY_PLATFROM_TOKEN`
+  打开 Personal Access Token 页面：<https://app.netlify.com/user/applications#personal-access-tokens>
+- 环境变量页面
+  打开 `Project configuration -> Environment variables`
+- 部署记录页面
+  打开 `Deploys`
+
+官方文档：
+
+- [Netlify environment variables overview](https://docs.netlify.com/build/environment-variables/overview/)
+- [Get started with the Netlify API](https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/)
+- [Get started with Netlify CLI](https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/)
+
+实现说明：
+
+- 当前项目调用的是 Netlify Accounts / Env API，因此 `DEPLOY_PLATFROM_ACCOUNT` 建议直接填 team slug 或 account ID。
+- `DEPLOY_PLATFROM_PROJECT` 实际上传给 API 的是 `site_id`，所以这里必须填 Site ID / Project ID。
+- Netlify 的环境变量改动通常需要新的 deploy/build 才会体现在运行实例里，所以前端改完后要继续触发一次“重新部署”。
+
+### Cloudflare Workers
+
+推荐最小配置：
+
+```env
+TOKEN=your-token
+ADMIN_TOKEN=your-admin-token
+DEPLOY_PLATFROM_ACCOUNT=your-account-id
+DEPLOY_PLATFROM_PROJECT=your-worker-name
+DEPLOY_PLATFROM_TOKEN=your-cloudflare-api-token
+```
+
+在哪里找：
+
+- `DEPLOY_PLATFROM_ACCOUNT`
+  进入 `Workers & Pages` 页面后，可在账号信息区域看到 Account ID
+- `DEPLOY_PLATFROM_PROJECT`
+  填当前 Worker 的脚本名
+- `DEPLOY_PLATFROM_TOKEN`
+  打开 API Token 页面：<https://dash.cloudflare.com/profile/api-tokens>
+- 环境变量页面
+  进入 `Workers & Pages -> 你的 Worker -> Settings -> Variables and Secrets`
+
+官方文档：
+
+- [Find account and zone IDs](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
+- [Create API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+- [Cloudflare Workers environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/)
+
+实现说明：
+
+- 当前项目这里走的是 Workers Script Settings API，不是通用的 Pages 项目环境变量接口。
+- 所以 `DEPLOY_PLATFROM_PROJECT` 应填 Worker 脚本名，不是域名，也不是 Pages 自定义项目标题。
+- 当前写回逻辑会把变量按普通文本绑定写入 Worker 设置，更适合一般配置项；如果你对 Cloudflare Secret 的掩码管理要求很高，建议敏感变量仍优先在控制台手动维护。
+- Cloudflare 这里没有额外的 `/api/deploy` 动作，项目当前实现把环境变量写回视为平台侧立即接管，前端重点是“写回变量”而不是单独触发一次云构建。
+
+### EdgeOne Pages
+
+推荐最小配置：
+
+```env
+TOKEN=your-token
+ADMIN_TOKEN=your-admin-token
+DEPLOY_PLATFROM_PROJECT=your-project-id
+DEPLOY_PLATFROM_TOKEN=your-edgeone-pages-api-token
+```
+
+在哪里找：
+
+- `DEPLOY_PLATFROM_TOKEN`
+  官方文档对应的控制台入口是 `API Token` 标签页，文档入口：<https://pages.edgeone.ai/document/api-token>
+- 环境变量页面
+  进入项目后查看 `Project Settings`
+- 部署记录 / 手动部署页面
+  进入 `Deployments` 或对应部署管理页
+- `DEPLOY_PLATFROM_PROJECT`
+  这里要求的是 Pages API 使用的 `ProjectId`
+
+官方文档：
+
+- [API Token](https://pages.edgeone.ai/document/api-token)
+- [Project Management](https://pages.edgeone.ai/document/project-management)
+- [Build Guide](https://pages.edgeone.ai/document/build-guide)
+- [Manage Deploys](https://pages.edgeone.ai/document/manage-deploys)
+
+实现说明：
+
+- 当前实现只实际使用 `DEPLOY_PLATFROM_PROJECT` 和 `DEPLOY_PLATFROM_TOKEN`，`DEPLOY_PLATFROM_ACCOUNT` 可以留空。
+- 这里要求填写的是 `ProjectId`，不是项目显示名。官方文档目前没有把固定页面位置写得很死，所以如果你在控制台里没有直接看到该字段，建议以项目 API 返回值或控制台内部请求里显示的 `ProjectId` 为准。
+- 当前在线重部署请求固定使用 `main` 分支；如果你的生产分支不是 `main`，前端触发部署可能不会落到正确分支，这种情况下建议继续在 EdgeOne 控制台手动发起部署。
+
+### 推荐的启用顺序
+
+1. 先在云平台控制台手动配置 `TOKEN`、`ADMIN_TOKEN` 和对应 `DEPLOY_PLATFROM_*`
+2. 部署完成后，用 `/{ADMIN_TOKEN}` 打开管理员 UI
+3. 先在系统设置页检查“部署配置状态”是否完整
+4. 再使用前端继续修改其他业务环境变量
+5. 修改完后，按平台触发“重新部署”，或等待平台自身接管新配置
+
 ## Bilibili Cookie 管理
 
 当你在系统设置里编辑 `BILIBILI_COOKIE` 时，UI 会切换到专用编辑面板。

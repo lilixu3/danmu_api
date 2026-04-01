@@ -418,10 +418,45 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 - Cloudflare Workers
 - EdgeOne Pages
 
-说明：
+先说明一个关键前提：
 
-- 这些平台需要先配置对应的 `DEPLOY_PLATFROM_*` 参数，管理员才能在 UI 中修改环境变量并触发重部署。
+- 云平台上想启用“前端改配置”和“在线重部署”，不是只把代码部署上去就够了。
+- 你必须先在云平台控制台里手动写入最小启动变量，让服务先拥有管理员入口和平台 API 凭据。
+- 然后使用 `/{ADMIN_TOKEN}` 打开管理员 UI，后续才可以从前端继续维护大部分环境变量。
+
+最小启用条件：
+
+- 设置 `ADMIN_TOKEN`
+- 使用 `/{ADMIN_TOKEN}` 访问管理员 UI
+- 在对应云平台中配置好 `DEPLOY_PLATFROM_*`
+- 如平台自动识别失败，再补 `RUNTIME_MODE=cloud`
+
+### 云平台最小配置速查
+
+| 平台 | 最少需要配置 | `DEPLOY_PLATFROM_ACCOUNT` 含义 | `DEPLOY_PLATFROM_PROJECT` 含义 | `DEPLOY_PLATFROM_TOKEN` 含义 |
+|---|---|---|---|---|
+| Vercel | `ADMIN_TOKEN` `DEPLOY_PLATFROM_PROJECT` `DEPLOY_PLATFROM_TOKEN` | 不需要 | Vercel Project ID，通常以 `prj_` 开头 | Vercel Access Token |
+| Netlify | `ADMIN_TOKEN` `DEPLOY_PLATFROM_ACCOUNT` `DEPLOY_PLATFROM_PROJECT` `DEPLOY_PLATFROM_TOKEN` | Team slug 或 account ID | Site ID，Netlify UI 中也叫 Project ID | Netlify Personal Access Token |
+| Cloudflare Workers | `ADMIN_TOKEN` `DEPLOY_PLATFROM_ACCOUNT` `DEPLOY_PLATFROM_PROJECT` `DEPLOY_PLATFROM_TOKEN` | Cloudflare Account ID | Worker 脚本名 | Cloudflare API Token |
+| EdgeOne Pages | `ADMIN_TOKEN` `DEPLOY_PLATFROM_PROJECT` `DEPLOY_PLATFROM_TOKEN` | 当前实现不使用，可留空 | EdgeOne Pages `ProjectId` | EdgeOne Pages API Token |
+
+补充说明：
+
+- 这些变量要配在云平台自己的环境变量页面里，不是只写本地 `config/.env`。
 - Node / Docker 部署不走云端重部署接口，通常是直接热加载或本地生效。
+- Cloudflare 这条当前按 Workers Script Settings API 实现，`DEPLOY_PLATFROM_PROJECT` 应填 Worker 名称，不是自定义域名。
+- EdgeOne 当前在线重部署请求固定按 `main` 分支触发；如果你的生产分支不是 `main`，请先调整仓库分支策略，或暂时在控制台手动重部署。
+
+### 去哪里找这些值
+
+| 平台 | 控制台入口 / 页面地址 | 官方文档 |
+|---|---|---|
+| Vercel | Token 页面：<https://vercel.com/account/tokens>；项目内按 `Settings -> General -> Project ID`、`Settings -> Environment Variables` 查找 | [Environment Variables](https://vercel.com/docs/environment-variables) / [General Settings](https://vercel.com/docs/projects/project-configuration/general-settings) / [Access Token Guide](https://examples.vercel.com/guides/how-do-i-use-a-vercel-api-access-token) |
+| Netlify | PAT 页面：<https://app.netlify.com/user/applications#personal-access-tokens>；项目内按 `Project configuration -> General -> Project information` 查 Project ID；团队内按 `Team settings -> General -> Team information` 查 Team slug | [Environment variables overview](https://docs.netlify.com/build/environment-variables/overview/) / [Get started with the Netlify API](https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/) / [Get started with Netlify CLI](https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/) |
+| Cloudflare Workers | Token 页面：<https://dash.cloudflare.com/profile/api-tokens>；`Workers & Pages` 页面可查看 Account ID，并进入 Worker 的 `Settings -> Variables and Secrets` | [Find account and zone IDs](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/) / [Create API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) / [Environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/) |
+| EdgeOne Pages | Pages 控制台 API Token 文档：<https://pages.edgeone.ai/document/api-token>；项目配置和环境变量入口见 `Project Settings` / 部署页 | [API Token](https://pages.edgeone.ai/document/api-token) / [Project Management](https://pages.edgeone.ai/document/project-management) / [Build Guide](https://pages.edgeone.ai/document/build-guide) / [Manage Deploys](https://pages.edgeone.ai/document/manage-deploys) |
+
+更细的逐平台说明、字段怎么填、有哪些实现差异，见 [danmu_api/ui/README.md](./danmu_api/ui/README.md) 中的“云平台环境变量与在线重部署”章节。
 
 ## 相关项目
 
