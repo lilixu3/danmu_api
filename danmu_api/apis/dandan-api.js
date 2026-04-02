@@ -2089,7 +2089,7 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
   return formatDanmuResponse(responseData, queryFormat);
 }
 
-// Extracted function for GET /api/v2/comment?url=xxx
+// Extracted function for GET /api/v2/comment?url=xxx or /api/v2/extcomment?url=xxx
 export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includeDuration = false) {
   try {
     const validation = await validateExternalUrl(videoUrl);

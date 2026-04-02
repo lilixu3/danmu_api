@@ -450,8 +450,8 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     return getCommentDuration(path);
   }
 
-  // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx
-  if (path.startsWith("/api/v2/comment") && method === "GET") {
+  // GET /api/v2/comment/:commentId or /api/v2/comment?url=xxx or /api/v2/extcomment?url=xxx
+  if ((path.startsWith("/api/v2/comment") || path.startsWith("/api/v2/extcomment")) && method === "GET") {
     const queryFormat = url.searchParams.get('format');
     const videoUrl = url.searchParams.get('url');
     const segmentFlag = parseBoolean(url.searchParams.get('segmentflag'), false);
