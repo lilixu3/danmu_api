@@ -5,7 +5,7 @@ import { httpGet } from "../utils/http-util.js";
 import { addAnime, removeEarliestAnime } from "../utils/cache-util.js";
 import { simplized } from "../utils/zh-util.js";
 import { SegmentListResponse } from '../models/dandan-model.js';
-import { getTmdbJaOriginalTitle } from "../utils/tmdb-util.js";
+import { getTmdbJaOriginalTitle, smartTitleReplace, cleanSearchQuery } from "../utils/tmdb-util.js";
 import TencentSource from "./tencent.js";
 import IqiyiSource from "./iqiyi.js";
 import MangoSource from "./mango.js";
@@ -84,7 +84,7 @@ export default class DandanSource extends BaseSource {
           // 延迟100毫秒，避免与原始搜索争抢同一连接池
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          // 获取 TMDB 日语原名
+          // 获取 TMDB 日语原名及中文别名
           const tmdbResult = await getTmdbJaOriginalTitle(keyword, tmdbAbortController.signal, "Dandan");
 
           // 如果没有结果或者没有标题，则停止
@@ -93,7 +93,7 @@ export default class DandanSource extends BaseSource {
             return { success: false, source: 'tmdb' };
           }
 
-          const { title: tmdbTitle } = tmdbResult;
+          const { title: tmdbTitle, cnAlias } = tmdbResult;
           log("info", `[Dandan] 使用日语原名通过 episodes 接口进行搜索: ${tmdbTitle}`);
 
           // episodes 接口对日语原名的支持更好，使用其进行 TMDB 原名搜索
@@ -119,9 +119,10 @@ export default class DandanSource extends BaseSource {
 
           const animes = resp.data.animes;
 
-          // 标记 TMDB 来源，供后续处理环节识别以跳过常规标题匹配
+          // 标记 TMDB 来源并注入别名，供后续处理环节识别与替换
           for (const anime of animes) {
             anime.isTmdbSource = true;
+            anime._tmdbCnAlias = cnAlias;
           }
 
           log("info", `dandanSearchresp (tmdb): ${JSON.stringify(animes)}`);
@@ -270,6 +271,15 @@ export default class DandanSource extends BaseSource {
       return [];
     }
 
+    // 提取并映射 title 字段以适配 smartTitleReplace 工具
+    sourceAnimes.forEach(anime => {
+      anime.title = anime.animeTitle;
+    });
+
+    // 应用 TMDB 智能标题替换
+    const cnAlias = sourceAnimes.length > 0 ? sourceAnimes[0]._tmdbCnAlias : null;
+    smartTitleReplace(sourceAnimes, cnAlias);
+
     // 初始搜索结果数量，用于判断是否展开相关作品搜索
     const initialCount = sourceAnimes.length;
 
@@ -286,12 +296,19 @@ export default class DandanSource extends BaseSource {
     while (queue.length > 0) {
       const currentBatch = queue.splice(0, queue.length);
 
+      // 使动态加入的相关作品调用 TMDB 智能替换
+      const newlyAddedRelateds = currentBatch.filter(a => a.isRelated && !a._displayTitle);
+      if (newlyAddedRelateds.length > 0) {
+        newlyAddedRelateds.forEach(a => a.title = a.animeTitle);
+        smartTitleReplace(newlyAddedRelateds, cnAlias);
+      }
+
       await Promise.all(currentBatch.map(async (anime) => {
         try {
           // 获取详情数据（包含剧集、别名和相关作品）
           const details = await this.getEpisodes(anime.animeId);
           const eps = details.episodes; // 提取剧集列表
-          const aliases = details.titles; // 提取别名列表
+          const apiAliases = details.titles || []; // 提取 API 返回的别名列表
 
           // 计算当前作品标题与用户原始搜索词的相似度
           const similarity = this.calculateSimilarity(queryTitle, anime.animeTitle);
@@ -315,11 +332,11 @@ export default class DandanSource extends BaseSource {
           }
 
           // 区分初始搜索结果与动态相关作品的结果过滤逻辑
-          const allTitles = [anime.animeTitle, ...aliases];
+          const allTitles = [anime.animeTitle, ...apiAliases];
           let isMatch = false;
 
           if (anime.isRelated || anime.isTmdbSource) {
-            // 相关作品及 TMDB 原名搜索结果仅执行季度过滤，避免语言差异误伤
+            // 相关作品及 TMDB 原名搜索结果仅执行季度过滤，避免标题差异误伤
             const querySeason = getExplicitSeasonNumber(queryTitle);
             if (querySeason !== null) {
               let titleSeason = null;
@@ -360,6 +377,30 @@ export default class DandanSource extends BaseSource {
           }
 
           if (links.length > 0) {
+            // 复用 TMDB 工具清洗用户搜索词剥离季度/Part等后缀
+            const baseQueryTitle = cleanSearchQuery(queryTitle);
+
+            // 在官方别名池中寻找与纯净主标题精确匹配的别名（忽略大小写）
+            const matchedApiAlias = apiAliases.find(alias => {
+                if (!alias) return false;
+                return alias.toLowerCase() === baseQueryTitle.toLowerCase();
+            });
+
+            // 如果详情接口中存在完全匹配的官方别名，强制复用智能拼接替换
+            if (matchedApiAlias) {
+                smartTitleReplace([anime], matchedApiAlias);
+                log("info", `[Dandan] 命中 API 官方别名: 搜索词 "${baseQueryTitle}" 匹配到 "${matchedApiAlias}", 已将原标题 "${anime.animeTitle}" 替换展示`);
+            }
+
+            // 优先使用 智能标题替换后的标题，如果没有则直接使用原标题
+            const displayTitle = anime._displayTitle || anime.animeTitle;
+
+            // 合并别名池：API返回的别名 + 原始标题（供合并工具对齐使用）
+            const finalAliases = [...apiAliases];
+            if (anime.animeTitle && anime.animeTitle !== displayTitle && !finalAliases.includes(anime.animeTitle)) {
+              finalAliases.push(anime.animeTitle);
+            }
+
             // 构造标准番剧对象
             // 类型统一从 bangumi 详情接口读取，确保相关作品不会错误继承主作品类型
             const resolvedType = details.type || anime.type || "tvseries";
@@ -370,8 +411,8 @@ export default class DandanSource extends BaseSource {
             let transformedAnime = {
               animeId: anime.animeId,
               bangumiId: String(anime.animeId),
-              animeTitle: `${anime.animeTitle}(${yearStr})【${resolvedTypeDescription}】from dandan`,
-              aliases: aliases,
+              animeTitle: `${displayTitle}(${yearStr})【${resolvedTypeDescription}】from dandan`,
+              aliases: finalAliases,
               type: resolvedType,
               typeDescription: resolvedTypeDescription,
               imageUrl: details.imageUrl || anime.imageUrl,
