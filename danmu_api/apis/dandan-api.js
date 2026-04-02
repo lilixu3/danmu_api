@@ -1500,6 +1500,13 @@ export async function matchAnime(url, req, clientIp = null) {
 
     let resAnime;
     let resEpisode;
+    let resData = {
+      "errorCode": 0,
+      "success": true,
+      "errorMessage": "",
+      "isMatched": false,
+      "matches": []
+    };
 
     // 快速路径：命中上次选择且本地缓存有链接时，直接匹配剧集，避免全源搜索
     const fastMatched = tryFastMatchFromPreferCache({
@@ -1592,14 +1599,6 @@ export async function matchAnime(url, req, clientIp = null) {
         log("info", "[matchAnime] 无可用候选，跳过 AI 与回退匹配");
       }
     }
-
-    let resData = {
-      "errorCode": 0,
-      "success": true,
-      "errorMessage": "",
-      "isMatched": false,
-      "matches": []
-    };
 
     if (resEpisode) {
       if (clientIp) {
