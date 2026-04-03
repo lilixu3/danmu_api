@@ -4,6 +4,9 @@ import os from 'node:os';
 import BaseRuntimeHandler, { formatBytes } from './base-runtime-handler.js';
 import { createDockerEngineClient } from './docker-engine-client.js';
 import {
+  resolveDockerRuntimeImageTargets
+} from './docker-image-ref.js';
+import {
   finishRuntimeUpdate,
   getRuntimeState,
   pushRuntimeUpdateLog,
@@ -97,9 +100,27 @@ export class DockerRuntimeHandler extends BaseRuntimeHandler {
 
     const inspectData = await this.docker.inspectContainer(identifier);
     const containerName = String(inspectData.Name || '').replace(/^\//, '') || identifier;
-    const imageName = String(this.globals?.dockerImageName || inspectData.Config?.Image || '').trim();
+    const runningImage = String(inspectData.Config?.Image || '').trim();
+    const imageDetails = inspectData.Image
+      ? await this.docker.inspectImage(inspectData.Image).catch(() => null)
+      : null;
+    const { updateImageRef: imageName, versionLookupImage } = resolveDockerRuntimeImageTargets({
+      configuredImageRef: this.globals?.dockerImageName || '',
+      containerImageRef: runningImage,
+      imageRepoTags: imageDetails?.RepoTags || [],
+      defaultRepository: this.imageName
+    });
 
-    return { identifier, inspectData, containerName, imageName };
+    return { identifier, inspectData, containerName, imageName, versionLookupImage };
+  }
+
+  async resolveVersionLookupImage() {
+    try {
+      const { versionLookupImage } = await this.resolveTargetContainer();
+      return versionLookupImage || this.imageName;
+    } catch (_) {
+      return this.imageName;
+    }
   }
 
   async collectRuntimeDetails() {

@@ -1,3 +1,4 @@
+import { resolveDockerVersionLookupImage } from './docker-image-ref.js';
 import { getRuntimeState, recordLatestVersion } from './runtime-state.js';
 
 const DEFAULT_CHECK_TTL_MS = 10 * 60 * 1000;
@@ -69,7 +70,7 @@ export default class BaseRuntimeHandler {
   }
 
   get imageName() {
-    return String(this.globals?.dockerImageName || 'lilixu3/danmu-api').trim();
+    return resolveDockerVersionLookupImage(this.globals?.dockerImageName || '', '', 'lilixu3/danmu-api');
   }
 
   getRuntimeType() {
@@ -96,6 +97,10 @@ export default class BaseRuntimeHandler {
     };
   }
 
+  async resolveVersionLookupImage() {
+    return this.imageName;
+  }
+
   async fetchLatestVersion(force = false) {
     const state = getRuntimeState();
     const lastChecked = state.latestCheckedAt ? Date.parse(state.latestCheckedAt) : 0;
@@ -109,7 +114,7 @@ export default class BaseRuntimeHandler {
     }
 
     try {
-      const latestVersion = await parseLatestVersionFromShields(this.imageName);
+      const latestVersion = await parseLatestVersionFromShields(await this.resolveVersionLookupImage());
       recordLatestVersion(latestVersion, new Date(), '');
       return { latestVersion, error: '' };
     } catch (error) {

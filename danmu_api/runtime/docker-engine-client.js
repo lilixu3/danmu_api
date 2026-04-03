@@ -61,6 +61,9 @@ export function createDockerEngineClient(socketPath = '/var/run/docker.sock') {
     inspectContainer(containerIdOrName) {
       return request('GET', `/containers/${encodeURIComponent(containerIdOrName)}/json`);
     },
+    inspectImage(imageIdOrName) {
+      return request('GET', `/images/${encodeURIComponent(imageIdOrName)}/json`);
+    },
     containerStats(containerIdOrName) {
       return request('GET', `/containers/${encodeURIComponent(containerIdOrName)}/stats?stream=false`);
     },
