@@ -965,11 +965,11 @@ export const overviewCssContent = /* css */ `/* ================================
 .api-service-hero-refined {
     position: relative;
     overflow: hidden;
-    padding: clamp(1.12rem, 2vw, 1.5rem);
-    border-radius: 30px;
-    border: 1px solid rgba(203, 213, 225, 0.76);
+    padding: clamp(1.05rem, 1.8vw, 1.32rem);
+    border-radius: 24px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
     background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 14px 24px rgba(15, 23, 42, 0.045);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
 
 .api-service-hero-refined::before {
@@ -1056,8 +1056,8 @@ export const overviewCssContent = /* css */ `/* ================================
 
 .hero-main-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.9fr);
-    gap: 0.95rem;
+    grid-template-columns: minmax(0, 1.1fr) minmax(332px, 0.88fr);
+    gap: 1.05rem;
     align-items: stretch;
 }
 
@@ -1065,18 +1065,18 @@ export const overviewCssContent = /* css */ `/* ================================
 .hero-service-panel {
     min-width: 0;
     position: relative;
-    border-radius: 24px;
-    border: 1px solid rgba(203, 213, 225, 0.66);
-    background: rgba(252, 253, 255, 0.92);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    border-radius: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .hero-brand-block,
 .hero-service-panel {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.08rem 1.12rem;
+    gap: 0.92rem;
+    padding: 0;
 }
 
 .hero-service-panel {
@@ -1086,21 +1086,21 @@ export const overviewCssContent = /* css */ `/* ================================
 .preview-hero-header-refined {
     display: flex;
     align-items: center;
-    gap: 0.95rem;
+    gap: 0.82rem;
 }
 
 .api-service-hero-refined .preview-hero-icon {
-    width: 64px;
-    height: 64px;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border-radius: 20px;
-    border: 1px solid rgba(203, 213, 225, 0.72);
+    border-radius: 18px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
     background: rgba(248, 250, 252, 0.92);
-    color: #4f46e5;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+    color: #334155;
+    box-shadow: none;
 }
 
 .api-service-hero-refined .preview-hero-icon svg {
@@ -1190,12 +1190,12 @@ export const overviewCssContent = /* css */ `/* ================================
     align-items: center;
     gap: 0.58rem;
     min-width: 0;
-    min-height: 71px;
-    padding: 0.58rem 0.78rem;
-    border-radius: 20px;
-    border: 1px solid rgba(203, 213, 225, 0.68);
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    min-height: 68px;
+    padding: 0.56rem 0.72rem;
+    border-radius: 16px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(248, 250, 252, 0.82);
+    box-shadow: none;
 }
 
 #system-status-card,
@@ -1205,21 +1205,18 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 #system-status-card.status-running {
-    border-color: rgba(16, 185, 129, 0.18);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: inset 3px 0 0 rgba(16, 185, 129, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    border-color: rgba(16, 185, 129, 0.22);
+    background: rgba(240, 253, 248, 0.86);
 }
 
 #system-status-card.status-warning {
-    border-color: rgba(245, 158, 11, 0.18);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(255, 251, 235, 0.9);
 }
 
 #system-status-card.status-error {
-    border-color: rgba(239, 68, 68, 0.18);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: inset 3px 0 0 rgba(239, 68, 68, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    border-color: rgba(239, 68, 68, 0.22);
+    background: rgba(254, 242, 242, 0.92);
 }
 
 .hero-status-copy {
@@ -1291,24 +1288,24 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 #mode-icon-wrapper.mode-preview {
-    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(226, 232, 240, 0.96) 100%);
+    background: rgba(241, 245, 249, 0.92);
     border-color: rgba(148, 163, 184, 0.22);
     color: #475569;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 10px 18px rgba(148, 163, 184, 0.12);
+    box-shadow: none;
 }
 
 #mode-icon-wrapper.mode-user {
-    background: linear-gradient(180deg, rgba(96, 165, 250, 0.18) 0%, rgba(79, 70, 229, 0.16) 100%);
+    background: rgba(224, 231, 255, 0.9);
     border-color: rgba(79, 70, 229, 0.2);
     color: #312e81;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 10px 18px rgba(79, 70, 229, 0.12);
+    box-shadow: none;
 }
 
 #mode-icon-wrapper.mode-admin {
-    background: linear-gradient(180deg, rgba(254, 226, 226, 0.98) 0%, rgba(254, 202, 202, 0.96) 100%);
+    background: rgba(254, 242, 242, 0.92);
     border-color: rgba(239, 68, 68, 0.22);
     color: #9f1239;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 18px rgba(225, 29, 72, 0.12);
+    box-shadow: none;
 }
 
 .hero-service-header {
@@ -1320,7 +1317,7 @@ export const overviewCssContent = /* css */ `/* ================================
 
 .hero-service-note {
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     line-height: 1.5;
 }
 
@@ -1335,20 +1332,19 @@ export const overviewCssContent = /* css */ `/* ================================
     display: grid;
     gap: 0.34rem;
     align-content: center;
-    min-height: 116px;
-    padding: 0.9rem 0.94rem;
-    border: 1px solid rgba(203, 213, 225, 0.72);
-    border-radius: 22px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    min-height: 104px;
+    padding: 0.82rem 0.86rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 18px;
+    background: rgba(248, 250, 252, 0.84);
+    box-shadow: none;
     text-align: left;
-    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .hero-endpoint-panel:hover {
-    transform: translateY(-1px);
-    border-color: rgba(79, 70, 229, 0.14);
-    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
+    border-color: rgba(148, 163, 184, 0.3);
+    background: rgba(255, 255, 255, 0.96);
 }
 
 .hero-endpoint-label {
@@ -1396,12 +1392,12 @@ export const overviewCssContent = /* css */ `/* ================================
     display: grid;
     align-content: start;
     gap: 0.32rem;
-    min-height: 98px;
-    padding: 0.9rem 0.94rem;
-    border-radius: 18px;
-    border: 1px solid rgba(203, 213, 225, 0.68);
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    min-height: 90px;
+    padding: 0.82rem 0.86rem;
+    border-radius: 16px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(248, 250, 252, 0.82);
+    box-shadow: none;
 }
 
 .hero-metric-main {
@@ -1422,13 +1418,13 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 .hero-metric-item-total {
-    background: rgba(255, 255, 255, 0.82);
+    background: rgba(248, 250, 252, 0.82);
 }
 
 .hero-metric-item-manual {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(240, 253, 250, 0.76);
     border-color: rgba(20, 184, 166, 0.16);
-    box-shadow: inset 3px 0 0 rgba(20, 184, 166, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    box-shadow: none;
 }
 
 .hero-metric-item-manual .stat-value {
@@ -1493,15 +1489,15 @@ export const overviewCssContent = /* css */ `/* ================================
 
 [data-theme="dark"] .api-service-hero-refined {
     background: rgba(8, 12, 24, 0.92);
-    border-color: rgba(129, 140, 248, 0.18);
-    box-shadow: 0 20px 36px rgba(2, 6, 23, 0.26);
+    border-color: rgba(51, 65, 85, 0.92);
+    box-shadow: none;
 }
 
 [data-theme="dark"] .api-service-hero-refined .preview-hero-icon {
-    background: rgba(15, 23, 42, 0.84);
-    border-color: rgba(129, 140, 248, 0.18);
-    color: #aebdff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(51, 65, 85, 0.92);
+    color: #e2e8f0;
+    box-shadow: none;
 }
 
 [data-theme="dark"] .hero-overview-action {
@@ -1527,30 +1523,35 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 [data-theme="dark"] .hero-brand-block,
-[data-theme="dark"] .hero-service-panel,
+[data-theme="dark"] .hero-service-panel {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
 [data-theme="dark"] .preview-category,
 [data-theme="dark"] .preview-item,
 [data-theme="dark"] .preview-value,
 [data-theme="dark"] .hero-status-panel,
 [data-theme="dark"] .hero-mode-panel,
 [data-theme="dark"] .hero-endpoint-panel {
-    background: rgba(15, 23, 42, 0.76);
-    border-color: rgba(129, 140, 248, 0.16);
-    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.2);
+    background: rgba(15, 23, 42, 0.68);
+    border-color: rgba(51, 65, 85, 0.92);
+    box-shadow: none;
 }
 
 [data-theme="dark"] #system-status-card.status-running {
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(6, 78, 59, 0.22);
     border-color: rgba(34, 197, 94, 0.24);
 }
 
 [data-theme="dark"] #system-status-card.status-warning {
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(120, 53, 15, 0.2);
     border-color: rgba(245, 158, 11, 0.24);
 }
 
 [data-theme="dark"] #system-status-card.status-error {
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(127, 29, 29, 0.2);
     border-color: rgba(239, 68, 68, 0.24);
 }
 
@@ -1577,13 +1578,13 @@ export const overviewCssContent = /* css */ `/* ================================
 }
 
 [data-theme="dark"] .hero-metric-item {
-    background: rgba(15, 23, 42, 0.78);
-    border-color: rgba(129, 140, 248, 0.16);
-    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.18);
+    background: rgba(15, 23, 42, 0.68);
+    border-color: rgba(51, 65, 85, 0.92);
+    box-shadow: none;
 }
 
 [data-theme="dark"] .hero-metric-item-manual {
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(17, 94, 89, 0.18);
     border-color: rgba(45, 212, 191, 0.2);
 }
 

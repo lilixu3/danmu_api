@@ -1857,8 +1857,8 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
 
     .api-service-hero-refined {
-        padding: 0.95rem;
-        border-radius: 24px;
+        padding: 0.9rem;
+        border-radius: 20px;
     }
 
     .preview-hero-header-refined {
@@ -1876,8 +1876,8 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .hero-brand-block,
     .hero-service-panel {
-        padding: 0.92rem;
-        border-radius: 20px;
+        padding: 0;
+        border-radius: 0;
     }
 
     .hero-service-body {
@@ -1888,6 +1888,7 @@ export const responsiveCssContent = /* css */ `/* ==============================
         min-height: 96px;
         padding: 0.82rem 0.86rem;
         gap: 0.28rem;
+        border-radius: 16px;
     }
 
     .hero-endpoint-value {
@@ -1901,8 +1902,8 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .hero-status-panel,
     .hero-mode-panel {
-        min-height: 65px;
-        padding: 0.52rem 0.72rem;
+        min-height: 62px;
+        padding: 0.5rem 0.68rem;
         gap: 0.52rem;
         border-radius: 18px;
     }
@@ -2517,13 +2518,13 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
     .hero-main-row {
         grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
-        gap: 0.9rem;
+        gap: 1rem;
     }
 
     .hero-brand-block,
     .hero-service-panel {
-        padding: 1rem 1.02rem;
-        border-radius: 22px;
+        padding: 0;
+        border-radius: 0;
     }
 
     .hero-service-panel {
@@ -2595,71 +2596,55 @@ export const responsiveCssContent = /* css */ `/* ==============================
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        gap: 0.9rem 1rem;
-        padding: 0.72rem 0.84rem;
-        border-radius: 24px;
+        gap: 0.82rem 0.9rem;
+        padding: 0.68rem 0.76rem;
+        border-radius: 18px;
         position: relative;
         overflow: hidden;
-        background: rgba(255, 255, 255, 0.88);
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        box-shadow: none;
     }
 
     .desktop-command-bar::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 48%);
-        pointer-events: none;
+        display: none;
     }
 
     .command-bar-left {
         display: flex;
         align-items: center;
-        gap: 0.72rem;
+        gap: 0.58rem;
         min-width: 0;
     }
 
     .command-bar-mark {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(226, 232, 240, 0.92) 100%);
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: rgba(248, 250, 252, 0.92);
         color: #475569;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         font-weight: 800;
         letter-spacing: 0.08em;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+        box-shadow: none;
         flex-shrink: 0;
     }
 
     .command-bar-copy {
         display: grid;
-        gap: 0.14rem;
+        gap: 0.12rem;
         min-width: 0;
         padding-right: 0;
     }
 
-    .command-bar-heading {
-        display: flex;
-        align-items: baseline;
-        gap: 0.48rem;
-        min-width: 0;
-    }
-
     .desktop-command-bar .command-kicker {
-        padding: 0;
-        background: transparent;
-        color: var(--text-tertiary);
-        font-size: 0.6rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        display: none;
     }
 
     .desktop-command-bar .command-bar-title {
         max-width: 100%;
-        font-size: 1.02rem;
+        font-size: 0.98rem;
         line-height: 1.08;
         color: var(--text-primary);
         overflow: hidden;
@@ -2684,28 +2669,28 @@ export const responsiveCssContent = /* css */ `/* ==============================
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.38rem;
-        padding-left: 50px;
+        gap: 0.32rem;
+        padding-left: 0;
         min-width: 0;
     }
 
     .desktop-command-bar .command-chip {
         min-height: 30px;
-        padding: 0.24rem 0.66rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.78);
-        border: 1px solid rgba(148, 163, 184, 0.14);
+        padding: 0.24rem 0.72rem;
+        border-radius: 12px;
+        background: rgba(248, 250, 252, 0.82);
+        border: 1px solid rgba(226, 232, 240, 0.92);
         color: var(--text-secondary);
         font-size: 0.72rem;
         font-weight: 700;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+        box-shadow: none;
     }
 
     .desktop-command-bar .command-chip.active {
-        background: rgba(79, 70, 229, 0.08);
-        border-color: rgba(79, 70, 229, 0.16);
-        color: #312e81;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 8px 18px rgba(79, 70, 229, 0.08);
+        background: rgba(255, 255, 255, 0.96);
+        border-color: rgba(148, 163, 184, 0.32);
+        color: var(--text-primary);
+        box-shadow: none;
     }
 
     .command-bar-right {
@@ -2716,10 +2701,10 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
 
     .desktop-command-bar .desktop-status-pill {
-        min-height: 38px;
-        height: 38px;
+        min-height: 36px;
+        height: 36px;
         padding: 0 0.78rem;
-        border-radius: 14px;
+        border-radius: 12px;
         gap: 0.45rem;
     }
 
@@ -2729,12 +2714,12 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
 
     .desktop-command-bar .theme-toggle-inline {
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
         min-height: auto;
-        border-radius: 14px;
+        border-radius: 12px;
         justify-self: auto;
-        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+        box-shadow: none;
     }
 
     .desktop-command-bar .theme-toggle-inline .theme-icon {
@@ -2743,32 +2728,28 @@ export const responsiveCssContent = /* css */ `/* ==============================
     }
 
     [data-theme="dark"] .desktop-command-bar {
-        background: linear-gradient(180deg, rgba(8, 12, 24, 0.9) 0%, rgba(12, 19, 34, 0.94) 100%);
-        border-color: rgba(129, 140, 248, 0.14);
-        box-shadow: 0 16px 28px rgba(2, 6, 23, 0.22);
-    }
-
-    [data-theme="dark"] .desktop-command-bar .command-kicker {
-        color: rgba(198, 208, 235, 0.64);
+        background: rgba(8, 12, 24, 0.92);
+        border-color: rgba(51, 65, 85, 0.92);
+        box-shadow: none;
     }
 
     [data-theme="dark"] .command-bar-mark {
-        background: linear-gradient(180deg, rgba(20, 30, 54, 0.94) 0%, rgba(14, 24, 44, 0.9) 100%);
-        border-color: rgba(129, 140, 248, 0.18);
+        background: rgba(15, 23, 42, 0.72);
+        border-color: rgba(51, 65, 85, 0.92);
         color: #c7d2fe;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        box-shadow: none;
     }
 
     [data-theme="dark"] .desktop-command-bar .command-chip {
-        background: rgba(15, 23, 42, 0.76);
-        border-color: rgba(129, 140, 248, 0.12);
+        background: rgba(15, 23, 42, 0.72);
+        border-color: rgba(51, 65, 85, 0.92);
         color: rgba(226, 232, 240, 0.78);
         box-shadow: none;
     }
 
     [data-theme="dark"] .desktop-command-bar .command-chip.active {
-        background: linear-gradient(180deg, rgba(70, 88, 164, 0.32) 0%, rgba(39, 54, 114, 0.32) 100%);
-        border-color: rgba(139, 163, 255, 0.2);
+        background: rgba(15, 23, 42, 0.92);
+        border-color: rgba(100, 116, 139, 0.48);
         color: #dbe4ff;
         box-shadow: none;
     }
@@ -2787,7 +2768,7 @@ export const responsiveCssContent = /* css */ `/* ==============================
 
 @media (min-width: 1380px) {
     .desktop-command-bar .command-desc {
-        display: block;
+        display: none;
     }
 }
 
