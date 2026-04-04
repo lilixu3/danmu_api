@@ -2942,23 +2942,14 @@ export const responsiveCssContent = /* css */ `/* ==============================
         width: 40px;
         height: 40px;
         border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.76);
-        box-shadow: 0 12px 20px rgba(15, 23, 42, 0.06);
+        border-radius: 15px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.9) 100%);
+        box-shadow: 0 12px 22px rgba(15, 23, 42, 0.08);
     }
 
-    .toggle-icon,
-    .toggle-icon::before,
-    .toggle-icon::after {
+    .sidebar-toggle-icon {
         width: 18px !important;
-    }
-
-    .toggle-icon::before {
-        top: -5px !important;
-    }
-
-    .toggle-icon::after {
-        bottom: -5px !important;
+        height: 18px !important;
     }
 
     .mobile-header {
@@ -3113,6 +3104,11 @@ export const responsiveCssContent = /* css */ `/* ==============================
     .sidebar-toggle {
         width: 34px;
         height: 34px;
+    }
+
+    .sidebar-toggle-icon {
+        width: 15px !important;
+        height: 15px !important;
     }
 
     .mobile-service-mark {

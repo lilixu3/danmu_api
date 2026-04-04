@@ -74,8 +74,11 @@ export const HTML_TEMPLATE = /* html */ `
                         </div>
                     </div>
                 </div>
-                <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" type="button" aria-label="切换导航">
-                    <span class="toggle-icon"></span>
+                <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" type="button" aria-label="关闭导航面板" title="关闭导航">
+                    <svg class="sidebar-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <path d="M7 7l10 10" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M17 7L7 17" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
                 </button>
             </div>
 

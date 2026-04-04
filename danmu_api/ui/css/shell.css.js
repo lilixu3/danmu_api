@@ -86,33 +86,6 @@ export const shellCssContent = /* css */ `/* ===================================
     padding: 0;
 }
 
-.toggle-icon {
-    display: block;
-    width: 20px;
-    height: 2px;
-    background: var(--text-primary);
-    position: relative;
-    transition: background var(--transition-fast);
-}
-
-.toggle-icon::before,
-.toggle-icon::after {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 2px;
-    background: var(--text-primary);
-    transition: transform var(--transition-base);
-}
-
-.toggle-icon::before {
-    top: -6px;
-}
-
-.toggle-icon::after {
-    bottom: -6px;
-}
-
 /* ========================================
    导航菜单
    ======================================== */
@@ -1414,36 +1387,59 @@ export const shellCssContent = /* css */ `/* ===================================
 }
 
 .sidebar-toggle {
-    display: inline-flex;
+    display: none;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border: 1px solid rgba(226, 232, 240, 0.92);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.92) 100%);
+    color: var(--text-primary);
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
 }
 
-.toggle-icon {
-    width: 14px;
-    height: 14px;
-    background: transparent;
+.sidebar-toggle::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(79, 70, 229, 0.14) 0%, rgba(14, 165, 233, 0.1) 100%);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
 }
 
-.toggle-icon::before,
-.toggle-icon::after {
-    width: 14px;
-    top: 6px;
-    left: 0;
+.sidebar-toggle:hover {
+    transform: translateY(-1px);
+    border-color: rgba(99, 102, 241, 0.18);
+    box-shadow: 0 14px 26px rgba(79, 70, 229, 0.12);
 }
 
-.toggle-icon::before {
-    transform: rotate(45deg);
+.sidebar-toggle:hover::before,
+.sidebar-toggle:focus-visible::before {
+    opacity: 1;
 }
 
-.toggle-icon::after {
-    transform: rotate(-45deg);
+.sidebar-toggle:active {
+    transform: scale(0.96);
+}
+
+.sidebar-toggle:focus-visible {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.28);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12), 0 14px 26px rgba(79, 70, 229, 0.12);
+}
+
+.sidebar-toggle-icon {
+    position: relative;
+    z-index: 1;
+    width: 17px;
+    height: 17px;
+    stroke-width: 2.3;
 }
 
 [data-theme="dark"] .sidebar-info-card {
@@ -1475,6 +1471,24 @@ export const shellCssContent = /* css */ `/* ===================================
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(51, 65, 85, 0.9);
     box-shadow: none;
+}
+
+[data-theme="dark"] .sidebar-toggle {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .sidebar-toggle::before {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(56, 189, 248, 0.14) 100%);
+}
+
+[data-theme="dark"] .sidebar-toggle:hover {
+    border-color: rgba(129, 140, 248, 0.24);
+    box-shadow: 0 16px 28px rgba(2, 6, 23, 0.24);
+}
+
+[data-theme="dark"] .sidebar-toggle:focus-visible {
+    border-color: rgba(129, 140, 248, 0.32);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16), 0 16px 28px rgba(2, 6, 23, 0.24);
 }
 
 [data-theme="dark"] .sidebar-info-subtitle {
