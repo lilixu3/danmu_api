@@ -574,6 +574,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `VOD_RETURN_MODE` | `all` 或 `fastest` |
 | `VOD_REQUEST_TIMEOUT` | VOD 请求超时 |
 | `BILIBILI_COOKIE` | B 站 Cookie，UI 支持扫码登录、校验、刷新 |
+| `DOUBAN_COOKIE` | 豆瓣 Cookie；配置后 Douban 请求会优先直接带 Cookie，降低搜索接口 403 风控概率 |
 | `YOUKU_CONCURRENCY` | 优酷并发数 |
 | `PROXY_URL` | 代理 / 反代配置，支持正向代理、万能反代、平台专用反代 |
 | `LOCAL_PROXY_BIND` | 本地 5321 辅助代理绑定地址 |

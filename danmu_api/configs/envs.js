@@ -569,6 +569,7 @@ export class Envs {
       'VOD_RETURN_MODE': { category: 'source', type: 'select', options: ['all', 'fastest'], description: 'VOD返回模式：all（所有站点）或 fastest（最快的站点），默认fastest' },
       'VOD_REQUEST_TIMEOUT': { category: 'source', type: 'number', description: 'VOD请求超时时间，默认10000', min: 5000, max: 30000 },
       'BILIBILI_COOKIE': { category: 'source', type: 'text', description: 'B站Cookie' },
+      'DOUBAN_COOKIE': { category: 'source', type: 'text', description: '豆瓣Cookie，用于降低 Douban 搜索接口 403 风控概率，建议填写浏览器中 m.douban.com 的完整 Cookie' },
       'YOUKU_CONCURRENCY': { category: 'source', type: 'number', description: '优酷并发配置，默认8', min: 1, max: 16 },
       'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },
       'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '弹弹第三方弹幕源实时拉取开关，默认为false（关闭），可选值：true、false' },
@@ -643,6 +644,7 @@ export class Envs {
       vodReturnMode: this.get('VOD_RETURN_MODE', 'fastest', 'string').toLowerCase(), // vod返回模式：all（所有站点）或 fastest（最快的站点）
       vodRequestTimeout: this.get('VOD_REQUEST_TIMEOUT', '10000', 'string'), // vod超时时间（默认10秒）
       bilibliCookie: this.get('BILIBILI_COOKIE', '', 'string', true), // b站cookie
+      doubanCookie: this.get('DOUBAN_COOKIE', '', 'string', true), // 豆瓣 cookie，用于降低 Douban 搜索接口 403 风控概率
       youkuConcurrency: Math.min(this.get('YOUKU_CONCURRENCY', 8, 'number'), 16), // 优酷并发配置
       mergeSourcePairs: this.resolveMergeSourcePairs(), // 源合并配置，用于将源合并获取
       realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 弹弹第三方弹幕源实时拉取开关
