@@ -510,7 +510,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 - `GET /api/v2/comment/:commentId?format=json|xml`
   按 `commentId` 获取弹幕，可输出 `json` 或 `xml`。
 - `GET /api/v2/comment?url={videoUrl}&format=json|xml`
-  直接按视频链接获取弹幕，适合已知源站 URL 的场景。
+  直接按单个视频链接获取弹幕，适合已知源站 URL 的场景；不支持传入合并后的多源 URL。
 - `GET /api/v2/comment/:commentId/duration`
   获取该剧集的时长信息，便于播放器校准时间轴。
 - `POST /api/v2/segmentcomment?format=json`
@@ -574,7 +574,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `VOD_RETURN_MODE` | `all` 或 `fastest` |
 | `VOD_REQUEST_TIMEOUT` | VOD 请求超时 |
 | `BILIBILI_COOKIE` | B 站 Cookie，UI 支持扫码登录、校验、刷新 |
-| `DOUBAN_COOKIE` | 豆瓣 Cookie；配置后 Douban 请求会优先直接带 Cookie，降低搜索接口 403 风控概率 |
+| `DOUBAN_COOKIE` | 豆瓣 Cookie；用于 Douban 搜索与部分详情 GET 请求，相关请求会优先直接带 Cookie，降低 403 风控概率 |
 | `YOUKU_CONCURRENCY` | 优酷并发数 |
 | `PROXY_URL` | 代理 / 反代配置，支持正向代理、万能反代、平台专用反代 |
 | `LOCAL_PROXY_BIND` | 本地 5321 辅助代理绑定地址 |
@@ -588,7 +588,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 |---|---|
 | `PLATFORM_ORDER` | 自动匹配优选平台 |
 | `MERGE_SOURCE_PAIRS` | 多源合并规则 |
-| `REAL_TIME_PULL_DANDAN` | 弹弹绑定第三方源时是否实时拉取 |
+| `REAL_TIME_PULL_DANDAN` | 已废弃兼容项；related 接口下线后当前版本不再生效 |
 | `ENABLE_ANIME_EPISODE_FILTER` | 是否启用剧名 / 集标题过滤 |
 | `ANIME_TITLE_FILTER` | 剧名过滤规则 |
 | `EPISODE_TITLE_FILTER` | 集标题过滤规则 |
@@ -596,7 +596,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `TITLE_TO_CHINESE` | 外语标题转中文，通常配合 `TMDB_API_KEY` |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时繁转简 |
 | `TITLE_MAPPING_TABLE` | 标题映射表 |
-| `TITLE_PLATFORM_OFFSET_TABLE` | 按剧名和平台配置时间轴偏移 |
+| `DANMU_OFFSET` | 弹幕时间偏移，支持秒数偏移与百分比偏移 |
 | `AI_BASE_URL` | AI 接口地址，支持 OpenAI 兼容服务 |
 | `AI_MODEL` | AI 模型名 |
 | `AI_API_KEY` | AI 密钥 |
@@ -618,6 +618,11 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `DANMU_FONT_SIZE` | 字号 |
 | `DANMU_OUTPUT_FORMAT` | 全局默认输出格式 |
 | `DANMU_PUSH_URL` | 推送弹幕默认地址 |
+
+> `DANMU_OFFSET` 示例：`overlord/S01:90,re-zero/S02@bilibili:120,re-zero/S02/E03@dandan&bilibili:10,东方/S03/E02@tencent%:11`  
+> - 普通模式：整体平移弹幕时间（单位秒）  
+> - `%` 模式：按 `(视频时长 + 偏移秒数) / 视频时长` 缩放时间轴  
+> - 多源合并时，每一路来源使用各自的视频时长计算百分比偏移，接口返回的 `videoDuration` 仍取合并后的最大值
 
 ### 缓存与状态保持
 

@@ -12,7 +12,7 @@ import { getImdbepisodes } from "./utils/imdb-util.js";
 import { getTMDBChineseTitle, getTmdbJpDetail, searchTmdbTitles } from "./utils/tmdb-util.js";
 import { getDoubanDetail, getDoubanInfoByImdbId, searchDoubanTitles } from "./utils/douban-util.js";
 import AIClient from './utils/ai-util.js';
-import { applyMergeLogic, MERGE_DELIMITER } from "./utils/merge-util.js";
+import { alignSourceTimelines, applyMergeLogic, MERGE_DELIMITER } from "./utils/merge-util.js";
 import RenrenSource from "./sources/renren.js";
 import HanjutvSource from "./sources/hanjutv.js";
 import BahamutSource from "./sources/bahamut.js";
@@ -139,6 +139,69 @@ test('AiyifanSigningProvider keeps custom headers and success hooks after fw com
   assert.ok(calls[1].url.includes('vv='));
 });
 
+test('Douban search should carry configured cookie,使用搜索页 Referer，并在 403 时重试', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  Globals.init({ DOUBAN_COOKIE: 'bid=test-bid; ll="118282"' });
+
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({
+      url,
+      headers: { ...(options.headers || {}) }
+    });
+
+    return {
+      ok: false,
+      status: 403,
+      headers: {
+        entries() {
+          return [];
+        }
+      },
+      async text() {
+        return JSON.stringify({ msg: 'forbidden' });
+      }
+    };
+  };
+
+  try {
+    const result = await searchDoubanTitles('绿野仙踪');
+
+    assert.equal(result, null);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].headers.Cookie, 'bid=test-bid; ll="118282"');
+    assert.equal(
+      calls[0].headers.Referer,
+      'https://m.douban.com/search/?query=%E7%BB%BF%E9%87%8E%E4%BB%99%E8%B8%AA'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    Globals.init({});
+  }
+});
+
+test('alignSourceTimelines should fall back to text consensus offsets when dandan related data is unavailable', () => {
+  const results = [
+    [
+      { m: '同步弹幕', p: '10.00,1,16777215,[dandan]', t: 10, progress: 10000 },
+      { m: '第二条', p: '20.00,1,16777215,[dandan]', t: 20, progress: 20000 }
+    ],
+    [
+      { m: '同步弹幕', p: '15.00,1,16777215,[youku]', t: 15, progress: 15000 },
+      { m: '第二条', p: '25.00,1,16777215,[youku]', t: 25, progress: 25000 }
+    ]
+  ];
+
+  alignSourceTimelines(results, ['dandan', 'youku'], ['dandan-1', 'youku-1']);
+
+  assert.equal(results[1][0].t, 10);
+  assert.equal(results[1][1].t, 20);
+  assert.equal(results[1][0].progress, 10000);
+  assert.equal(results[1][1].progress, 20000);
+  assert.match(results[1][0].p, /^10\.00,/);
+  assert.match(results[1][1].p, /^20\.00,/);
+});
+
 test('runtime info and version check should allow public read access on custom-token deployments', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async function(url) {
@@ -239,7 +302,7 @@ test('worker.js API endpoints', async (t) => {
 
 
   await t.test('GET /api/v2/comment/:id/duration should return segment duration without cache', async () => {
-    Globals.init({ TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
+    Globals.init({ DANMU_OFFSET: '偏移测试/S01/E01@hanjutv:20' });
     Globals.animes = [];
     Globals.episodeIds = [];
     Globals.episodeNum = 10001;
@@ -363,7 +426,7 @@ test('worker.js API endpoints', async (t) => {
     try {
       const episode = addEpisode('https://www.bilibili.com/bangumi/play/ep_test.html', '【bilibili】测试样例');
       const req = new MockRequest(urlPrefix + '/api/v2/comment/' + episode.id + '/duration', { method: 'GET' });
-      const res = await handleRequest(req, { TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
+      const res = await handleRequest(req, { DANMU_OFFSET: '偏移测试/S01/E01@hanjutv:20' });
       const body = await parseResponse(res);
 
       assert.equal(res.status, 200);
@@ -391,6 +454,246 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(res.status, 200);
     assert(Math.abs(body.videoDuration - 720.41) < 0.001, `Expected 720.41, but got ${body.videoDuration}`);
     assert.equal(globals.commentCache.size, 0);
+  });
+
+  await t.test('GET /api/v2/comment/:id should support DANMU_OFFSET percent mode on single source comments', async () => {
+    Globals.init({ DANMU_OFFSET: '百分比偏移测试/S01/E01@tencent%:10' });
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const episode = addEpisode('https://v.qq.com/x/cover/a/b.html', '【qq】第1集');
+    Globals.animes.push({
+      animeId: 950001,
+      bangumiId: '950001',
+      animeTitle: '百分比偏移测试 S01',
+      type: '动漫',
+      typeDescription: '动漫',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 9.5,
+      isFavorited: true,
+      source: 'tencent',
+      links: [episode]
+    });
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      if (segmentFlag) {
+        return {
+          type: 'qq',
+          segmentList: [
+            { type: 'qq', segment_start: 0, segment_end: 100, url: 'mock-qq-1' }
+          ]
+        };
+      }
+
+      return [
+        { p: '10.00,1,16777215,[qq]', m: '腾讯弹幕' }
+      ];
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + `/api/v2/comment/${episode.id}?format=json`, { method: 'GET' });
+      const res = await handleRequest(req, { DANMU_OFFSET: '百分比偏移测试/S01/E01@tencent%:10' });
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.equal(body.comments[0].m, '腾讯弹幕');
+      assert.match(body.comments[0].p, /^11\.00,/);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.animes = [];
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
+  });
+
+  await t.test('GET /api/v2/comment/:id should apply DANMU_OFFSET percent mode with per-source durations while returning merged max duration', async () => {
+    Globals.init({ DANMU_OFFSET: '百分比偏移测试/S01/E01@tencent&iqiyi%:10' });
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+
+    const episode = addEpisode(
+      'tencent:https://v.qq.com/x/cover/a/b.html$$$iqiyi:https://www.iqiyi.com/v_test.html',
+      '【qq＆qiyi】第1集'
+    );
+    Globals.animes.push({
+      animeId: 950002,
+      bangumiId: '950002',
+      animeTitle: '百分比偏移测试 S01',
+      type: '动漫',
+      typeDescription: '动漫',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 9.5,
+      isFavorited: true,
+      source: 'tencent',
+      links: [episode]
+    });
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    const originalIqiyiGetComments = IqiyiSource.prototype.getComments;
+    const originalTencentGetEpisodeDanmu = TencentSource.prototype.getEpisodeDanmu;
+    const originalIqiyiGetEpisodeDanmu = IqiyiSource.prototype.getEpisodeDanmu;
+    const originalTencentFormatComments = TencentSource.prototype.formatComments;
+    const originalIqiyiFormatComments = IqiyiSource.prototype.formatComments;
+
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      if (segmentFlag) {
+        return {
+          type: 'qq',
+          segmentList: [
+            { type: 'qq', segment_start: 0, segment_end: 100, url: 'mock-qq-1' }
+          ]
+        };
+      }
+
+      return [
+        { p: '10.00,1,16777215,[qq]', m: '腾讯弹幕' }
+      ];
+    };
+
+    TencentSource.prototype.getEpisodeDanmu = async function() {
+      return [
+        { p: '10.00,1,16777215,[qq]', m: '腾讯弹幕' }
+      ];
+    };
+
+    TencentSource.prototype.formatComments = function(raw) {
+      return raw;
+    };
+
+    IqiyiSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      if (segmentFlag) {
+        return {
+          type: 'qiyi',
+          segmentList: [
+            { type: 'qiyi', segment_start: 0, segment_end: 200, url: 'mock-qiyi-1' }
+          ]
+        };
+      }
+
+      return [
+        { p: '10.00,1,16777215,[qiyi]', m: '爱奇艺弹幕' }
+      ];
+    };
+
+    IqiyiSource.prototype.getEpisodeDanmu = async function() {
+      return [
+        { p: '10.00,1,16777215,[qiyi]', m: '爱奇艺弹幕' }
+      ];
+    };
+
+    IqiyiSource.prototype.formatComments = function(raw) {
+      return raw;
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + `/api/v2/comment/${episode.id}?format=json&duration=true`, { method: 'GET' });
+      const res = await handleRequest(req, { DANMU_OFFSET: '百分比偏移测试/S01/E01@tencent&iqiyi%:10' });
+      const body = await parseResponse(res);
+      const tencentDanmu = body.comments.find(item => item.m === '腾讯弹幕');
+      const iqiyiDanmu = body.comments.find(item => item.m === '爱奇艺弹幕');
+
+      assert.equal(res.status, 200);
+      assert.equal(body.videoDuration, 200);
+      assert.ok(tencentDanmu);
+      assert.ok(iqiyiDanmu);
+      assert.match(tencentDanmu.p, /^11\.00,/);
+      assert.match(iqiyiDanmu.p, /^10\.50,/);
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      IqiyiSource.prototype.getComments = originalIqiyiGetComments;
+      TencentSource.prototype.getEpisodeDanmu = originalTencentGetEpisodeDanmu;
+      IqiyiSource.prototype.getEpisodeDanmu = originalIqiyiGetEpisodeDanmu;
+      TencentSource.prototype.formatComments = originalTencentFormatComments;
+      IqiyiSource.prototype.formatComments = originalIqiyiFormatComments;
+      Globals.animes = [];
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+    }
+  });
+
+  await t.test('GET /api/v2/comment/:id should warn and skip DANMU_OFFSET percent mode when duration is unavailable', async () => {
+    Globals.init({ DANMU_OFFSET: '无时长百分比测试/S01/E01@tencent%:10' });
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.commentCache = new Map();
+    Globals.logBuffer = [];
+
+    const episode = addEpisode('https://v.qq.com/x/cover/a/zero-duration.html', '【qq】第1集');
+    Globals.animes.push({
+      animeId: 950003,
+      bangumiId: '950003',
+      animeTitle: '无时长百分比测试 S01',
+      type: '动漫',
+      typeDescription: '动漫',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 9.5,
+      isFavorited: true,
+      source: 'tencent',
+      links: [episode]
+    });
+
+    const originalTencentGetComments = TencentSource.prototype.getComments;
+    TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+      if (segmentFlag) {
+        return {
+          type: 'qq',
+          segmentList: []
+        };
+      }
+
+      return [
+        { p: '10.00,1,16777215,[qq]', m: '腾讯弹幕' }
+      ];
+    };
+
+    try {
+      const req = new MockRequest(urlPrefix + `/api/v2/comment/${episode.id}?format=json`, { method: 'GET' });
+      const res = await handleRequest(req, { DANMU_OFFSET: '无时长百分比测试/S01/E01@tencent%:10' });
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.count, 1);
+      assert.equal(body.comments[0].m, '腾讯弹幕');
+      assert.match(body.comments[0].p, /^10\.00,/);
+      assert.ok(
+        Globals.logBuffer.some(entry => entry.level === 'warn' && entry.message.includes('跳过百分比偏移') && entry.message.includes('未获取到有效时长')),
+        'Expected a warn log when percent offset duration is unavailable'
+      );
+    } finally {
+      TencentSource.prototype.getComments = originalTencentGetComments;
+      Globals.animes = [];
+      Globals.episodeIds = [];
+      Globals.commentCache = new Map();
+      Globals.logBuffer = [];
+    }
+  });
+
+  await t.test('GET /api/v2/comment?url should reject merged url with a clear error', async () => {
+    Globals.init({});
+    Globals.requestHistory = new Map();
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const mergedUrl = encodeURIComponent('tencent:https://v.qq.com/x/cover/a/b.html$$$iqiyi:https://www.iqiyi.com/v_test.html');
+    const req = new MockRequest(urlPrefix + `/api/v2/comment?url=${mergedUrl}&format=json`, { method: 'GET' });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 400);
+    assert.equal(body.success, false);
+    assert.equal(body.errorMessage, 'Merged url is not supported in url parameter, please provide a single video url');
   });
 
   await t.test('GET /api/v2/comment/:id?format=json&duration=true should return comments and duration in one request', async () => {
@@ -1304,7 +1607,7 @@ test('worker.js API endpoints', async (t) => {
 
     try {
       const req = new MockRequest(urlPrefix + `/api/v2/comment/${episode.id}`, { method: 'GET' });
-      const res = await handleRequest(req, { TITLE_PLATFORM_OFFSET_TABLE: '偏移测试@hanjutv@20' });
+      const res = await handleRequest(req, { DANMU_OFFSET: '偏移测试/S01/E01@hanjutv:20' });
       const body = await parseResponse(res);
 
       assert.equal(res.status, 200);
