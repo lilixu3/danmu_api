@@ -8,6 +8,7 @@ let cacheClearing = false;
 // [新增] 合并模式全局变量
 let isMergeMode = false;
 let stagingTags = [];
+let timelineOffsetSourceOptions = ['all'];
 
 /* ========================================
    显示/隐藏清理缓存模态框
@@ -862,6 +863,7 @@ function showDeleteSuccessAndRefresh(key) {
 function closeModal() {
     const modal = document.getElementById('env-modal');
     const modalContainer = modal.querySelector('.modal-container');
+    hideTimelineOffsetModal();
     
     if (modalContainer) {
         modalContainer.style.animation = 'modalSlideOut 0.3s ease-out';
@@ -1292,6 +1294,7 @@ function renderValueInput(item) {
         const sourceOptions = getTimelineOffsetSourceOptions(item && item.options ? item.options : []);
         const entries = value ? value.split(/[;,]/).map(entry => entry.trim()).filter(entry => entry) : [];
         const offsetItems = entries.map(parseTimelineOffsetLine).filter(Boolean);
+        timelineOffsetSourceOptions = sourceOptions;
 
         container.innerHTML = \`
             <div class="timeline-offset-panel">
@@ -1310,71 +1313,9 @@ function renderValueInput(item) {
                     \${offsetItems.length > 0 ? offsetItems.map((entry, index) => buildTimelineOffsetLineMarkup(entry, index)).join('') : '<div class="timeline-offset-empty">暂无规则，点击右上角“新增规则”快速添加。</div>'}
                 </div>
             </div>
-
-            <div class="modal-overlay" id="timeline-offset-modal" onclick="if (event.target === this) hideTimelineOffsetModal()">
-                <div class="modal-container timeline-offset-quick-modal">
-                    <div class="modal-header">
-                        <h3 class="modal-title">快速新增偏移规则</h3>
-                        <button class="modal-close" type="button" onclick="hideTimelineOffsetModal()">×</button>
-                    </div>
-                    <div class="modal-body timeline-offset-modal-body">
-                        <div class="timeline-offset-modal-grid">
-                            <div class="form-group">
-                                <label class="form-label">剧名</label>
-                                <input type="text" class="form-input" id="timeline-offset-title-input" placeholder="例如：庆余年" oninput="updateTimelineOffsetPreview()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">季（可选）</label>
-                                <input type="text" class="form-input" id="timeline-offset-season-input" placeholder="S01 或 1" oninput="updateTimelineOffsetPreview()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">集（可选）</label>
-                                <input type="text" class="form-input" id="timeline-offset-episode-input" placeholder="E01 或 1" oninput="updateTimelineOffsetPreview()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">偏移方式</label>
-                                <input type="hidden" id="timeline-offset-mode-input" value="seconds">
-                                <div class="timeline-offset-mode-switch">
-                                    <button type="button" class="timeline-offset-mode-btn active" data-mode="seconds" onclick="setTimelineOffsetMode('seconds')">秒偏移</button>
-                                    <button type="button" class="timeline-offset-mode-btn" data-mode="percent" onclick="setTimelineOffsetMode('percent')">百分比</button>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label" id="timeline-offset-value-label">偏移秒数</label>
-                                <input type="number" step="0.1" class="form-input" id="timeline-offset-value-input" placeholder="-5" oninput="updateTimelineOffsetPreview()">
-                                <div class="timeline-offset-field-hint" id="timeline-offset-value-hint">正数向后偏移，负数向前偏移。</div>
-                            </div>
-                        </div>
-                        <div class="timeline-offset-platforms">
-                            <div class="timeline-offset-platforms-label">来源（从后端加载，可多选，all 表示全部来源）</div>
-                            <div class="timeline-offset-platforms-chips" id="timeline-offset-form-sources">
-                                \${renderTimelineOffsetSourceChips(sourceOptions, ['all'])}
-                            </div>
-                        </div>
-                        <div class="timeline-offset-preview">
-                            <span class="timeline-offset-preview-label">规则预览</span>
-                            <code class="timeline-offset-preview-text" id="timeline-offset-preview-text">请先填写剧名与偏移值</code>
-                        </div>
-                    </div>
-                    <div class="modal-footer modal-footer-compact">
-                        <button type="button" class="btn btn-secondary btn-modal" onclick="hideTimelineOffsetModal()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                            <span>取消</span>
-                        </button>
-                        <button type="button" class="btn btn-primary btn-modal" onclick="confirmTimelineOffsetAdd()">
-                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
-                                <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
-                            </svg>
-                            <span>添加规则</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
         \`;
 
+        renderTimelineOffsetModalContent();
         setTimeout(() => updateTimelineOffsetPreview(), 0);
 
     } else if (type === 'color-list') {
@@ -2666,6 +2607,52 @@ function renderTimelineOffsetSourceChips(sourceOptions, selectedSources = ['all'
     }).join('');
 }
 
+function renderTimelineOffsetModalContent() {
+    const modalBody = document.getElementById('timeline-offset-modal-body');
+    if (!modalBody) return;
+
+    const sourceOptions = getTimelineOffsetSourceOptions(timelineOffsetSourceOptions);
+    modalBody.innerHTML = \`
+        <div class="timeline-offset-modal-grid">
+            <div class="form-group">
+                <label class="form-label">剧名</label>
+                <input type="text" class="form-input" id="timeline-offset-title-input" placeholder="例如：庆余年" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">季（可选）</label>
+                <input type="text" class="form-input" id="timeline-offset-season-input" placeholder="S01 或 1" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">集（可选）</label>
+                <input type="text" class="form-input" id="timeline-offset-episode-input" placeholder="E01 或 1" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">偏移方式</label>
+                <input type="hidden" id="timeline-offset-mode-input" value="seconds">
+                <div class="timeline-offset-mode-switch">
+                    <button type="button" class="timeline-offset-mode-btn active" data-mode="seconds" onclick="setTimelineOffsetMode('seconds')">秒偏移</button>
+                    <button type="button" class="timeline-offset-mode-btn" data-mode="percent" onclick="setTimelineOffsetMode('percent')">百分比</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" id="timeline-offset-value-label">偏移秒数</label>
+                <input type="number" step="0.1" class="form-input" id="timeline-offset-value-input" placeholder="-5" oninput="updateTimelineOffsetPreview()">
+                <div class="timeline-offset-field-hint" id="timeline-offset-value-hint">正数向后偏移，负数向前偏移。</div>
+            </div>
+        </div>
+        <div class="timeline-offset-platforms">
+            <div class="timeline-offset-platforms-label">来源（从后端加载，可多选，all 表示全部来源）</div>
+            <div class="timeline-offset-platforms-chips" id="timeline-offset-form-sources">
+                \${renderTimelineOffsetSourceChips(sourceOptions, ['all'])}
+            </div>
+        </div>
+        <div class="timeline-offset-preview">
+            <span class="timeline-offset-preview-label">规则预览</span>
+            <code class="timeline-offset-preview-text" id="timeline-offset-preview-text">请先填写剧名与偏移值</code>
+        </div>
+    \`;
+}
+
 function addTimelineOffsetItem() {
     openTimelineOffsetModal();
 }
@@ -2674,7 +2661,13 @@ function openTimelineOffsetModal() {
     const modal = document.getElementById('timeline-offset-modal');
     if (!modal) return;
 
+    renderTimelineOffsetModalContent();
     resetTimelineOffsetModal();
+
+    const modalContainer = modal.querySelector('.modal-container');
+    if (modalContainer) {
+        modalContainer.style.animation = 'modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    }
     modal.classList.add('active');
 
     const titleInput = document.getElementById('timeline-offset-title-input');
@@ -2686,8 +2679,19 @@ function openTimelineOffsetModal() {
 function hideTimelineOffsetModal() {
     const modal = document.getElementById('timeline-offset-modal');
     if (!modal) return;
-    modal.classList.remove('active');
-    resetTimelineOffsetModal();
+
+    const modalContainer = modal.querySelector('.modal-container');
+    if (modalContainer) {
+        modalContainer.style.animation = 'modalSlideOut 0.3s ease-out';
+        setTimeout(() => {
+            modal.classList.remove('active');
+            modalContainer.style.animation = '';
+            resetTimelineOffsetModal();
+        }, 300);
+    } else {
+        modal.classList.remove('active');
+        resetTimelineOffsetModal();
+    }
 }
 
 function removeTimelineOffsetItem(button) {
