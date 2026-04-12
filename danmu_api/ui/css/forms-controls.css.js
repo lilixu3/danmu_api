@@ -680,12 +680,137 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     background: var(--bg-primary);
 }
 
+.timeline-offset-line-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.timeline-offset-line-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.timeline-offset-line-name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.timeline-offset-line-meta {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+.timeline-offset-empty {
+    padding: 1rem 1.1rem;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+}
+
+.timeline-offset-quick-modal {
+    width: min(720px, calc(100vw - 2rem));
+}
+
+.timeline-offset-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.timeline-offset-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.timeline-offset-mode-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.timeline-offset-mode-btn {
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 0.45rem 0.95rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all var(--transition-fast);
+}
+
+.timeline-offset-mode-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+}
+
+.timeline-offset-mode-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(79, 70, 229, 0.25);
+}
+
+.timeline-offset-field-hint {
+    margin-top: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.timeline-offset-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+}
+
+.timeline-offset-preview-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.timeline-offset-preview-text {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 @media (max-width: 768px) {
     .timeline-offset-row {
         grid-template-columns: 1fr;
     }
     .timeline-offset-field.offset-actions {
         justify-self: end;
+    }
+    .timeline-offset-line {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .timeline-offset-modal-grid {
+        grid-template-columns: 1fr;
+    }
+    .timeline-offset-mode-switch {
+        width: 100%;
+    }
+    .timeline-offset-mode-btn {
+        flex: 1;
+        justify-content: center;
     }
 }
 

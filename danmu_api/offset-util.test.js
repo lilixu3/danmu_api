@@ -121,3 +121,16 @@ test('resolveOffsetRule should honor TITLE_MAPPING_TABLE for DANMU_OFFSET matchi
     Globals.init({});
   }
 });
+
+
+test('parseOffsetRules should accept semicolon-separated rules from UI editor', () => {
+  const rules = parseOffsetRules('测试番/S01/E01@tencent:5;测试番/S01/E02@iqiyi%:10');
+
+  assert.equal(rules.length, 2);
+  assert.equal(rules[0].offset, 5);
+  assert.equal(rules[0].usePercent, false);
+  assert.deepEqual(rules[0].sources, ['tencent']);
+  assert.equal(rules[1].offset, 10);
+  assert.equal(rules[1].usePercent, true);
+  assert.deepEqual(rules[1].sources, ['iqiyi']);
+});

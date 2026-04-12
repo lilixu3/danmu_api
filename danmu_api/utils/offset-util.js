@@ -66,7 +66,7 @@ export function parseOffsetRules(env) {
   if (!env || typeof env !== 'string') return [];
 
   return env
-    .split(',')
+    .split(/[;,]/)
     .map((entry) => {
       const trimmed = entry.trim();
       const colonIdx = trimmed.lastIndexOf(':');
