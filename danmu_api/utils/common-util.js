@@ -202,14 +202,25 @@ export function stripInvisibleChars(str) {
 }
 
 /**
- * 规范化标题（移除空格并清理修饰性符号）
+ * 净化搜索关键词（专门针对请求源阶段的温和版）
+ * @param {string} str - 原始搜索词
+ * @returns {string} 净化后的搜索词
+ */
+export function sanitizeSearchKeyword(str) {
+  if (!str) return '';
+  // 搜索阶段仅清理不可见字符，保留空格和合法标点，避免影响源站命中率。
+  return stripInvisibleChars(String(str)).trim();
+}
+
+/**
+ * 规范化结果标题（移除空格并清理修饰性符号）
  * @param {string} str - 输入字符串
  * @returns {string} 规范化后的字符串
  */
 export function normalizeSpaces(str) {
   if (!str) return '';
-  // 先清除不可见字符，再移除所有空格与修饰性符号，减少标题格式噪音
-  return stripInvisibleChars(String(str).trim()).replace(/[\s【】\[\]《》<>「」!?！？.,，。~～]/g, '');
+  // 先清理不可见字符，再用白名单保留核心文字/数字，过滤括号、点号、零宽字符等噪音。
+  return stripInvisibleChars(String(str).trim()).replace(/[^\u4e00-\u9fa5\u3400-\u4DBF\u{20000}-\u{2EE5F}\u{30000}-\u{323AF}\u3040-\u30ff\uFF65-\uFF9F\uAC00-\uD7AFa-zA-Z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u2160-\u217F\u0400-\u04FF\u00C0-\u024F\u0370-\u03FF]/gu, '');
 }
 
 /**

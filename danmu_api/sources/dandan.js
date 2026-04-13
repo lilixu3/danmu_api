@@ -186,6 +186,7 @@ export default class DandanSource extends BaseSource {
           "Content-Type": "application/json",
           "User-Agent": DandanUserAgent,
         },
+        retries: 1,
       });
 
       // 判断 resp 和 resp.data 是否存在
