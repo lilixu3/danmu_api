@@ -1985,9 +1985,22 @@ async function processMergeTask(params) {
                 sinkDecimalEpisodes(derivedMatch.links, toSinkS, secSource, `副源:${secSource}`);
             }
             let currentSecondaryLinks = derivedMatch.links;
+            const redundantS = identifyRedundantTitle(derivedMatch.links, derivedMatch.animeTitle, secSource);
 
             const filteredPLinksWithIndex = filterEpisodes(derivedAnime.links, epFilter, currentPrimarySource);
             const filteredMLinksWithIndex = filterEpisodes(currentSecondaryLinks, epFilter, secSource);
+            const logicalNumsP = buildLogicalEpisodeMap(filteredPLinksWithIndex, currentPrimarySource, redundantP);
+            const logicalNumsS = buildLogicalEpisodeMap(filteredMLinksWithIndex, secSource, redundantS);
+
+            const getEpisodeInfoWithLogicalNum = (linkItem, logicalIndex, sourceName, redundantTitle, logicalNumMap) => {
+                const rawTitle = linkItem?.link?.title || linkItem?.link?.name || "";
+                const cleanTitle = getTempTitle(rawTitle, redundantTitle);
+                const info = extractEpisodeInfo(cleanTitle, sourceName);
+                if (logicalNumMap.has(logicalIndex) && !info.isSpecial && !info.isPV && !info.isStrictSpecial) {
+                    info.num = logicalNumMap.get(logicalIndex);
+                }
+                return { cleanTitle, info };
+            };
 
             const seriesLangB = getLanguageType(derivedMatch.animeTitle);
             let activePLinks = filteredPLinksWithIndex, activeMLinks = filteredMLinksWithIndex;
@@ -2068,7 +2081,6 @@ async function processMergeTask(params) {
             derivedAnime.bangumiId = String(derivedAnime.animeId);
 
             let mergedCount = 0;
-            const redundantS = identifyRedundantTitle(derivedMatch.links, derivedMatch.animeTitle, secSource);
 
             // 智能对齐策略：共识差计算与番外制导
             const isBroadSpecial = (info) => info.isSpecial || info.isStrictSpecial || (info.num !== null && info.num % 1 !== 0);
@@ -2079,8 +2091,8 @@ async function processMergeTask(params) {
                 const pItem = filteredPLinksWithIndex[k + offset];
                 if (!pItem) return;
 
-                const infoP = extractEpisodeInfo(getTempTitle(pItem.link.title || pItem.link.name, redundantP), currentPrimarySource);
-                const infoS = extractEpisodeInfo(getTempTitle(sItem.link.title || sItem.link.name, redundantS), secSource);
+                const { info: infoP } = getEpisodeInfoWithLogicalNum(pItem, k + offset, currentPrimarySource, redundantP, logicalNumsP);
+                const { info: infoS } = getEpisodeInfoWithLogicalNum(sItem, k, secSource, redundantS, logicalNumsS);
 
                 if (infoP.num !== null && infoS.num !== null && !infoP.isSpecial && !infoS.isSpecial) {
                     const diff = infoP.num - infoS.num;
@@ -2093,7 +2105,7 @@ async function processMergeTask(params) {
 
             // 2. 预处理主源的广义番外索引池
             const pSpecialIndices = filteredPLinksWithIndex.reduce((acc, pItem, i) => {
-                const info = extractEpisodeInfo(getTempTitle(pItem.link.title || pItem.link.name, redundantP), currentPrimarySource);
+                const { info } = getEpisodeInfoWithLogicalNum(pItem, i, currentPrimarySource, redundantP, logicalNumsP);
                 if (isBroadSpecial(info) && !info.isPV) acc.push(i);
                 return acc;
             }, []);
@@ -2106,8 +2118,7 @@ async function processMergeTask(params) {
               const sourceLink = sourceLinkItem.link;
               const sTitleShort = sourceLink.name || sourceLink.title || `Index ${k}`;
 
-              const cleanTitleS = getTempTitle(sourceLink.title || sourceLink.name, redundantS);
-              const infoS = extractEpisodeInfo(cleanTitleS, secSource);
+              const { cleanTitle: cleanTitleS, info: infoS } = getEpisodeInfoWithLogicalNum(sourceLinkItem, k, secSource, redundantS, logicalNumsS);
               const orphanItem = { link: sourceLink, originalIndex: sourceLinkItem.originalIndex, relativeIndex: pIndex, info: infoS };
               const broadSpecialS = isBroadSpecial(infoS);
 
@@ -2115,7 +2126,7 @@ async function processMergeTask(params) {
                   // [正片制导] 精确数值匹配
                   const targetNum = infoS.num + consensusShift;
                   pIndex = filteredPLinksWithIndex.findIndex(pItem => {
-                      const infoP = extractEpisodeInfo(getTempTitle(pItem.link.title || pItem.link.name, redundantP), currentPrimarySource);
+                      const { info: infoP } = getEpisodeInfoWithLogicalNum(pItem, filteredPLinksWithIndex.indexOf(pItem), currentPrimarySource, redundantP, logicalNumsP);
                       return infoP.num === targetNum && !isBroadSpecial(infoP);
                   });
 
@@ -2124,7 +2135,7 @@ async function processMergeTask(params) {
                   } else {
                       let closestIdx = -0.5;
                       for (let i = filteredPLinksWithIndex.length - 1; i >= 0; i--) {
-                          const infoP = extractEpisodeInfo(getTempTitle(filteredPLinksWithIndex[i].link.title || filteredPLinksWithIndex[i].link.name, redundantP), currentPrimarySource);
+                          const { info: infoP } = getEpisodeInfoWithLogicalNum(filteredPLinksWithIndex[i], i, currentPrimarySource, redundantP, logicalNumsP);
                           if (infoP.num !== null && !infoP.isSpecial && infoP.num < targetNum) {
                               closestIdx = i;
                               break;
@@ -2139,8 +2150,7 @@ async function processMergeTask(params) {
                   const cleanEpS = cleanEpisodeText(cleanTitleS);
 
                   for (const pIdx of pSpecialIndices) {
-                      const pTitle = getTempTitle(filteredPLinksWithIndex[pIdx].link.title || filteredPLinksWithIndex[pIdx].link.name, redundantP);
-                      const infoP = extractEpisodeInfo(pTitle, currentPrimarySource);
+                      const { cleanTitle: pTitle, info: infoP } = getEpisodeInfoWithLogicalNum(filteredPLinksWithIndex[pIdx], pIdx, currentPrimarySource, redundantP, logicalNumsP);
                       if (infoS.isPV !== infoP.isPV) continue; // PV 与非 PV 不互通
                       const sim = calculateSimilarity(cleanEpS, cleanEpisodeText(pTitle));
                       if (sim > bestSim) {
@@ -2163,14 +2173,13 @@ async function processMergeTask(params) {
                 const targetLink = derivedAnime.links[originalPIndex];
                 const pTitleShort = targetLink.name || targetLink.title || `Index ${originalPIndex}`;
 
-                const cleanTitleP = getTempTitle(targetLink.title || targetLink.name, redundantP);
+                const { cleanTitle: cleanTitleP, info: infoP } = getEpisodeInfoWithLogicalNum(filteredPLinksWithIndex[pIndex], pIndex, currentPrimarySource, redundantP, logicalNumsP);
                 const specialP = getSpecialEpisodeType(cleanTitleP);
                 const specialS = getSpecialEpisodeType(cleanTitleS);
-                const infoP = extractEpisodeInfo(cleanTitleP, currentPrimarySource);
 
                 if (infoS.isPV && !specialP) {
                      mappingEntries.push({ idx: orphanItem.relativeIndex, text: `   [略过] ${pTitleShort} =/= ${sTitleShort} (PV不匹配正片)` });
-                     orphanedEpisodes.push(orphanItem); 
+                     orphanedEpisodes.push(orphanItem);
                     continue;
                 }
                 if (specialP !== specialS) {

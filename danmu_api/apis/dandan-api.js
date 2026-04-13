@@ -12,7 +12,7 @@ import {
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffset, resolveOffsetRule } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo } from "../utils/common-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import { getHanjutvSourceLabel, HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "../utils/hanjutv-util.js";
@@ -561,32 +561,47 @@ function matchYear(anime, queryYear) {
 }
 
 export function matchSeason(anime, queryTitle, season) {
-  const normalizedAnimeTitle = normalizeSpaces(anime.animeTitle);
+  const rawAnimeTitle = anime?.animeTitle || '';
+  const normalizedAnimeTitle = normalizeSpaces(rawAnimeTitle);
   const normalizedQueryTitle = normalizeSpaces(queryTitle);
 
-  if (normalizedAnimeTitle.includes(normalizedQueryTitle)) {
-    const match = normalizedAnimeTitle.match(/^(.*?)\(\d{4}\)/);
-    const title = match ? match[1].trim() : normalizedAnimeTitle.split("(")[0].trim();
-    if (title.startsWith(normalizedQueryTitle)) {
-      const afterTitle = title.substring(normalizedQueryTitle.length).trim();
-      if (afterTitle === '' && season === 1) {
-        return true;
-      }
-      // match number from afterTitle
-      const seasonIndex = afterTitle.match(/\d+/);
-      if (seasonIndex && seasonIndex[0] === season.toString()) {
-        return true;
-      }
-      // match chinese number
-      const chineseNumber = afterTitle.match(/[一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+/);
-      if (chineseNumber && convertChineseNumber(chineseNumber[0]) === season) {
-        return true;
-      }
-    }
-    return false;
-  } else {
+  if (!normalizedAnimeTitle.includes(normalizedQueryTitle)) {
     return false;
   }
+
+  const { season: parsedSeason, baseTitle } = extractSeasonNumberFromAnimeTitle(rawAnimeTitle);
+  if (baseTitle && baseTitle.startsWith(normalizedQueryTitle)) {
+    if (parsedSeason === null) {
+      return season === 1;
+    }
+    return parsedSeason === season;
+  }
+
+  const titleWithoutYear = stripInvisibleChars(String(rawAnimeTitle))
+    .replace(/【[^】]*】/g, '')
+    .replace(/[\(（\[]\d{4}[\)）\]].*$/u, '')
+    .trim();
+  const normalizedTitleWithoutYear = normalizeSpaces(titleWithoutYear);
+  if (!normalizedTitleWithoutYear.startsWith(normalizedQueryTitle)) {
+    return false;
+  }
+
+  const afterTitle = titleWithoutYear.substring(queryTitle.length).trim();
+  if (afterTitle === '' && season === 1) {
+    return true;
+  }
+
+  const seasonIndex = afterTitle.match(/\d+/);
+  if (seasonIndex && seasonIndex[0] === season.toString()) {
+    return true;
+  }
+
+  const chineseNumber = afterTitle.match(/[一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+/);
+  if (chineseNumber && convertChineseNumber(chineseNumber[0]) === season) {
+    return true;
+  }
+
+  return false;
 }
 
 // Extracted function for GET /api/v2/search/anime
