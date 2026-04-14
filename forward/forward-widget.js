@@ -1,5 +1,6 @@
 import { searchAnime, getBangumi, getComment, getSegmentComment, matchSeason } from '../danmu_api/apis/dandan-api.js';
 import { Globals } from '../danmu_api/configs/globals.js';
+import { extractAnimeTitle } from '../danmu_api/utils/common-util.js';
 import { log } from '../danmu_api/utils/log-util.js';
 import { simplized } from '../danmu_api/utils/zh-util.js';
 
@@ -621,8 +622,8 @@ async function searchDanmu(params) {
 
       // Sort matched animes by title length (before first parenthesis)
       matchedAnimes.sort((a, b) => {
-        const aLength = a.animeTitle.split('(')[0].length;
-        const bLength = b.animeTitle.split('(')[0].length;
+        const aLength = extractAnimeTitle(a.animeTitle).length;
+        const bLength = extractAnimeTitle(b.animeTitle).length;
         return aLength - bLength;
       });
 
@@ -643,8 +644,8 @@ async function searchDanmu(params) {
 
       // Sort matched animes by title length (before first parenthesis)
       matchedAnimes.sort((a, b) => {
-        const aLength = a.animeTitle.split('(')[0].length;
-        const bLength = b.animeTitle.split('(')[0].length;
+        const aLength = extractAnimeTitle(a.animeTitle).length;
+        const bLength = extractAnimeTitle(b.animeTitle).length;
         return aLength - bLength;
       });
 

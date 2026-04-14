@@ -12,7 +12,7 @@ import {
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffset, resolveOffsetRule } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle } from "../utils/common-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle, extractAnimeTitle, normalizeTitleForComparison, sanitizeSearchKeyword, normalizeUnicodeWhitespace } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import { getHanjutvSourceLabel, HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "../utils/hanjutv-util.js";
@@ -510,8 +510,8 @@ function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnime
   }
 
   // 保护性校验：标题与年份至少应与请求一致，避免误命中旧缓存
-  const normalizedAnimeTitle = normalizeSpaces((targetAnime.animeTitle || '').split("(")[0].trim());
-  const normalizedQueryTitle = normalizeSpaces(title);
+  const normalizedAnimeTitle = normalizeTitleForComparison(targetAnime.animeTitle || '');
+  const normalizedQueryTitle = normalizeTitleForComparison(title);
   if (!normalizedAnimeTitle.includes(normalizedQueryTitle)) {
     return { resAnime: null, resEpisode: null };
   }
@@ -562,51 +562,27 @@ function matchYear(anime, queryYear) {
 
 export function matchSeason(anime, queryTitle, season) {
   const rawAnimeTitle = anime?.animeTitle || '';
-  const normalizedAnimeTitle = normalizeSpaces(rawAnimeTitle);
-  const normalizedQueryTitle = normalizeSpaces(queryTitle);
+  const normalizedAnimeTitle = normalizeTitleForComparison(rawAnimeTitle);
+  const normalizedQueryTitle = normalizeTitleForComparison(queryTitle);
 
   if (!normalizedAnimeTitle.includes(normalizedQueryTitle)) {
     return false;
   }
 
   const { season: parsedSeason, baseTitle } = extractSeasonNumberFromAnimeTitle(rawAnimeTitle);
-  if (baseTitle && baseTitle.startsWith(normalizedQueryTitle)) {
-    if (parsedSeason === null) {
-      return season === 1;
-    }
-    return parsedSeason === season;
-  }
-
-  const titleWithoutYear = stripInvisibleChars(String(rawAnimeTitle))
-    .replace(/【[^】]*】/g, '')
-    .replace(/[\(（\[]\d{4}[\)）\]].*$/u, '')
-    .trim();
-  const normalizedTitleWithoutYear = normalizeSpaces(titleWithoutYear);
-  if (!normalizedTitleWithoutYear.startsWith(normalizedQueryTitle)) {
+  if (!baseTitle || !baseTitle.startsWith(normalizedQueryTitle)) {
     return false;
   }
 
-  const afterTitle = titleWithoutYear.substring(queryTitle.length).trim();
-  if (afterTitle === '' && season === 1) {
-    return true;
+  if (parsedSeason === null) {
+    return season === 1;
   }
-
-  const seasonIndex = afterTitle.match(/\d+/);
-  if (seasonIndex && seasonIndex[0] === season.toString()) {
-    return true;
-  }
-
-  const chineseNumber = afterTitle.match(/[一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+/);
-  if (chineseNumber && convertChineseNumber(chineseNumber[0]) === season) {
-    return true;
-  }
-
-  return false;
+  return parsedSeason === season;
 }
 
 // Extracted function for GET /api/v2/search/anime
 export async function searchAnime(url, preferAnimeId = null, preferSource = null, detailStore = null) {
-  let queryTitle = stripInvisibleChars(url.searchParams.get("keyword"));
+  let queryTitle = sanitizeSearchKeyword(url.searchParams.get("keyword"));
   log("info", `Search anime with keyword: ${queryTitle}`);
 
   // 关键字为空直接返回，不用多余查询
@@ -1108,12 +1084,9 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
     dynamicPlatformOrder,
     preferAnimeId,
     animes: searchData.animes.map(anime => {
-      const normalizedAnimeTitle = anime.animeTitle || '';
-      const match = normalizedAnimeTitle.match(/^(.*?)\(\d{4}\)/);
-      const title = match ? match[1].trim() : normalizedAnimeTitle.split("(")[0].trim();
       return {
         animeId: anime.animeId,
-        animeTitle: title,
+        animeTitle: extractAnimeTitle(anime.animeTitle || ''),
         aliases: anime.aliases || [],
         type: anime.type,
         year: anime.startDate ? anime.startDate.slice(0, 4) : null,
@@ -1255,7 +1228,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
     score: -9999 // 初始分数为极低值
   };
 
-  const normalizedTitle = normalizeSpaces(title);
+  const normalizedTitle = normalizeTitleForComparison(title);
 
   // 遍历所有搜索结果，寻找最佳匹配
   for (const anime of searchData.animes) {
@@ -1281,7 +1254,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
 
         if (season && episode) {
             // 剧集模式
-            if (normalizeSpaces(candTitle).includes(normalizedTitle)) {
+            if (normalizeTitleForComparison(candTitle).includes(normalizedTitle)) {
                 // 年份匹配依然以原始 anime 为准，且年份匹配优先于季匹配
                 if (!matchYear(anime, year)) {
                     log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
@@ -1304,8 +1277,8 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
             }
         } else {
             // 电影模式
-            const cleanTitle = candTitle.split("(")[0].trim();
-            if (cleanTitle === title) {
+            const cleanTitle = extractAnimeTitle(candTitle);
+            if (normalizeTitleForComparison(cleanTitle) === normalizedTitle) {
                 if (!matchYear(anime, year)) {
                     log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
                     continue;
@@ -1460,8 +1433,9 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
 }
 
 export async function extractTitleSeasonEpisode(cleanFileName) {
-  const regex = /^(.+?)[.\s]+S(\d+)E(\d+)/i;
-  const match = cleanFileName.match(regex);
+  const normalizedFileName = normalizeUnicodeWhitespace(cleanFileName);
+  const regex = /^(.+?)(?:[.\s]+|(?<=[^\p{ASCII}]))S(\d+)E(\d+)(?=$|[.\s_-])/iu;
+  const match = normalizedFileName.match(regex);
 
   let title, season, episode, year;
 
@@ -1473,7 +1447,7 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
 
     // ============ 提取年份 =============
     // 从文件名中提取年份（支持多种格式：.2009、.2024、(2009)、(2024) 等）
-    const yearMatch = cleanFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
+    const yearMatch = normalizedFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
     if (yearMatch) {
       year = parseInt(yearMatch[1], 10);
     }
@@ -1507,19 +1481,19 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
     }
 
     // 最后再保险清理一次常见的年份尾巴（防止漏网）
-    title = title.replace(/\.\d{4}$/i, '').trim();
+    title = extractAnimeTitle(title.replace(/\.\d{4}$/i, '').trim());
   } else {
     // 没有 S##E## 格式，尝试提取第一个片段作为标题
     // 匹配第一个中文/英文标题部分（在年份、分辨率等技术信息之前）
     const titleRegex = /^([^.\s]+(?:[.\s][^.\s]+)*?)(?:[.\s](?:\d{4}|(?:19|20)\d{2}|\d{3,4}p|S\d+|E\d+|WEB|BluRay|Blu-ray|HDTV|DVDRip|BDRip|x264|x265|H\.?264|H\.?265|AAC|AC3|DDP|TrueHD|DTS|10bit|HDR|60FPS))/i;
-    const titleMatch = cleanFileName.match(titleRegex);
+    const titleMatch = normalizedFileName.match(titleRegex);
 
-    title = titleMatch ? titleMatch[1].replace(/[._]/g, ' ').trim() : cleanFileName;
+    title = titleMatch ? extractAnimeTitle(titleMatch[1].replace(/[._]/g, ' ').trim()) : extractAnimeTitle(normalizedFileName);
     season = null;
     episode = null;
 
     // 从文件名中提取年份
-    const yearMatch = cleanFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
+    const yearMatch = normalizedFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
     if (yearMatch) {
       year = parseInt(yearMatch[1], 10);
     }

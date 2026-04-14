@@ -1,6 +1,12 @@
 import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 
+const UNICODE_WHITESPACE_REGEX = /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]+/gu;
+const TRAILING_YEAR_REGEX = /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]*[\(（\[]\s*([0-9０-９]{4})\s*[\)）\]].*$/u;
+const LEADING_TITLE_TAG_REGEX = /^(?:\s*[【\[][^\]】]+[\]】]\s*)+/u;
+const TRAILING_SEASON_DELIMITER_REGEX = /[\s._\-:：]+$/u;
+const CJK_TRAILING_CHAR_REGEX = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
+
 // =====================
 // 通用工具方法
 // =====================
@@ -29,13 +35,47 @@ export const extractEpisodeTitle = (title) => {
   return match ? match[1] : null;  // 返回方括号中的内容，若没有匹配到，则返回null
 };
 
+export function normalizeUnicodeWhitespace(str) {
+  if (!str) return '';
+  return stripInvisibleChars(String(str)).replace(UNICODE_WHITESPACE_REGEX, ' ').trim();
+}
+
+function stripLeadingTitleTags(str) {
+  return normalizeUnicodeWhitespace(str).replace(LEADING_TITLE_TAG_REGEX, '').trim();
+}
+
+function removeTrailingYearSuffix(str) {
+  return stripLeadingTitleTags(str).replace(TRAILING_YEAR_REGEX, '').trim();
+}
+
+export function extractAnimeTitleMeta(str) {
+  const normalizedTitle = stripLeadingTitleTags(str);
+  const yearMatch = normalizedTitle.match(TRAILING_YEAR_REGEX);
+  const year = yearMatch ? Number.parseInt(yearMatch[1].normalize('NFKC'), 10) : null;
+  const displayTitle = normalizedTitle.replace(TRAILING_YEAR_REGEX, '').trim();
+
+  return {
+    displayTitle,
+    compareTitle: normalizeSpaces(displayTitle),
+    year: Number.isFinite(year) ? year : null,
+  };
+}
+
 // 正则表达式：提取anime标题中的内容
-export const extractAnimeTitle = (str) => str.split('(')[0].trim();
+export const extractAnimeTitle = (str) => extractAnimeTitleMeta(str).displayTitle;
+
+export function normalizeTitleForComparison(str) {
+  return extractAnimeTitleMeta(str).compareTitle;
+}
+
+export function normalizeTitleCacheKey(str) {
+  if (!str) return '';
+  return normalizeUnicodeWhitespace(String(str)).normalize('NFKC').toLowerCase();
+}
 
 // 提取年份的辅助函数
 export function extractYear(animeTitle) {
-  const match = animeTitle.match(/\((\d{4})\)/);
-  return match ? parseInt(match[1]) : null;
+  return extractAnimeTitleMeta(animeTitle).year;
 }
 
 export function convertChineseNumber(chineseNumber) {
@@ -105,35 +145,36 @@ export function parseFileName(fileName) {
     return { cleanFileName: '', preferredPlatform: '' };
   }
 
-  const atIndex = fileName.indexOf('@');
+  const normalizedFileName = normalizeUnicodeWhitespace(fileName);
+  const atIndex = normalizedFileName.indexOf('@');
   if (atIndex === -1) {
     // 没有@符号，直接返回原文件名
-    return { cleanFileName: fileName.trim(), preferredPlatform: '' };
+    return { cleanFileName: normalizedFileName, preferredPlatform: '' };
   }
 
   // 找到@符号，需要分离平台标识
-  const beforeAt = fileName.substring(0, atIndex).trim();
-  const afterAt = fileName.substring(atIndex + 1).trim();
+  const beforeAt = normalizedFileName.substring(0, atIndex).trim();
+  const afterAt = normalizedFileName.substring(atIndex + 1).trim();
 
   // 检查@符号后面是否有季集信息（如 S01E01）
-  const seasonEpisodeMatch = afterAt.match(/^(\w+)\s+(S\d+E\d+)$/);
+  const seasonEpisodeMatch = afterAt.match(/^(\w+)\s+(S\d+E\d+)$/i);
   if (seasonEpisodeMatch) {
     // 格式：动漫名称@平台 S01E01
     const platform = seasonEpisodeMatch[1];
-    const seasonEpisode = seasonEpisodeMatch[2];
+    const seasonEpisode = seasonEpisodeMatch[2].toUpperCase();
     return {
-      cleanFileName: `${beforeAt} ${seasonEpisode}`,
+      cleanFileName: `${beforeAt} ${seasonEpisode}`.trim(),
       preferredPlatform: normalizePlatformName(platform)
     };
   } else {
     // 检查@符号前面是否有季集信息
-    const beforeAtMatch = beforeAt.match(/^(.+?)\s+(S\d+E\d+)$/);
+    const beforeAtMatch = beforeAt.match(/^(.+?)(?:[.\s]+|(?<=[^\p{ASCII}]))(S\d+E\d+)$/iu);
     if (beforeAtMatch) {
       // 格式：动漫名称 S01E01@平台
       const title = beforeAtMatch[1];
-      const seasonEpisode = beforeAtMatch[2];
+      const seasonEpisode = beforeAtMatch[2].toUpperCase();
       return {
-        cleanFileName: `${title} ${seasonEpisode}`,
+        cleanFileName: `${extractAnimeTitle(title)} ${seasonEpisode}`.trim(),
         preferredPlatform: normalizePlatformName(afterAt)
       };
     } else {
@@ -153,9 +194,10 @@ function normalizePlatformName(inputPlatform) {
   }
 
   const input = inputPlatform.trim();
+  const allowedPlatforms = Array.isArray(globals.allowedPlatforms) ? globals.allowedPlatforms : [];
 
   // 直接返回输入的平台名称（如果有效）
-  if (globals.allowedPlatforms.includes(input)) {
+  if (allowedPlatforms.includes(input)) {
     return input;
   }
 
@@ -208,8 +250,8 @@ export function stripInvisibleChars(str) {
  */
 export function sanitizeSearchKeyword(str) {
   if (!str) return '';
-  // 搜索阶段仅清理不可见字符，保留空格和合法标点，避免影响源站命中率。
-  return stripInvisibleChars(String(str)).trim();
+  // 搜索阶段统一零宽字符与各种 Unicode 空格，但保留正常标点，避免影响源站命中率。
+  return normalizeUnicodeWhitespace(String(str));
 }
 
 /**
@@ -219,8 +261,10 @@ export function sanitizeSearchKeyword(str) {
  */
 export function normalizeSpaces(str) {
   if (!str) return '';
-  // 先清理不可见字符，再用白名单保留核心文字/数字，过滤括号、点号、零宽字符等噪音。
-  return stripInvisibleChars(String(str).trim()).replace(/[^\u4e00-\u9fa5\u3400-\u4DBF\u{20000}-\u{2EE5F}\u{30000}-\u{323AF}\u3040-\u30ff\uFF65-\uFF9F\uAC00-\uD7AFa-zA-Z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u2160-\u217F\u0400-\u04FF\u00C0-\u024F\u0370-\u03FF]/gu, '');
+  // 比较阶段：先统一 Unicode 空白与全角字符，再仅保留核心文字/数字。
+  return normalizeUnicodeWhitespace(String(str))
+    .normalize('NFKC')
+    .replace(/[^\p{Letter}\p{Number}]/gu, '');
 }
 
 /**
@@ -272,51 +316,73 @@ export function getExplicitSeasonNumber(text) {
 export function extractSeasonNumberFromAnimeTitle(animeTitle) {
   if (!animeTitle) return { season: null, baseTitle: null };
 
-  const rawTitle = stripInvisibleChars(String(animeTitle))
-    .replace(/【[^】]*】/g, '')
-    .trim();
-  let titleWithoutYear = rawTitle
-    .replace(/[\(（\[]\d{4}[\)）\]].*$/u, '')
-    .trim();
+  const titleWithoutYear = removeTrailingYearSuffix(animeTitle);
+
+  const buildSeasonResult = (season, baseTitle) => ({
+    season,
+    baseTitle: normalizeSpaces(baseTitle.replace(TRAILING_SEASON_DELIMITER_REGEX, '').trim()),
+  });
 
   const explicitSeasonMatch = titleWithoutYear.match(/第\s*([0-9一二三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)\s*[季期部]/u);
   if (explicitSeasonMatch) {
-    return {
-      season: convertChineseNumber(explicitSeasonMatch[1]),
-      baseTitle: normalizeSpaces(titleWithoutYear.replace(explicitSeasonMatch[0], '').trim()),
-    };
+    return buildSeasonResult(
+      convertChineseNumber(explicitSeasonMatch[1]),
+      titleWithoutYear.replace(explicitSeasonMatch[0], ' ')
+    );
   }
 
-  const seasonMatch = titleWithoutYear.match(/\bS(?:eason)?\s*(\d+)\b/i) || titleWithoutYear.match(/\bSeason\s*(\d+)\b/i);
+  const seasonMatch = titleWithoutYear.match(/(?:^|[\s._-])S(?:eason)?\s*([0-9０-９]{1,2})(?=$|[\s._:\-])/iu);
   if (seasonMatch) {
-    return {
-      season: parseInt(seasonMatch[1], 10),
-      baseTitle: normalizeSpaces(titleWithoutYear.replace(seasonMatch[0], '').trim()),
-    };
+    return buildSeasonResult(
+      Number.parseInt(seasonMatch[1].normalize('NFKC'), 10),
+      titleWithoutYear.replace(seasonMatch[0], ' ')
+    );
   }
 
-  const partMatch = titleWithoutYear.match(/\bPart\s*(\d+)\b/i);
+  const partMatch = titleWithoutYear.match(/(?:^|[\s._-])Part\s*([0-9０-９]{1,2})(?=$|[\s._:\-])/iu);
   if (partMatch) {
-    return {
-      season: parseInt(partMatch[1], 10),
-      baseTitle: normalizeSpaces(titleWithoutYear.replace(partMatch[0], '').trim()),
-    };
+    return buildSeasonResult(
+      Number.parseInt(partMatch[1].normalize('NFKC'), 10),
+      titleWithoutYear.replace(partMatch[0], ' ')
+    );
   }
 
-  const trailingNumber = titleWithoutYear.match(/(\d{1,2})$/);
+  const trailingNumber = titleWithoutYear.match(/^(.*?)([0-9０-９]{1,2})$/u);
   if (trailingNumber) {
-    return {
-      season: parseInt(trailingNumber[1], 10),
-      baseTitle: normalizeSpaces(titleWithoutYear.slice(0, titleWithoutYear.length - trailingNumber[1].length).trim()),
-    };
+    const baseTitle = trailingNumber[1];
+    const normalizedDigits = trailingNumber[2].normalize('NFKC');
+    const season = Number.parseInt(normalizedDigits, 10);
+    const trimmedBaseTitle = baseTitle.replace(TRAILING_SEASON_DELIMITER_REGEX, '').trim();
+    const hasExplicitDelimiter = TRAILING_SEASON_DELIMITER_REGEX.test(baseTitle);
+
+    if (
+      Number.isFinite(season)
+      && season >= 1
+      && season <= 30
+      && trimmedBaseTitle
+      && !/^0+$/.test(normalizedDigits)
+      && (hasExplicitDelimiter || CJK_TRAILING_CHAR_REGEX.test(trimmedBaseTitle))
+    ) {
+      return buildSeasonResult(season, trimmedBaseTitle);
+    }
   }
 
-  const trailingChinese = titleWithoutYear.match(/([一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+)$/u);
+  const trailingChinese = titleWithoutYear.match(/^(.*?)([一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+)$/u);
   if (trailingChinese) {
-    return {
-      season: convertChineseNumber(trailingChinese[1]),
-      baseTitle: normalizeSpaces(titleWithoutYear.replace(trailingChinese[0], '').trim()),
-    };
+    const baseTitle = trailingChinese[1];
+    const season = convertChineseNumber(trailingChinese[2]);
+    const trimmedBaseTitle = baseTitle.replace(TRAILING_SEASON_DELIMITER_REGEX, '').trim();
+    const hasExplicitDelimiter = TRAILING_SEASON_DELIMITER_REGEX.test(baseTitle);
+
+    if (
+      Number.isFinite(season)
+      && season >= 1
+      && season <= 30
+      && trimmedBaseTitle
+      && (hasExplicitDelimiter || CJK_TRAILING_CHAR_REGEX.test(trimmedBaseTitle))
+    ) {
+      return buildSeasonResult(season, trimmedBaseTitle);
+    }
   }
 
   return { season: null, baseTitle: normalizeSpaces(titleWithoutYear) };
