@@ -12,7 +12,7 @@ import {
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
 import { applyOffset, resolveOffsetRule } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle, extractAnimeTitle, normalizeTitleForComparison, sanitizeSearchKeyword, normalizeUnicodeWhitespace } from "../utils/common-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle, extractAnimeTitle, normalizeTitleForComparison, sanitizeSearchKeyword, normalizeUnicodeWhitespace, splitTitleAndTrailingSeasonEpisode } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import { getHanjutvSourceLabel, HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "../utils/hanjutv-util.js";
@@ -1434,16 +1434,15 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
 
 export async function extractTitleSeasonEpisode(cleanFileName) {
   const normalizedFileName = normalizeUnicodeWhitespace(cleanFileName);
-  const regex = /^(.+?)(?:[.\s]+|(?<=[^\p{ASCII}]))S(\d+)E(\d+)(?=$|[.\s_-])/iu;
-  const match = normalizedFileName.match(regex);
+  const parsedSeasonEpisode = splitTitleAndTrailingSeasonEpisode(normalizedFileName);
 
   let title, season, episode, year;
 
-  if (match) {
+  if (parsedSeasonEpisode) {
     // 匹配到 S##E## 格式
-    title = match[1].trim();
-    season = parseInt(match[2], 10);
-    episode = parseInt(match[3], 10);
+    title = parsedSeasonEpisode.title;
+    season = parsedSeasonEpisode.season;
+    episode = parsedSeasonEpisode.episode;
 
     // ============ 提取年份 =============
     // 从文件名中提取年份（支持多种格式：.2009、.2024、(2009)、(2024) 等）

@@ -5,7 +5,8 @@ const UNICODE_WHITESPACE_REGEX = /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000
 const TRAILING_YEAR_REGEX = /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]*[\(（\[]\s*([0-9０-９]{4})\s*[\)）\]].*$/u;
 const LEADING_TITLE_TAG_REGEX = /^(?:\s*[【\[][^\]】]+[\]】]\s*)+/u;
 const TRAILING_SEASON_DELIMITER_REGEX = /[\s._\-:：]+$/u;
-const CJK_TRAILING_CHAR_REGEX = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
+const CJK_TRAILING_CHAR_REGEX = /[\u3400-\u4DBF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]$/u;
+const NORMALIZED_TITLE_KEEP_REGEX = /[^\u4e00-\u9fa5\u3400-\u4DBF\u{20000}-\u{2EE5F}\u{30000}-\u{323AF}\u3040-\u30ff\uFF65-\uFF9F\uAC00-\uD7AFa-zA-Z0-9\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u2160-\u217F\u0400-\u04FF\u00C0-\u024F\u0370-\u03FF]/gu;
 
 // =====================
 // 通用工具方法
@@ -40,6 +41,17 @@ export function normalizeUnicodeWhitespace(str) {
   return stripInvisibleChars(String(str)).replace(UNICODE_WHITESPACE_REGEX, ' ').trim();
 }
 
+function safeNormalizeNFKC(str) {
+  if (str === null || str === undefined) return '';
+  const text = String(str);
+  if (typeof text.normalize !== 'function') return text;
+  try {
+    return text.normalize('NFKC');
+  } catch {
+    return text;
+  }
+}
+
 function stripLeadingTitleTags(str) {
   return normalizeUnicodeWhitespace(str).replace(LEADING_TITLE_TAG_REGEX, '').trim();
 }
@@ -51,7 +63,7 @@ function removeTrailingYearSuffix(str) {
 export function extractAnimeTitleMeta(str) {
   const normalizedTitle = stripLeadingTitleTags(str);
   const yearMatch = normalizedTitle.match(TRAILING_YEAR_REGEX);
-  const year = yearMatch ? Number.parseInt(yearMatch[1].normalize('NFKC'), 10) : null;
+  const year = yearMatch ? Number.parseInt(safeNormalizeNFKC(yearMatch[1]), 10) : null;
   const displayTitle = normalizedTitle.replace(TRAILING_YEAR_REGEX, '').trim();
 
   return {
@@ -70,7 +82,7 @@ export function normalizeTitleForComparison(str) {
 
 export function normalizeTitleCacheKey(str) {
   if (!str) return '';
-  return normalizeUnicodeWhitespace(String(str)).normalize('NFKC').toLowerCase();
+  return safeNormalizeNFKC(normalizeUnicodeWhitespace(String(str))).toLowerCase();
 }
 
 // 提取年份的辅助函数
@@ -139,6 +151,50 @@ export function convertChineseNumber(chineseNumber) {
   return result;
 }
 
+function isNonAsciiChar(char) {
+  return !!char && char.charCodeAt(0) > 127;
+}
+
+function trimTrailingSeasonDelimiters(str) {
+  return String(str || '').replace(TRAILING_SEASON_DELIMITER_REGEX, '').trim();
+}
+
+export function splitTitleAndTrailingSeasonEpisode(text) {
+  const normalizedText = normalizeUnicodeWhitespace(text);
+  if (!normalizedText) return null;
+
+  const regex = /S(\d+)E(\d+)/ig;
+  let match;
+  while ((match = regex.exec(normalizedText)) !== null) {
+    const tokenIndex = match.index;
+    const tokenText = match[0];
+    const titlePart = normalizedText.slice(0, tokenIndex);
+    const suffixPart = normalizedText.slice(tokenIndex + tokenText.length);
+
+    if (!titlePart.trim()) continue;
+
+    const charBeforeToken = titlePart.slice(-1);
+    const hasExplicitSeparator = /[.\s_-]/.test(charBeforeToken);
+    if (!hasExplicitSeparator && !isNonAsciiChar(charBeforeToken)) {
+      continue;
+    }
+
+    const charAfterToken = suffixPart.charAt(0);
+    if (charAfterToken && !/[.\s_-]/.test(charAfterToken)) {
+      continue;
+    }
+
+    return {
+      title: trimTrailingSeasonDelimiters(titlePart),
+      season: Number.parseInt(match[1], 10),
+      episode: Number.parseInt(match[2], 10),
+      token: tokenText.toUpperCase(),
+    };
+  }
+
+  return null;
+}
+
 // 解析fileName，提取动漫名称和平台偏好
 export function parseFileName(fileName) {
   if (!fileName || typeof fileName !== 'string') {
@@ -168,11 +224,11 @@ export function parseFileName(fileName) {
     };
   } else {
     // 检查@符号前面是否有季集信息
-    const beforeAtMatch = beforeAt.match(/^(.+?)(?:[.\s]+|(?<=[^\p{ASCII}]))(S\d+E\d+)$/iu);
-    if (beforeAtMatch) {
+    const parsedSeasonEpisode = splitTitleAndTrailingSeasonEpisode(beforeAt);
+    if (parsedSeasonEpisode) {
       // 格式：动漫名称 S01E01@平台
-      const title = beforeAtMatch[1];
-      const seasonEpisode = beforeAtMatch[2].toUpperCase();
+      const title = parsedSeasonEpisode.title;
+      const seasonEpisode = parsedSeasonEpisode.token;
       return {
         cleanFileName: `${extractAnimeTitle(title)} ${seasonEpisode}`.trim(),
         preferredPlatform: normalizePlatformName(afterAt)
@@ -262,9 +318,8 @@ export function sanitizeSearchKeyword(str) {
 export function normalizeSpaces(str) {
   if (!str) return '';
   // 比较阶段：先统一 Unicode 空白与全角字符，再仅保留核心文字/数字。
-  return normalizeUnicodeWhitespace(String(str))
-    .normalize('NFKC')
-    .replace(/[^\p{Letter}\p{Number}]/gu, '');
+  return safeNormalizeNFKC(normalizeUnicodeWhitespace(String(str)))
+    .replace(NORMALIZED_TITLE_KEEP_REGEX, '');
 }
 
 /**
@@ -334,7 +389,7 @@ export function extractSeasonNumberFromAnimeTitle(animeTitle) {
   const seasonMatch = titleWithoutYear.match(/(?:^|[\s._-])S(?:eason)?\s*([0-9０-９]{1,2})(?=$|[\s._:\-])/iu);
   if (seasonMatch) {
     return buildSeasonResult(
-      Number.parseInt(seasonMatch[1].normalize('NFKC'), 10),
+      Number.parseInt(safeNormalizeNFKC(seasonMatch[1]), 10),
       titleWithoutYear.replace(seasonMatch[0], ' ')
     );
   }
@@ -342,7 +397,7 @@ export function extractSeasonNumberFromAnimeTitle(animeTitle) {
   const partMatch = titleWithoutYear.match(/(?:^|[\s._-])Part\s*([0-9０-９]{1,2})(?=$|[\s._:\-])/iu);
   if (partMatch) {
     return buildSeasonResult(
-      Number.parseInt(partMatch[1].normalize('NFKC'), 10),
+      Number.parseInt(safeNormalizeNFKC(partMatch[1]), 10),
       titleWithoutYear.replace(partMatch[0], ' ')
     );
   }
@@ -350,7 +405,7 @@ export function extractSeasonNumberFromAnimeTitle(animeTitle) {
   const trailingNumber = titleWithoutYear.match(/^(.*?)([0-9０-９]{1,2})$/u);
   if (trailingNumber) {
     const baseTitle = trailingNumber[1];
-    const normalizedDigits = trailingNumber[2].normalize('NFKC');
+    const normalizedDigits = safeNormalizeNFKC(trailingNumber[2]);
     const season = Number.parseInt(normalizedDigits, 10);
     const trimmedBaseTitle = baseTitle.replace(TRAILING_SEASON_DELIMITER_REGEX, '').trim();
     const hasExplicitDelimiter = TRAILING_SEASON_DELIMITER_REGEX.test(baseTitle);

@@ -53,10 +53,12 @@ test('extractSeasonNumberFromAnimeTitle should avoid treating title suffix digit
 });
 
 test('parseFileName should normalize unicode separators around season/episode and platform suffixes', () => {
-  assert.deepEqual(
-    parseFileName('太平年\u200BS01E02@qiyi'),
-    { cleanFileName: '太平年 S01E02', preferredPlatform: 'qiyi' }
-  );
+  for (const separator of ['\u200B', '\u3000', '']) {
+    assert.deepEqual(
+      parseFileName(`太平年${separator}S01E02@qiyi`),
+      { cleanFileName: '太平年 S01E02', preferredPlatform: 'qiyi' }
+    );
+  }
 });
 
 test('runtime caches should normalize title keys across unicode whitespace variants', () => {
