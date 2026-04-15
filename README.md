@@ -282,6 +282,10 @@ docker run -d \
 
 ## 部署到 Vercel 【推荐】
 
+[![自定义域名教程](https://img.shields.io/badge/自定义域名教程-Spaceship%20%2B%20Cloudflare%20%2B%20Vercel-000?style=for-the-badge)](./vercel-custom-domain.md)
+
+> 如果你已经把本项目部署到 Vercel，想绑定自己的域名，直接看上面的教程。
+
 ### 一键部署
 点击以下按钮即可将项目快速部署到 Vercel：
 
