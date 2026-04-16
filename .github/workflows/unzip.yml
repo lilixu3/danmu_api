@@ -44,22 +44,21 @@ jobs:
           echo "Zip ready:"
           ls -lh "$ZIP"
 
-      - name: Unzip and sync from top dir
+      - name: Unzip and sync archive contents
         shell: bash
         run: |
           set -euo pipefail
           ZIP="danmu-api-android-main.zip"
-          TOPDIR="danmu-api-android-main"
 
           rm -rf /tmp/unpack
           mkdir -p /tmp/unpack
           unzip -q "$ZIP" -d /tmp/unpack
 
-          SRC="/tmp/unpack/$TOPDIR"
-          if [[ ! -d "$SRC" ]]; then
-            echo "::error::解压后未找到顶层目录 $TOPDIR（实际内容如下）"
-            find /tmp/unpack -maxdepth 2 -mindepth 1 -print
-            exit 1
+          mapfile -t TOP_LEVEL_ENTRIES < <(find /tmp/unpack -mindepth 1 -maxdepth 1 -printf '%P\n' | sort)
+          if [[ ${#TOP_LEVEL_ENTRIES[@]} -eq 1 && -d "/tmp/unpack/${TOP_LEVEL_ENTRIES[0]}" ]]; then
+            SRC="/tmp/unpack/${TOP_LEVEL_ENTRIES[0]}"
+          else
+            SRC="/tmp/unpack"
           fi
 
           echo "Sync from: $SRC -> repo root"
