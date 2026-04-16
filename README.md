@@ -178,7 +178,7 @@ docker run -d \
    # 构建forward弹幕插件
    node build-forward-widget.js
    # 测试forward弹幕插件
-   node danmu_api/forward-widget.test.js
+   node --test ./forward/forward-widget.test.js
    ```
 
 5. **测试 API**：
@@ -204,14 +204,14 @@ docker run -d \
 
 2. **运行容器**：
    ```bash
-   docker run -d -p 9321:9321 --name danmu-api -e TOKEN=87654321 danmu-api
+   docker run -d -p 9321:9321 --name danmu-api -e TOKEN=*** danmu-api
    ```
-   - 使用`-e TOKEN=87654321`设置`TOKEN`环境变量，覆盖Dockerfile中的默认值。
-   - 或使用 `--env-file .env` 加载 .env 文件中的所有环境变量：`docker run -d -p 9321:9321 --name danmu-api --env-file .env danmu-api`
+   - 如果想使用默认值，可把 `TOKEN` 设置为默认值 87654321。
+   - 或使用 `--env-file ./config/.env` 加载配置文件里的环境变量：`docker run -d -p 9321:9321 --name danmu-api --env-file ./config/.env danmu-api`
 
-   **热更新支持**：如需支持环境变量热更新（修改 `.env` 文件后无需重启容器），请使用 Volume 挂载：
+   **热更新支持**：如需支持环境变量热更新（修改 `config/.env` 文件后无需重启容器），请使用 Volume 挂载：
    ```bash
-   docker run -d -p 9321:9321 --name danmu-api -v $(pwd)/.env:/app/.env --env-file .env danmu-api
+   docker run -d -p 9321:9321 --name danmu-api -v $(pwd)/config:/app/config --env-file ./config/.env danmu-api
    ```
 
    > **推荐**：使用 docker compose 部署可以更方便地管理配置和支持热更新，详见下方"Docker 一键启动"部分。
@@ -223,32 +223,32 @@ docker run -d \
 ## Docker 一键启动 【推荐】
 1. **拉取镜像**：
    ```bash
-   docker pull logvar/danmu-api:latest
+   docker pull lilixu3/danmu-api:latest
    ```
 
 2. **运行容器**：
    ```bash
-   docker run -d -p 9321:9321 --name danmu-api -e TOKEN=87654321 logvar/danmu-api:latest
+   docker run -d -p 9321:9321 --name danmu-api -e TOKEN=*** lilixu3/danmu-api:latest
    ```
-   - 使用`-e TOKEN=87654321`设置`TOKEN`环境变量。
-   - 或使用 `--env-file .env` 加载 .env 文件中的所有环境变量：`docker run -d -p 9321:9321 --name danmu-api --env-file .env logvar/danmu-api:latest`
+   - 如果想使用默认值，可把 `TOKEN` 设置为默认值 87654321。
+   - 或使用 `--env-file ./config/.env` 加载配置文件里的环境变量：`docker run -d -p 9321:9321 --name danmu-api --env-file ./config/.env lilixu3/danmu-api:latest`
 
    **热更新支持**：如需支持环境变量热更新（修改 `config/.env` 文件后无需重启容器），请使用 Volume 挂载：
    ```bash
-   docker run -d -p 9321:9321 --name danmu-api -v $(pwd)/config:/app/config --env-file .env logvar/danmu-api:latest
+   docker run -d -p 9321:9321 --name danmu-api -v $(pwd)/config:/app/config --env-file ./config/.env lilixu3/danmu-api:latest
    ```
 
    或使用 docker compose 部署（**推荐，支持环境变量热更新**）：
    ```yaml
    services:
      danmu-api:
-       image: logvar/danmu-api:latest
+       image: lilixu3/danmu-api:latest
        ports:
          - "9321:9321"
        # 热更新支持：挂载 config/.env 文件，修改后容器会自动重新加载配置（无需重启容器）
        volumes:
          - ./config:/app/config    # config目录下需要创建.env
-         - ./.chche:/app/.cache    # 配置.chche目录，会将缓存实时保存在本地文件
+         - ./.cache:/app/.cache    # 配置 .cache 目录，会将缓存实时保存在本地文件
        restart: unless-stopped
    ```
 
@@ -282,16 +282,12 @@ docker run -d \
 
 ## 部署到 Vercel 【推荐】
 
-[![绑定自己的域名](https://img.shields.io/badge/绑定自己的域名-Spaceship%20%2B%20Cloudflare%20%2B%20Vercel-000?style=for-the-badge)](./vercel-custom-domain.md)
-
-> 如果你已经把本项目部署到 Vercel，想绑定自己的域名，直接看上面的教程；域名注册商用 Spaceship 举例，云平台用 Vercel 举例。
-
 ### 一键部署
 点击以下按钮即可将项目快速部署到 Vercel：
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/huangxd-/danmu_api&project-name=danmu_api&repository-name=danmu_api)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/lilixu3/danmu_api&project-name=danmu_api&repository-name=danmu_api)
 
-**注意**：请将按钮链接中的 `https://github.com/huangxd-/danmu_api` 替换为你的实际 Git 仓库地址。编辑 `README.md` 并更新链接后，推送到仓库，点击按钮即可自动克隆和部署。
+**注意**：默认按钮已指向当前维护分支 `https://github.com/lilixu3/danmu_api`。如果你使用的是自己的 fork，请把它替换成你的实际 Git 仓库地址后再部署。
 - **设置环境变量**：部署后，在 Vercel 仪表板中：
   1. 转到你的项目设置。
   2. 在“Environment Variables”部分添加 `TOKEN` 变量，输入你的 API 令牌值。
@@ -309,7 +305,7 @@ docker run -d \
 ### 一键部署
 点击以下按钮即可将项目快速部署到 Netlify：
 
-<a href="https://app.netlify.com/start/deploy?repository=https://github.com/huangxd-/danmu_api"><img src="https://www.netlify.com/img/deploy/button.svg"></a>
+<a href="https://app.netlify.com/start/deploy?repository=https://github.com/lilixu3/danmu_api"><img src="https://www.netlify.com/img/deploy/button.svg"></a>
 
 > 默认访问domain：https://{你的部署项目名}.netlify.app
 > > 注意：TOKEN为默认87654321的情况下，可不带{TOKEN}请求，如`https://{你的部署项目名}.netlify.app/api/v2/search/anime?keyword=子夜归`
@@ -322,16 +318,16 @@ docker run -d \
 ## 部署到 腾讯云 edgeone pages
 
 ### 一键部署
-[![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?template=https://github.com/huangxd-/danmu_api&project-name=danmu-api&root-directory=.%2F&env=TOKEN)
+[![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?template=https://github.com/lilixu3/danmu_api&project-name=danmu-api&root-directory=.%2F&env=TOKEN)
 
 > 注意：部署时请在环境变量配置区域填写你的TOKEN值，该变量将用于API服务的身份验证相关功能
 > 
 > 示例请求：`https://{your_domain}/{TOKEN}/api/v2/search/anime?keyword=子夜归`确认是否部署成功
-> > 注意：TOKEN为默认87654321的情况下，可不带{TOKEN}请求，如`https://{your_domain}.vercel.app/api/v2/search/anime?keyword=子夜归`
+> > 注意：TOKEN为默认87654321的情况下，可不带{TOKEN}请求，如`https://{your_domain}/api/v2/search/anime?keyword=子夜归`
 >
 > 部署的时候项目加速区域最好设置为"全球可用区（不含中国大陆）"，不然不绑定自定义域名貌似只能生成3小时的预览链接？[相关文档](https://edgeone.cloud.tencent.com/pages/document/175191784523485184)
 > 
-> 也可直接用国际站的部署按钮一键部署，默认选择"全球可用区（不含中国大陆）" [![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?template=https://github.com/huangxd-/danmu_api&project-name=danmu-api&root-directory=.%2F&env=TOKEN)
+> 也可直接用国际站的部署按钮一键部署，默认选择"全球可用区（不含中国大陆）" [![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?template=https://github.com/lilixu3/danmu_api&project-name=danmu-api&root-directory=.%2F&env=TOKEN)
 > 
 <img src="https://i.mji.rip/2025/09/17/3a675876dabb92e4ce45c10d543ce66b.png" style="width:400px" />
 
@@ -344,9 +340,9 @@ docker run -d \
 ### 一键部署
 点击以下按钮即可将项目快速部署到 Cloudflare：
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/huangxd-/danmu_api)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lilixu3/danmu_api)
 
-**注意**：请将按钮链接中的 `https://github.com/huangxd-/danmu_api` 替换为你的实际 Git 仓库地址。编辑 `README.md` 并更新链接后，推送到仓库，点击按钮即可自动克隆和部署。
+**注意**：默认按钮已指向当前维护分支 `https://github.com/lilixu3/danmu_api`。如果你使用的是自己的 fork，请把它替换成你的实际 Git 仓库地址后再部署。
 - **设置环境变量**：部署后，在 Cloudflare 仪表板中：
   1. 转到你的 Workers 项目。
   2. 转到“Settings” > “Variables”。
@@ -514,7 +510,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 - `GET /api/v2/comment/:commentId?format=json|xml`
   按 `commentId` 获取弹幕，可输出 `json` 或 `xml`。
 - `GET /api/v2/comment?url={videoUrl}&format=json|xml`
-  直接按单个视频链接获取弹幕，适合已知源站 URL 的场景；不支持传入合并后的多源 URL。
+  直接按视频链接获取弹幕，适合已知源站 URL 的场景。
 - `GET /api/v2/comment/:commentId/duration`
   获取该剧集的时长信息，便于播放器校准时间轴。
 - `POST /api/v2/segmentcomment?format=json`
@@ -578,7 +574,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `VOD_RETURN_MODE` | `all` 或 `fastest` |
 | `VOD_REQUEST_TIMEOUT` | VOD 请求超时 |
 | `BILIBILI_COOKIE` | B 站 Cookie，UI 支持扫码登录、校验、刷新 |
-| `DOUBAN_COOKIE` | 豆瓣 Cookie；用于 Douban 搜索与部分详情 GET 请求，相关请求会优先直接带 Cookie，降低 403 风控概率 |
+| `DOUBAN_COOKIE` | 豆瓣 Cookie；配置后 Douban 请求会优先直接带 Cookie，降低搜索接口 403 风控概率 |
 | `YOUKU_CONCURRENCY` | 优酷并发数 |
 | `PROXY_URL` | 代理 / 反代配置，支持正向代理、万能反代、平台专用反代 |
 | `LOCAL_PROXY_BIND` | 本地 5321 辅助代理绑定地址 |
@@ -592,7 +588,6 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 |---|---|
 | `PLATFORM_ORDER` | 自动匹配优选平台 |
 | `MERGE_SOURCE_PAIRS` | 多源合并规则 |
-| `REAL_TIME_PULL_DANDAN` | 已废弃兼容项；related 接口下线后当前版本不再生效 |
 | `ENABLE_ANIME_EPISODE_FILTER` | 是否启用剧名 / 集标题过滤 |
 | `ANIME_TITLE_FILTER` | 剧名过滤规则 |
 | `EPISODE_TITLE_FILTER` | 集标题过滤规则 |
@@ -600,7 +595,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `TITLE_TO_CHINESE` | 外语标题转中文，通常配合 `TMDB_API_KEY` |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时繁转简 |
 | `TITLE_MAPPING_TABLE` | 标题映射表 |
-| `DANMU_OFFSET` | 弹幕时间偏移，支持秒数偏移与百分比偏移 |
+| `TITLE_PLATFORM_OFFSET_TABLE` | 按剧名和平台配置时间轴偏移 |
 | `AI_BASE_URL` | AI 接口地址，支持 OpenAI 兼容服务 |
 | `AI_MODEL` | AI 模型名 |
 | `AI_API_KEY` | AI 密钥 |
@@ -622,11 +617,6 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `DANMU_FONT_SIZE` | 字号 |
 | `DANMU_OUTPUT_FORMAT` | 全局默认输出格式 |
 | `DANMU_PUSH_URL` | 推送弹幕默认地址 |
-
-> `DANMU_OFFSET` 示例：`overlord/S01:90,re-zero/S02@bilibili:120,re-zero/S02/E03@dandan&bilibili:10,东方/S03/E02@tencent%:11`  
-> - 普通模式：整体平移弹幕时间（单位秒）  
-> - `%` 模式：按 `(视频时长 + 偏移秒数) / 视频时长` 缩放时间轴  
-> - 多源合并时，每一路来源使用各自的视频时长计算百分比偏移，接口返回的 `videoDuration` 仍取合并后的最大值
 
 ### 缓存与状态保持
 
