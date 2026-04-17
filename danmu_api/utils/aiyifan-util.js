@@ -10,7 +10,26 @@ const DEFAULT_USER_AGENT = (
   "Chrome/124.0.0 Safari/537.36"
 );
 
-export const AIYIFAN_SIGNING_CONFIG_TTL_MS = 60 * 1000;
+export const AIYIFAN_SIGNING_CONFIG_TTL_MS = 30 * 60 * 1000;
+export const AIYIFAN_SIGNING_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
+
+const AIYIFAN_SIGNING_CACHE_KEY = "aiyifanSigningConfig";
+
+function isNodeRuntimeAvailable() {
+  return Boolean(typeof process !== "undefined" && process.versions && process.versions.node);
+}
+
+function isNodeFileCacheEnabled() {
+  const deployPlatform = String(globals.deployPlatform || "").trim().toLowerCase();
+  const redisConfigured = Boolean(globals.localRedisUrl || (globals.redisUrl && globals.redisToken));
+  return isNodeRuntimeAvailable() && !redisConfigured && (deployPlatform === "node" || deployPlatform === "nodejs");
+}
+
+async function getDefaultFileCachePath() {
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".cache", `${AIYIFAN_SIGNING_CACHE_KEY}.json`);
+}
 
 function safeGet(obj, path, defaultValue) {
   if (obj == null) {
@@ -319,6 +338,46 @@ function normalizeJsonPayload(data) {
   return data;
 }
 
+function isValidSigningConfig(config) {
+  return Boolean(config && config.publicKey && config.privateKey);
+}
+
+function normalizeSigningCacheRecord(record) {
+  if (!record) {
+    return null;
+  }
+
+  if (typeof record === "string") {
+    try {
+      return normalizeSigningCacheRecord(JSON.parse(record));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  if (isValidSigningConfig(record)) {
+    return {
+      signingConfig: {
+        publicKey: record.publicKey,
+        privateKey: record.privateKey
+      },
+      fetchedAt: Number(record.fetchedAt || 0) || 0
+    };
+  }
+
+  if (isValidSigningConfig(record.signingConfig)) {
+    return {
+      signingConfig: {
+        publicKey: record.signingConfig.publicKey,
+        privateKey: record.signingConfig.privateKey
+      },
+      fetchedAt: Number(record.fetchedAt || record.signingConfigFetchedAt || 0) || 0
+    };
+  }
+
+  return null;
+}
+
 function defaultIsResponseSuccessful(payload) {
   return safeGet(payload, "ret", null) === 200 && safeGet(payload, "data.code", null) === 0;
 }
@@ -337,6 +396,7 @@ export class AiyifanSigningProvider {
     this.userAgent = options.userAgent || DEFAULT_USER_AGENT;
     this.configPageUrl = options.configPageUrl || DEFAULT_CONFIG_PAGE_URL;
     this.ttlMs = options.ttlMs || AIYIFAN_SIGNING_CONFIG_TTL_MS;
+    this.persistentTtlMs = options.persistentTtlMs || AIYIFAN_SIGNING_PERSIST_TTL_MS;
     this.now = options.now || function() {
       return Date.now();
     };
@@ -345,8 +405,163 @@ export class AiyifanSigningProvider {
     };
     this.isResponseSuccessful = options.isResponseSuccessful || defaultIsResponseSuccessful;
     this.getFailureMessage = options.getFailureMessage || defaultGetFailureMessage;
+    this.fileCachePath = options.fileCachePath || "";
+    this.getPersistentCache = options.getPersistentCache || this.readPersistentCache.bind(this);
+    this.setPersistentCache = options.setPersistentCache || this.writePersistentCache.bind(this);
     this.signingConfig = null;
     this.signingConfigFetchedAt = 0;
+  }
+
+  async resolveFileCachePath() {
+    return this.fileCachePath || await getDefaultFileCachePath();
+  }
+
+  async readFileCache() {
+    if (!isNodeFileCacheEnabled()) {
+      return null;
+    }
+
+    try {
+      const fs = await import("node:fs");
+      const fileCachePath = await this.resolveFileCachePath();
+      if (!fs.existsSync(fileCachePath)) {
+        return null;
+      }
+
+      const raw = fs.readFileSync(fileCachePath, "utf8");
+      if (!raw || !raw.trim()) {
+        return null;
+      }
+
+      return normalizeSigningCacheRecord(raw);
+    } catch (error) {
+      log("warn", "[Aiyifan] 读取本地签名缓存文件失败: " + ((error && error.message) || "未知错误"));
+      return null;
+    }
+  }
+
+  async writeFileCache(record) {
+    if (!isNodeFileCacheEnabled()) {
+      return;
+    }
+
+    const normalized = normalizeSigningCacheRecord(record);
+    if (!normalized) {
+      return;
+    }
+
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const fileCachePath = await this.resolveFileCachePath();
+      const payload = {
+        publicKey: normalized.signingConfig.publicKey,
+        privateKey: normalized.signingConfig.privateKey,
+        fetchedAt: normalized.fetchedAt || this.now()
+      };
+      fs.mkdirSync(path.dirname(fileCachePath), { recursive: true });
+      const tempFilePath = `${fileCachePath}.tmp`;
+      fs.writeFileSync(tempFilePath, JSON.stringify(payload, null, 2), "utf8");
+      fs.renameSync(tempFilePath, fileCachePath);
+    } catch (error) {
+      log("warn", "[Aiyifan] 写入本地签名缓存文件失败: " + ((error && error.message) || "未知错误"));
+    }
+  }
+
+  isPersistentRecordFresh(record) {
+    if (!record || !record.fetchedAt) {
+      return true;
+    }
+
+    return (this.now() - record.fetchedAt) < this.persistentTtlMs;
+  }
+
+  async readPersistentCache() {
+    const stores = [];
+
+    if (globals.localRedisUrl) {
+      stores.push(async () => {
+        const { getLocalRedisKey } = await import("./local-redis-util.js");
+        return await getLocalRedisKey(AIYIFAN_SIGNING_CACHE_KEY);
+      });
+    }
+
+    if (globals.redisUrl && globals.redisToken) {
+      stores.push(async () => {
+        const { getRedisKey } = await import("./redis-util.js");
+        const result = await getRedisKey(AIYIFAN_SIGNING_CACHE_KEY);
+        if (result && typeof result === "object" && Object.prototype.hasOwnProperty.call(result, "result")) {
+          return result.result;
+        }
+        if (Array.isArray(result)) {
+          return result[0];
+        }
+        return result;
+      });
+    }
+
+    if (stores.length === 0 && isNodeFileCacheEnabled()) {
+      stores.push(async () => {
+        return await this.readFileCache();
+      });
+    }
+
+    for (let i = 0; i < stores.length; i++) {
+      try {
+        const raw = await stores[i]();
+        const normalized = normalizeSigningCacheRecord(raw);
+        if (normalized) {
+          return normalized;
+        }
+      } catch (error) {
+        log("warn", "[Aiyifan] 读取持久签名缓存失败: " + ((error && error.message) || "未知错误"));
+      }
+    }
+
+    return null;
+  }
+
+  async writePersistentCache(record) {
+    const normalized = normalizeSigningCacheRecord(record);
+    if (!normalized) {
+      return;
+    }
+
+    const ttlSeconds = Math.max(60, Math.floor(this.persistentTtlMs / 1000));
+    const payload = {
+      publicKey: normalized.signingConfig.publicKey,
+      privateKey: normalized.signingConfig.privateKey,
+      fetchedAt: normalized.fetchedAt || this.now()
+    };
+    const writers = [];
+
+    if (globals.localRedisUrl) {
+      writers.push(async () => {
+        const { setLocalRedisKeyWithExpiry } = await import("./local-redis-util.js");
+        return await setLocalRedisKeyWithExpiry(AIYIFAN_SIGNING_CACHE_KEY, payload, ttlSeconds);
+      });
+    }
+
+    if (globals.redisUrl && globals.redisToken) {
+      writers.push(async () => {
+        const { setRedisKeyWithExpiry } = await import("./redis-util.js");
+        return await setRedisKeyWithExpiry(AIYIFAN_SIGNING_CACHE_KEY, payload, ttlSeconds);
+      });
+    }
+
+    if (writers.length === 0 && isNodeFileCacheEnabled()) {
+      writers.push(async () => {
+        return await this.writeFileCache(payload);
+      });
+    }
+
+    for (let i = 0; i < writers.length; i++) {
+      try {
+        await writers[i]();
+      } catch (error) {
+        log("warn", "[Aiyifan] 写入持久签名缓存失败: " + ((error && error.message) || "未知错误"));
+      }
+    }
   }
 
   async getSigningConfig(forceRefresh) {
@@ -358,27 +573,57 @@ export class AiyifanSigningProvider {
       return this.signingConfig;
     }
 
-    const headers = mergeObjects(
-      {
-        "User-Agent": this.userAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      },
-      this.getConfigHeaders() || {}
-    );
-
-    const response = await this.request(this.proxyUrlBuilder(this.configPageUrl), { headers });
-    const html = typeof response.data === "string"
-      ? response.data
-      : String(response && response.data != null ? response.data : "");
-    const signingConfig = extractPConfigFromHtml(html);
-    if (!signingConfig) {
-      throw new Error("未能从桌面站页面解析到 pConfig");
+    let persistentRecord = null;
+    if (typeof this.getPersistentCache === "function") {
+      persistentRecord = normalizeSigningCacheRecord(await this.getPersistentCache());
+      if (!forceRefresh && persistentRecord && this.isPersistentRecordFresh(persistentRecord)) {
+        this.signingConfig = persistentRecord.signingConfig;
+        this.signingConfigFetchedAt = persistentRecord.fetchedAt || now;
+        log("info", "[Aiyifan] 使用持久签名缓存恢复 pConfig");
+        return this.signingConfig;
+      }
     }
 
-    this.signingConfig = signingConfig;
-    this.signingConfigFetchedAt = now;
-    log("info", "[Aiyifan] 已更新桌面站签名配置: " + signingConfig.publicKey.slice(0, 12) + "...");
-    return signingConfig;
+    try {
+      const headers = mergeObjects(
+        {
+          "User-Agent": this.userAgent,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        },
+        this.getConfigHeaders() || {}
+      );
+
+      const response = await this.request(this.proxyUrlBuilder(this.configPageUrl), { headers });
+      const html = typeof response.data === "string"
+        ? response.data
+        : String(response && response.data != null ? response.data : "");
+      const signingConfig = extractPConfigFromHtml(html);
+      if (!signingConfig) {
+        throw new Error("未能从桌面站页面解析到 pConfig");
+      }
+
+      this.signingConfig = signingConfig;
+      this.signingConfigFetchedAt = now;
+      if (typeof this.setPersistentCache === "function") {
+        await this.setPersistentCache({ signingConfig, fetchedAt: now });
+      }
+      log("info", "[Aiyifan] 已更新桌面站签名配置: " + signingConfig.publicKey.slice(0, 12) + "...");
+      return signingConfig;
+    } catch (error) {
+      const fallbackRecord = normalizeSigningCacheRecord({
+        signingConfig: this.signingConfig,
+        fetchedAt: this.signingConfigFetchedAt
+      }) || persistentRecord;
+
+      if (fallbackRecord && isValidSigningConfig(fallbackRecord.signingConfig)) {
+        this.signingConfig = fallbackRecord.signingConfig;
+        this.signingConfigFetchedAt = fallbackRecord.fetchedAt || this.signingConfigFetchedAt || now;
+        log("warn", "[Aiyifan] 刷新 pConfig 失败，继续使用旧签名配置: " + ((error && error.message) || "未知错误"));
+        return this.signingConfig;
+      }
+
+      throw error;
+    }
   }
 
   buildSignedParams(baseParams, signingConfig) {
