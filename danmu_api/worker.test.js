@@ -4,6 +4,9 @@ dotenv.config();
 
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { handleRequest } from './worker.js';
 import { extractTitleSeasonEpisode, getBangumi, getComment, searchAnime } from "./apis/dandan-api.js";
 import { getRedisKey, pingRedis, setRedisKey, setRedisKeyWithExpiry } from "./utils/redis-util.js";
@@ -137,6 +140,202 @@ test('AiyifanSigningProvider keeps custom headers and success hooks after fw com
   assert.equal(result.signingConfig.publicKey, 'pub-key');
   assert.ok(calls[1].url.includes('pub=pub-key'));
   assert.ok(calls[1].url.includes('vv='));
+});
+
+test('AiyifanSigningProvider should prefer persistent cache before refreshing config page', async () => {
+  const now = Date.now();
+  const calls = [];
+  const provider = new AiyifanSigningProvider({
+    request: async (url, options = {}) => {
+      calls.push({ url, options });
+      return {
+        status: 200,
+        data: { data: { info: [] } }
+      };
+    },
+    proxyUrlBuilder: url => url,
+    getPersistentCache: async () => ({
+      publicKey: 'cached-pub',
+      privateKey: 'cached-priv',
+      fetchedAt: now
+    }),
+    setPersistentCache: async () => {
+      throw new Error('should not rewrite persistent cache when only reading it');
+    },
+    isResponseSuccessful: payload => Boolean(payload && payload.data),
+    getFailureMessage: () => 'unexpected failure',
+    now: () => now
+  });
+
+  const result = await provider.signedGetJson(
+    'https://api.example.com/v3/test?foo=bar',
+    { foo: 'bar' },
+    {},
+    'Aiyifan'
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(result.signingConfig.publicKey, 'cached-pub');
+  assert.ok(calls[0].url.includes('pub=cached-pub'));
+  assert.ok(calls[0].url.includes('vv='));
+});
+
+test('AiyifanSigningProvider should reuse stale config when refresh fails after a signed request error', async () => {
+  const calls = [];
+  const provider = new AiyifanSigningProvider({
+    request: async (url, options = {}) => {
+      calls.push({ url, options });
+
+      if (url === 'https://config.example.com/') {
+        throw new Error('cf blocked');
+      }
+
+      const apiCallCount = calls.filter(call => call.url.startsWith('https://api.example.com/')).length;
+      if (apiCallCount === 1) {
+        return {
+          status: 200,
+          data: { data: { code: 401, msg: 'signature expired' } }
+        };
+      }
+
+      return {
+        status: 200,
+        data: { data: { code: 0, info: ['ok'] } }
+      };
+    },
+    proxyUrlBuilder: url => url,
+    configPageUrl: 'https://config.example.com/',
+    isResponseSuccessful: payload => payload?.data?.code === 0,
+    getFailureMessage: payload => payload?.data?.msg || 'unexpected failure'
+  });
+
+  provider.signingConfig = { publicKey: 'stale-pub', privateKey: 'stale-priv' };
+  provider.signingConfigFetchedAt = Date.now();
+
+  const result = await provider.signedGetJson(
+    'https://api.example.com/v3/test?foo=bar',
+    { foo: 'bar' },
+    {},
+    'Aiyifan'
+  );
+
+  const apiCalls = calls.filter(call => call.url.startsWith('https://api.example.com/'));
+  assert.equal(apiCalls.length, 2);
+  assert.ok(calls.some(call => call.url === 'https://config.example.com/'));
+  assert.equal(result.signingConfig.publicKey, 'stale-pub');
+  assert.ok(apiCalls[1].url.includes('pub=stale-pub'));
+});
+
+test('AiyifanSigningProvider should restore signing config from local file cache when node has no redis', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aiyifan-file-cache-'));
+  const fileCachePath = path.join(tempDir, 'aiyifanSigningConfig.json');
+  fs.writeFileSync(fileCachePath, JSON.stringify({
+    publicKey: 'file-pub',
+    privateKey: 'file-priv',
+    fetchedAt: Date.now()
+  }), 'utf8');
+
+  const originalDeployPlatform = globals.deployPlatform;
+  const originalLocalRedisUrl = globals.localRedisUrl;
+  const originalRedisUrl = globals.redisUrl;
+  const originalRedisToken = globals.redisToken;
+  const calls = [];
+
+  globals.deployPlatform = 'node';
+  globals.localRedisUrl = '';
+  globals.redisUrl = '';
+  globals.redisToken = '';
+
+  try {
+    const provider = new AiyifanSigningProvider({
+      request: async (url, options = {}) => {
+        calls.push({ url, options });
+        return {
+          status: 200,
+          data: { data: { info: [] } }
+        };
+      },
+      proxyUrlBuilder: url => url,
+      fileCachePath,
+      isResponseSuccessful: payload => Boolean(payload && payload.data),
+      getFailureMessage: () => 'unexpected failure'
+    });
+
+    const result = await provider.signedGetJson(
+      'https://api.example.com/v3/test?foo=bar',
+      { foo: 'bar' },
+      {},
+      'Aiyifan'
+    );
+
+    assert.equal(calls.length, 1);
+    assert.equal(result.signingConfig.publicKey, 'file-pub');
+    assert.ok(calls[0].url.includes('pub=file-pub'));
+  } finally {
+    globals.deployPlatform = originalDeployPlatform;
+    globals.localRedisUrl = originalLocalRedisUrl;
+    globals.redisUrl = originalRedisUrl;
+    globals.redisToken = originalRedisToken;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('AiyifanSigningProvider should write local file cache after refreshing config page when node has no redis', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aiyifan-file-cache-write-'));
+  const fileCachePath = path.join(tempDir, 'aiyifanSigningConfig.json');
+  const originalDeployPlatform = globals.deployPlatform;
+  const originalLocalRedisUrl = globals.localRedisUrl;
+  const originalRedisUrl = globals.redisUrl;
+  const originalRedisToken = globals.redisToken;
+
+  globals.deployPlatform = 'node';
+  globals.localRedisUrl = '';
+  globals.redisUrl = '';
+  globals.redisToken = '';
+
+  try {
+    const provider = new AiyifanSigningProvider({
+      request: async (url) => {
+        if (url === 'https://config.example.com/') {
+          return {
+            status: 200,
+            data: '<script>var injectJson = {"config":[{"pConfig":{"publicKey":"fresh-file-pub","privateKey":["fresh-file-priv"]}}]};</script>'
+          };
+        }
+
+        return {
+          status: 200,
+          data: { data: { code: 0, info: ['ok'] } }
+        };
+      },
+      proxyUrlBuilder: url => url,
+      configPageUrl: 'https://config.example.com/',
+      fileCachePath,
+      isResponseSuccessful: payload => payload?.data?.code === 0,
+      getFailureMessage: payload => payload?.data?.msg || 'unexpected failure'
+    });
+
+    const result = await provider.signedGetJson(
+      'https://api.example.com/v3/test?foo=bar',
+      { foo: 'bar' },
+      {},
+      'Aiyifan'
+    );
+
+    assert.equal(result.signingConfig.publicKey, 'fresh-file-pub');
+    assert.ok(fs.existsSync(fileCachePath));
+
+    const fileCache = JSON.parse(fs.readFileSync(fileCachePath, 'utf8'));
+    assert.equal(fileCache.publicKey, 'fresh-file-pub');
+    assert.equal(fileCache.privateKey, 'fresh-file-priv');
+    assert.ok(Number(fileCache.fetchedAt) > 0);
+  } finally {
+    globals.deployPlatform = originalDeployPlatform;
+    globals.localRedisUrl = originalLocalRedisUrl;
+    globals.redisUrl = originalRedisUrl;
+    globals.redisToken = originalRedisToken;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('runtime info and version check should allow public read access on custom-token deployments', async () => {
