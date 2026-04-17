@@ -11,8 +11,8 @@ import {
     storeAnimeIdsToMap, writeCacheToFile, updateLocalCaches, setLastSearch, getLastSearch
 } from "../utils/cache-util.js";
 import { formatDanmuResponse, convertToDanmakuJson } from "../utils/danmu-util.js";
-import { applyOffsetToFormattedComments, resolveTimelineOffsetSeconds } from "../utils/offset-util.js";
-import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches } from "../utils/common-util.js";
+import { applyOffset, resolveOffsetRule } from "../utils/offset-util.js";
+import { extractEpisodeTitle, convertChineseNumber, parseFileName, createDynamicPlatformOrder, normalizeSpaces, stripInvisibleChars, extractYear, titleMatches, extractAnimeInfo, extractSeasonNumberFromAnimeTitle, extractAnimeTitle, normalizeTitleForComparison, sanitizeSearchKeyword, normalizeUnicodeWhitespace, splitTitleAndTrailingSeasonEpisode } from "../utils/common-util.js";
 import { getTMDBChineseTitle } from "../utils/tmdb-util.js";
 import { applyMergeLogic, mergeDanmakuList, MERGE_DELIMITER, alignSourceTimelines } from "../utils/merge-util.js";
 import { getHanjutvSourceLabel, HANJUTV_FULL_EPISODE_FALLBACK_SEGMENT_DATA } from "../utils/hanjutv-util.js";
@@ -159,6 +159,86 @@ async function resolveMergedDuration(url) {
     log('warn', '[Duration] 获取时长失败: ' + error.message);
     return 0;
   }
+}
+
+function findEpisodeIndexByCommentId(commentId) {
+  for (const anime of globals.animes || []) {
+    if (!anime || !Array.isArray(anime.links)) continue;
+    const index = anime.links.findIndex(link => String(link?.id) === String(commentId));
+    if (index !== -1) return index;
+  }
+  return -1;
+}
+
+function buildDanmuOffsetMatchContext({ animeTitle, episodeTitle, source, commentId = null } = {}) {
+  if (!animeTitle) return null;
+
+  const { baseTitle, season: detectedSeason, episode: detectedEpisode } = extractAnimeInfo(animeTitle, episodeTitle);
+  if (!baseTitle) return null;
+
+  const season = detectedSeason || 1;
+  const fallbackEpisodeIndex = commentId !== null ? findEpisodeIndexByCommentId(commentId) : -1;
+  const episode = detectedEpisode || (fallbackEpisodeIndex >= 0 ? fallbackEpisodeIndex + 1 : null);
+
+  return {
+    anime: baseTitle,
+    season: `S${String(season).padStart(2, '0')}`,
+    episode: episode ? `E${String(episode).padStart(2, '0')}` : null,
+    source
+  };
+}
+
+function resolveDanmuOffsetRule(context = {}) {
+  if (!globals.danmuOffsetRules?.length) return null;
+  const matchContext = buildDanmuOffsetMatchContext(context);
+  if (!matchContext?.anime) return null;
+  return resolveOffsetRule(globals.danmuOffsetRules, matchContext);
+}
+
+function resolveSourceInstance(sourceName) {
+  if (sourceName === 'renren') return renrenSource;
+  if (sourceName === 'hanjutv') return hanjutvSource;
+  if (sourceName === 'bahamut') return bahamutSource;
+  if (sourceName === 'dandan') return dandanSource;
+  if (sourceName === 'tencent') return tencentSource;
+  if (sourceName === 'youku') return youkuSource;
+  if (sourceName === 'iqiyi') return iqiyiSource;
+  if (sourceName === 'imgo') return mangoSource;
+  if (sourceName === 'bilibili') return bilibiliSource;
+  if (sourceName === 'migu') return miguSource;
+  if (sourceName === 'sohu') return sohuSource;
+  if (sourceName === 'leshi') return leshiSource;
+  if (sourceName === 'xigua') return xiguaSource;
+  if (sourceName === 'maiduidui') return maiduiduiSource;
+  if (sourceName === 'acfun') return acfunSource;
+  if (sourceName === 'aiyifan') return aiyifanSource;
+  if (sourceName === 'animeko') return animekoSource;
+  if (sourceName === 'custom') return customSource;
+  if (sourceName === 'other_server') return otherSource;
+  return null;
+}
+
+async function applyDanmuOffsetByRule(danmus, offsetRule, targetUrl, logPrefix = '[Offset]') {
+  const offset = Number(offsetRule?.offset || 0);
+  if (!offset || !Array.isArray(danmus) || danmus.length === 0) return danmus;
+
+  const usePercent = offsetRule?.usePercent === true;
+  let videoDuration = 0;
+  if (usePercent) {
+    videoDuration = await resolveUrlDuration(targetUrl);
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+      log('warn', `${logPrefix} 跳过百分比偏移 ${offset}%，未获取到有效时长`);
+      return danmus;
+    }
+  }
+
+  const offsetMode = usePercent ? '%' : 's';
+  log('info', `${logPrefix} 应用偏移 ${offset}${offsetMode}${usePercent ? `, duration=${videoDuration}s` : ''}`);
+
+  return applyOffset(danmus, offset, {
+    usePercent,
+    videoDuration
+  });
 }
 
 export async function getCommentDuration(path) {
@@ -430,8 +510,8 @@ function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnime
   }
 
   // 保护性校验：标题与年份至少应与请求一致，避免误命中旧缓存
-  const normalizedAnimeTitle = normalizeSpaces((targetAnime.animeTitle || '').split("(")[0].trim());
-  const normalizedQueryTitle = normalizeSpaces(title);
+  const normalizedAnimeTitle = normalizeTitleForComparison(targetAnime.animeTitle || '');
+  const normalizedQueryTitle = normalizeTitleForComparison(title);
   if (!normalizedAnimeTitle.includes(normalizedQueryTitle)) {
     return { resAnime: null, resEpisode: null };
   }
@@ -481,37 +561,28 @@ function matchYear(anime, queryYear) {
 }
 
 export function matchSeason(anime, queryTitle, season) {
-  const normalizedAnimeTitle = normalizeSpaces(anime.animeTitle);
-  const normalizedQueryTitle = normalizeSpaces(queryTitle);
+  const rawAnimeTitle = anime?.animeTitle || '';
+  const normalizedAnimeTitle = normalizeTitleForComparison(rawAnimeTitle);
+  const normalizedQueryTitle = normalizeTitleForComparison(queryTitle);
 
-  if (normalizedAnimeTitle.includes(normalizedQueryTitle)) {
-    const match = normalizedAnimeTitle.match(/^(.*?)\(\d{4}\)/);
-    const title = match ? match[1].trim() : normalizedAnimeTitle.split("(")[0].trim();
-    if (title.startsWith(normalizedQueryTitle)) {
-      const afterTitle = title.substring(normalizedQueryTitle.length).trim();
-      if (afterTitle === '' && season === 1) {
-        return true;
-      }
-      // match number from afterTitle
-      const seasonIndex = afterTitle.match(/\d+/);
-      if (seasonIndex && seasonIndex[0] === season.toString()) {
-        return true;
-      }
-      // match chinese number
-      const chineseNumber = afterTitle.match(/[一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+/);
-      if (chineseNumber && convertChineseNumber(chineseNumber[0]) === season) {
-        return true;
-      }
-    }
-    return false;
-  } else {
+  if (!normalizedAnimeTitle.includes(normalizedQueryTitle)) {
     return false;
   }
+
+  const { season: parsedSeason, baseTitle } = extractSeasonNumberFromAnimeTitle(rawAnimeTitle);
+  if (!baseTitle || !baseTitle.startsWith(normalizedQueryTitle)) {
+    return false;
+  }
+
+  if (parsedSeason === null) {
+    return season === 1;
+  }
+  return parsedSeason === season;
 }
 
 // Extracted function for GET /api/v2/search/anime
 export async function searchAnime(url, preferAnimeId = null, preferSource = null, detailStore = null) {
-  let queryTitle = stripInvisibleChars(url.searchParams.get("keyword"));
+  let queryTitle = sanitizeSearchKeyword(url.searchParams.get("keyword"));
   log("info", `Search anime with keyword: ${queryTitle}`);
 
   // 关键字为空直接返回，不用多余查询
@@ -1013,12 +1084,9 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
     dynamicPlatformOrder,
     preferAnimeId,
     animes: searchData.animes.map(anime => {
-      const normalizedAnimeTitle = anime.animeTitle || '';
-      const match = normalizedAnimeTitle.match(/^(.*?)\(\d{4}\)/);
-      const title = match ? match[1].trim() : normalizedAnimeTitle.split("(")[0].trim();
       return {
         animeId: anime.animeId,
-        animeTitle: title,
+        animeTitle: extractAnimeTitle(anime.animeTitle || ''),
         aliases: anime.aliases || [],
         type: anime.type,
         year: anime.startDate ? anime.startDate.slice(0, 4) : null,
@@ -1160,7 +1228,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
     score: -9999 // 初始分数为极低值
   };
 
-  const normalizedTitle = normalizeSpaces(title);
+  const normalizedTitle = normalizeTitleForComparison(title);
 
   // 遍历所有搜索结果，寻找最佳匹配
   for (const anime of searchData.animes) {
@@ -1186,7 +1254,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
 
         if (season && episode) {
             // 剧集模式
-            if (normalizeSpaces(candTitle).includes(normalizedTitle)) {
+            if (normalizeTitleForComparison(candTitle).includes(normalizedTitle)) {
                 // 年份匹配依然以原始 anime 为准，且年份匹配优先于季匹配
                 if (!matchYear(anime, year)) {
                     log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
@@ -1209,8 +1277,8 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
             }
         } else {
             // 电影模式
-            const cleanTitle = candTitle.split("(")[0].trim();
-            if (cleanTitle === title) {
+            const cleanTitle = extractAnimeTitle(candTitle);
+            if (normalizeTitleForComparison(cleanTitle) === normalizedTitle) {
                 if (!matchYear(anime, year)) {
                     log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
                     continue;
@@ -1365,20 +1433,20 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
 }
 
 export async function extractTitleSeasonEpisode(cleanFileName) {
-  const regex = /^(.+?)[.\s]+S(\d+)E(\d+)/i;
-  const match = cleanFileName.match(regex);
+  const normalizedFileName = normalizeUnicodeWhitespace(cleanFileName);
+  const parsedSeasonEpisode = splitTitleAndTrailingSeasonEpisode(normalizedFileName);
 
   let title, season, episode, year;
 
-  if (match) {
+  if (parsedSeasonEpisode) {
     // 匹配到 S##E## 格式
-    title = match[1].trim();
-    season = parseInt(match[2], 10);
-    episode = parseInt(match[3], 10);
+    title = parsedSeasonEpisode.title;
+    season = parsedSeasonEpisode.season;
+    episode = parsedSeasonEpisode.episode;
 
     // ============ 提取年份 =============
     // 从文件名中提取年份（支持多种格式：.2009、.2024、(2009)、(2024) 等）
-    const yearMatch = cleanFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
+    const yearMatch = normalizedFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
     if (yearMatch) {
       year = parseInt(yearMatch[1], 10);
     }
@@ -1412,19 +1480,19 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
     }
 
     // 最后再保险清理一次常见的年份尾巴（防止漏网）
-    title = title.replace(/\.\d{4}$/i, '').trim();
+    title = extractAnimeTitle(title.replace(/\.\d{4}$/i, '').trim());
   } else {
     // 没有 S##E## 格式，尝试提取第一个片段作为标题
     // 匹配第一个中文/英文标题部分（在年份、分辨率等技术信息之前）
     const titleRegex = /^([^.\s]+(?:[.\s][^.\s]+)*?)(?:[.\s](?:\d{4}|(?:19|20)\d{2}|\d{3,4}p|S\d+|E\d+|WEB|BluRay|Blu-ray|HDTV|DVDRip|BDRip|x264|x265|H\.?264|H\.?265|AAC|AC3|DDP|TrueHD|DTS|10bit|HDR|60FPS))/i;
-    const titleMatch = cleanFileName.match(titleRegex);
+    const titleMatch = normalizedFileName.match(titleRegex);
 
-    title = titleMatch ? titleMatch[1].replace(/[._]/g, ' ').trim() : cleanFileName;
+    title = titleMatch ? extractAnimeTitle(titleMatch[1].replace(/[._]/g, ' ').trim()) : extractAnimeTitle(normalizedFileName);
     season = null;
     episode = null;
 
     // 从文件名中提取年份
-    const yearMatch = cleanFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
+    const yearMatch = normalizedFileName.match(/(?:\.|\(|（)((?:19|20)\d{2})(?:\)|）|\.|$)/);
     if (yearMatch) {
       year = parseInt(yearMatch[1], 10);
     }
@@ -1801,8 +1869,9 @@ async function fetchMergedComments(url, offsetContext = {}) {
     };
   }).filter(Boolean);
   const sourceNames = sourceParts.map(part => part.sourceName);
+  const realIds = sourceParts.map(part => part.realId);
   const sourceTag = sourceParts.map(part => part.label).join('＆');
-  const { animeTitle, episodeTitle } = offsetContext || {};
+  const { animeTitle, episodeTitle, commentId = null } = offsetContext || {};
 
   log("info", `[Merge] 开始获取 [${sourceTag}] 聚合弹幕...`);
 
@@ -1817,115 +1886,81 @@ async function fetchMergedComments(url, offsetContext = {}) {
 
   // 2. 并行获取所有源的弹幕
   const tasks = sourceParts.map(async ({ sourceName, realId, label }) => {
-
-    // 构建去重Key
     const pendingKey = `${sourceName}:${realId}`;
     const statKey = sourceName === 'hanjutv' ? `hanjutv:${label}` : sourceName;
 
-    // 检查是否有正在进行的相同请求（请求合并）
     if (PENDING_DANMAKU_REQUESTS.has(pendingKey)) {
-        log("info", `[Merge] 复用正在进行的请求: ${pendingKey}`);
-        try {
-            const list = await PENDING_DANMAKU_REQUESTS.get(pendingKey);
-            return list || [];
-        } catch (e) {
-            return [];
-        }
+      log("info", `[Merge] 复用正在进行的请求: ${pendingKey}`);
+      try {
+        const list = await PENDING_DANMAKU_REQUESTS.get(pendingKey);
+        return list || [];
+      } catch (e) {
+        return [];
+      }
     }
 
-    // 定义请求任务
     const fetchTask = (async () => {
-        let sourceInstance = null;
+      const sourceInstance = resolveSourceInstance(sourceName);
+      if (!sourceInstance) return [];
 
-        if (sourceName === 'renren') sourceInstance = renrenSource;
-        else if (sourceName === 'hanjutv') sourceInstance = hanjutvSource;
-        else if (sourceName === 'bahamut') sourceInstance = bahamutSource;
-        else if (sourceName === 'dandan') sourceInstance = dandanSource;
-        else if (sourceName === 'tencent') sourceInstance = tencentSource;
-        else if (sourceName === 'youku') sourceInstance = youkuSource;
-        else if (sourceName === 'iqiyi') sourceInstance = iqiyiSource;
-        else if (sourceName === 'imgo') sourceInstance = mangoSource;
-        else if (sourceName === 'bilibili') sourceInstance = bilibiliSource;
-        else if (sourceName === 'migu') sourceInstance = miguSource;
-        else if (sourceName === 'sohu') sourceInstance = sohuSource;
-        else if (sourceName === 'leshi') sourceInstance = leshiSource;
-        else if (sourceName === 'xigua') sourceInstance = xiguaSource;
-        else if (sourceName === 'maiduidui') sourceInstance = maiduiduiSource;
-        else if (sourceName === 'acfun') sourceInstance = acfunSource;
-        else if (sourceName === 'aiyifan') sourceInstance = aiyifanSource;
-        else if (sourceName === 'animeko') sourceInstance = animekoSource;
-        // 如有新增允许的源合并，在此处添加
+      try {
+        const raw = await sourceInstance.getEpisodeDanmu(realId, parts);
+        const formatted = sourceInstance.formatComments(raw);
 
-        if (sourceInstance) {
-          try {
-            // 获取原始数据 -> 格式化
-            const raw = await sourceInstance.getEpisodeDanmu(realId, parts);
-            let formatted = sourceInstance.formatComments(raw);
-
-            // 给合并工具里的每一条弹幕打上独立的原始源标签
-            if (formatted && Array.isArray(formatted)) {
-              formatted.forEach(item => item._sourceLabel = label);
-            }
-
-            // 提取并挂载 dandan 源传出的精确偏移量
-            const relatedShifts = (raw && raw.relatedShifts) ? raw.relatedShifts : null;
-
-            // 保留剧名-源级别的偏移修正
-            const offsetSeconds = resolveTimelineOffsetSeconds({
-              animeTitle,
-              episodeTitle,
-              source: sourceName
-            });
-            formatted = applyOffsetToFormattedComments(formatted, offsetSeconds);
-
-            // 应用偏移后补回源标签
-            if (formatted && Array.isArray(formatted)) {
-              formatted.forEach(item => {
-                if (!item._sourceLabel) item._sourceLabel = label;
-              });
-            }
-
-            if (relatedShifts) {
-              formatted.relatedShifts = relatedShifts;
-            }
-            stats[statKey] = formatted.length;
-            return formatted;
-          } catch (e) {
-            log("error", `[Merge] 获取 ${sourceName} 失败: ${e.message}`);
-            stats[statKey] = 0;
-            return [];
-          }
+        if (formatted && Array.isArray(formatted)) {
+          formatted.forEach(item => item._sourceLabel = label);
         }
+
+        stats[statKey] = Array.isArray(formatted) ? formatted.length : 0;
+        return formatted;
+      } catch (e) {
+        log("error", `[Merge] 获取 ${sourceName} 失败: ${e.message}`);
+        stats[statKey] = 0;
         return [];
+      }
     })();
 
-    // 将任务加入队列
     PENDING_DANMAKU_REQUESTS.set(pendingKey, fetchTask);
 
     try {
-        return await fetchTask;
+      return await fetchTask;
     } finally {
-        // 任务完成后移除队列
-        PENDING_DANMAKU_REQUESTS.delete(pendingKey);
+      PENDING_DANMAKU_REQUESTS.delete(pendingKey);
     }
   });
 
-  // 等待所有源请求完成
   const results = await Promise.all(tasks);
 
-  // 跨源时间轴对齐（仅当存在 dandan 源时执行）
-  if (sourceNames.includes('dandan')) {
-    const realIds = parts.map(part => {
-      const firstColonIndex = part.indexOf(':');
-      return firstColonIndex === -1 ? '' : part.substring(firstColonIndex + 1);
-    });
+  // 跨源时间轴对齐（函数内部会自行判断是否存在 dandan 源）
+  alignSourceTimelines(results, sourceNames, realIds);
 
-    // 提取精确偏移集合
-    const dandanIndex = sourceNames.indexOf("dandan");
-    const dandanShifts = (results[dandanIndex] && results[dandanIndex].relatedShifts) ? results[dandanIndex].relatedShifts : {};
+  // 按来源分别应用 DANMU_OFFSET（对齐后、合并前）
+  if (globals.danmuOffsetRules?.length > 0) {
+    for (let idx = 0; idx < results.length; idx++) {
+      const list = results[idx];
+      if (!Array.isArray(list) || list.length === 0) continue;
 
-    // 执行对齐函数
-    alignSourceTimelines(results, sourceNames, realIds, dandanShifts);
+      const offsetRule = resolveDanmuOffsetRule({
+        animeTitle,
+        episodeTitle,
+        source: sourceNames[idx],
+        commentId
+      });
+      if (!offsetRule?.offset) continue;
+
+      results[idx] = await applyDanmuOffsetByRule(
+        list,
+        offsetRule,
+        realIds[idx],
+        `[Merge] ${sourceNames[idx]} ${animeTitle || ''}/${episodeTitle || ''}`
+      );
+
+      if (Array.isArray(results[idx])) {
+        results[idx].forEach(item => {
+          if (!item._sourceLabel) item._sourceLabel = sourceParts[idx].label;
+        });
+      }
+    }
   }
 
   // 3. 合并数据
@@ -1947,15 +1982,9 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
   const [animeId, source, cachedEpisodeTitle] = findAnimeIdByCommentId(commentId);
   let url = findUrlById(commentId);
   const episodeTitle = findTitleById(commentId) || cachedEpisodeTitle || null;
-  let plat = episodeTitle ? (episodeTitle.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
+  const plat = episodeTitle ? (episodeTitle.match(/【(.*?)】/) || [null])[0]?.replace(/[【】]/g, '') : null;
   const animeTitle = findAnimeTitleById(commentId) || (animeId ? (findAnimeByAnimeId(animeId, source)?.animeTitle || '') : '');
   const shouldAttachDuration = shouldIncludeVideoDuration(queryFormat, includeDuration);
-  const offsetSeconds = resolveTimelineOffsetSeconds({
-    animeTitle,
-    episodeTitle,
-    platform: plat,
-    source
-  });
   log("debug", "comment url...", url);
   log("debug", "comment title...", episodeTitle);
   log("debug", "comment platform...", plat);
@@ -1978,65 +2007,63 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
   log("info", "开始从本地请求弹幕...", url);
   const pendingKey = `comment:${url}|seg:${segmentFlag ? 1 : 0}`;
   const durationPromise = shouldAttachDuration ? resolveMergedDuration(url) : null;
+  const isMergedUrl = url && url.includes(MERGE_DELIMITER);
   let danmus = await withPendingCommentRequest(pendingKey, async () => {
     let fetchedDanmus = [];
 
-    if (url && url.includes(MERGE_DELIMITER)) {
-      fetchedDanmus = await fetchMergedComments(url, { animeTitle, episodeTitle });
+    if (isMergedUrl) {
+      fetchedDanmus = await fetchMergedComments(url, { animeTitle, episodeTitle, commentId });
     } else {
       if (url.includes('.qq.com')) {
-        fetchedDanmus = await tencentSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await tencentSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.iqiyi.com')) {
-        fetchedDanmus = await iqiyiSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await iqiyiSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.mgtv.com')) {
-        fetchedDanmus = await mangoSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await mangoSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
-        // 如果是 b23.tv 短链接，先解析为完整 URL
         if (url.includes('b23.tv')) {
           url = await bilibiliSource.resolveB23Link(url);
         }
-        fetchedDanmus = await bilibiliSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await bilibiliSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.youku.com')) {
-        fetchedDanmus = await youkuSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await youkuSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.miguvideo.com')) {
-        fetchedDanmus = await miguSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await miguSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.sohu.com')) {
-        fetchedDanmus = await sohuSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await sohuSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.le.com')) {
-        fetchedDanmus = await leshiSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await leshiSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.douyin.com') || url.includes('.ixigua.com')) {
-        fetchedDanmus = await xiguaSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await xiguaSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.mddcloud.com.cn')) {
-        fetchedDanmus = await maiduiduiSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await maiduiduiSource.getComments(url, plat, segmentFlag);
       } else if (url.startsWith('acfun://')) {
-        fetchedDanmus = await acfunSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await acfunSource.getComments(url, plat, segmentFlag);
       } else if (url.includes('.yfsp.tv')) {
-        fetchedDanmus = await aiyifanSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await aiyifanSource.getComments(url, plat, segmentFlag);
       }
 
-      // 请求其他平台弹幕
       const urlPattern = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(\/.*)?$/i;
       if (!urlPattern.test(url)) {
         if (plat === "renren") {
-          fetchedDanmus = await renrenSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await renrenSource.getComments(url, plat, segmentFlag);
         } else if (plat === "hanjutv") {
-          fetchedDanmus = await hanjutvSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await hanjutvSource.getComments(url, plat, segmentFlag);
         } else if (plat === "bahamut") {
-          fetchedDanmus = await bahamutSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await bahamutSource.getComments(url, plat, segmentFlag);
         } else if (plat === "dandan") {
-          fetchedDanmus = await dandanSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await dandanSource.getComments(url, plat, segmentFlag);
         } else if (plat === "custom") {
-          fetchedDanmus = await customSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await customSource.getComments(url, plat, segmentFlag);
         } else if (plat === "acfun") {
-          fetchedDanmus = await acfunSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await acfunSource.getComments(url, plat, segmentFlag);
         } else if (plat === "animeko") {
-          fetchedDanmus = await animekoSource.getComments(url, plat, segmentFlag, null, offsetSeconds);
+          fetchedDanmus = await animekoSource.getComments(url, plat, segmentFlag);
         }
       }
 
-      // 如果弹幕为空，则请求第三方弹幕服务器作为兜底
       if ((!fetchedDanmus || fetchedDanmus.length === 0) && urlPattern.test(url)) {
-        fetchedDanmus = await otherSource.getComments(url, "other_server", segmentFlag, null, offsetSeconds);
+        fetchedDanmus = await otherSource.getComments(url, "other_server", segmentFlag);
       }
     }
 
@@ -2081,18 +2108,28 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
     }
   }
 
-  // 分片列表请求：直接返回分片信息（不做 count/comments 包装，也不走 XML）
+  // 分片列表请求：直接返回分片信息（不做偏移、不做 count/comments 包装，也不走 XML）
   if (segmentFlag) {
     return jsonResponse(danmus);
   }
 
-  // 缓存弹幕结果
-  if (!segmentFlag) {
-    if (danmus && danmus.comments) danmus = danmus.comments;
-    if (!Array.isArray(danmus)) danmus = [];
-    if (danmus.length > 0) {
-        setCommentCache(url, danmus);
+  if (danmus && danmus.comments) danmus = danmus.comments;
+  if (!Array.isArray(danmus)) danmus = [];
+
+  if (!isMergedUrl) {
+    const offsetRule = resolveDanmuOffsetRule({ animeTitle, episodeTitle, source, commentId });
+    if (offsetRule?.offset) {
+      danmus = await applyDanmuOffsetByRule(
+        danmus,
+        offsetRule,
+        url,
+        `[Comment] ${animeTitle || ''}/${episodeTitle || ''}`
+      );
     }
+  }
+
+  if (danmus.length > 0) {
+    setCommentCache(url, danmus);
   }
 
   const responseData = buildDanmuResponse(
@@ -2105,6 +2142,10 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
 // Extracted function for GET /api/v2/comment?url=xxx or /api/v2/extcomment?url=xxx
 export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includeDuration = false) {
   try {
+    if (typeof videoUrl === 'string' && videoUrl.includes(MERGE_DELIMITER)) {
+      return buildUrlValidationError('Merged url is not supported in url parameter, please provide a single video url');
+    }
+
     const validation = await validateExternalUrl(videoUrl);
     if (!validation.ok) {
       return validation.response;
@@ -2117,7 +2158,6 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includ
     const shouldAttachDuration = shouldIncludeVideoDuration(queryFormat, includeDuration);
     const durationPromise = shouldAttachDuration ? resolveMergedDuration(originalUrl) : null;
 
-    // 仅在“非分片列表”模式下启用弹幕缓存
     if (!segmentFlag) {
       const cachedComments = getCommentCache(url);
       if (cachedComments !== null) {
@@ -2134,11 +2174,9 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includ
 
     log("debug", "开始从本地请求弹幕...", url);
 
-    // 根据URL域名判断平台并获取弹幕
     let danmus = [];
-
-    // b23 解析（用于缓存与后续请求）
     let resolvedUrl = url;
+    let matchedSource = null;
 
     const findOffsetContextByUrls = (candidateUrls) => {
       for (const candidateUrl of candidateUrls) {
@@ -2148,29 +2186,32 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includ
           if (link) {
             return {
               animeTitle: anime.animeTitle || '',
-              episodeTitle: link.title || ''
+              episodeTitle: link.title || '',
+              source: anime.source || matchedSource || null,
+              commentId: link.id ?? null
             };
           }
         }
       }
-      return { animeTitle: '', episodeTitle: '' };
-    };
-
-    const resolveOffsetSecondsForPlatform = (platform, candidateUrls) => {
-      const { animeTitle, episodeTitle } = findOffsetContextByUrls(candidateUrls);
-      return resolveTimelineOffsetSeconds({ animeTitle, episodeTitle, platform });
+      return {
+        animeTitle: '',
+        episodeTitle: '',
+        source: matchedSource || null,
+        commentId: null
+      };
     };
 
     if (url.includes('.qq.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('qq', [url]);
-      danmus = await tencentSource.getComments(url, "qq", segmentFlag, null, offsetSeconds);
+      matchedSource = 'tencent';
+      danmus = await tencentSource.getComments(url, "qq", segmentFlag);
     } else if (url.includes('.iqiyi.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('qiyi', [url]);
-      danmus = await iqiyiSource.getComments(url, "qiyi", segmentFlag, null, offsetSeconds);
+      matchedSource = 'iqiyi';
+      danmus = await iqiyiSource.getComments(url, "qiyi", segmentFlag);
     } else if (url.includes('.mgtv.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('imgo', [url]);
-      danmus = await mangoSource.getComments(url, "imgo", segmentFlag, null, offsetSeconds);
+      matchedSource = 'imgo';
+      danmus = await mangoSource.getComments(url, "imgo", segmentFlag);
     } else if (url.includes('.bilibili.com') || url.includes('b23.tv')) {
+      matchedSource = 'bilibili';
       if (url.includes('b23.tv')) {
         resolvedUrl = await bilibiliSource.resolveB23Link(url);
         const resolvedValidation = await validateExternalUrl(resolvedUrl);
@@ -2179,50 +2220,61 @@ export async function getCommentByUrl(videoUrl, queryFormat, segmentFlag, includ
         }
         resolvedUrl = resolvedValidation.normalizedUrl;
       }
-      const offsetSeconds = resolveOffsetSecondsForPlatform('bilibili1', [resolvedUrl, url]);
-      danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag, null, offsetSeconds);
+      danmus = await bilibiliSource.getComments(resolvedUrl, "bilibili1", segmentFlag);
     } else if (url.includes('.youku.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('youku', [url]);
-      danmus = await youkuSource.getComments(url, "youku", segmentFlag, null, offsetSeconds);
+      matchedSource = 'youku';
+      danmus = await youkuSource.getComments(url, "youku", segmentFlag);
     } else if (url.includes('.miguvideo.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('migu', [url]);
-      danmus = await miguSource.getComments(url, "migu", segmentFlag, null, offsetSeconds);
+      matchedSource = 'migu';
+      danmus = await miguSource.getComments(url, "migu", segmentFlag);
     } else if (url.includes('.sohu.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('sohu', [url]);
-      danmus = await sohuSource.getComments(url, "sohu", segmentFlag, null, offsetSeconds);
+      matchedSource = 'sohu';
+      danmus = await sohuSource.getComments(url, "sohu", segmentFlag);
     } else if (url.includes('.le.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('leshi', [url]);
-      danmus = await leshiSource.getComments(url, "leshi", segmentFlag, null, offsetSeconds);
+      matchedSource = 'leshi';
+      danmus = await leshiSource.getComments(url, "leshi", segmentFlag);
     } else if (url.includes('.douyin.com') || url.includes('.ixigua.com')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('xigua', [url]);
-      danmus = await xiguaSource.getComments(url, "xigua", segmentFlag, null, offsetSeconds);
+      matchedSource = 'xigua';
+      danmus = await xiguaSource.getComments(url, "xigua", segmentFlag);
     } else if (url.includes('.mddcloud.com.cn')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('maiduidui', [url]);
-      danmus = await maiduiduiSource.getComments(url, "maiduidui", segmentFlag, null, offsetSeconds);
+      matchedSource = 'maiduidui';
+      danmus = await maiduiduiSource.getComments(url, "maiduidui", segmentFlag);
     } else if (url.includes('.yfsp.tv')) {
-      const offsetSeconds = resolveOffsetSecondsForPlatform('aiyifan', [url]);
-      danmus = await aiyifanSource.getComments(url, "aiyifan", segmentFlag, null, offsetSeconds);
+      matchedSource = 'aiyifan';
+      danmus = await aiyifanSource.getComments(url, "aiyifan", segmentFlag);
     } else {
-      // 如果不是已知平台，尝试第三方弹幕服务器
       const urlPattern = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(\/.*)?$/i;
       if (urlPattern.test(url)) {
-        const offsetSeconds = resolveOffsetSecondsForPlatform('other_server', [url]);
-        danmus = await otherSource.getComments(url, "other_server", segmentFlag, null, offsetSeconds);
+        matchedSource = 'other_server';
+        danmus = await otherSource.getComments(url, "other_server", segmentFlag);
       }
     }
 
-    // 分片列表请求：直接返回分片信息（不做 count/comments 包装，也不走 XML）
     if (segmentFlag) {
       return jsonResponse(danmus);
     }
 
-    // 兜底：确保为数组
     if (danmus && danmus.comments) danmus = danmus.comments;
     if (!Array.isArray(danmus)) danmus = [];
 
+    const offsetContext = findOffsetContextByUrls([resolvedUrl, url, originalUrl]);
+    const offsetRule = resolveDanmuOffsetRule({
+      animeTitle: offsetContext.animeTitle,
+      episodeTitle: offsetContext.episodeTitle,
+      source: offsetContext.source || matchedSource,
+      commentId: offsetContext.commentId
+    });
+    if (offsetRule?.offset) {
+      danmus = await applyDanmuOffsetByRule(
+        danmus,
+        offsetRule,
+        resolvedUrl || url,
+        `[CommentByUrl] ${offsetContext.animeTitle || ''}/${offsetContext.episodeTitle || ''}`
+      );
+    }
+
     log("debug", `Successfully fetched ${danmus.length} comments from URL`);
 
-    // 缓存弹幕结果（b23 短链同时缓存原始URL与解析后的URL，避免重复解析）
     if (danmus.length > 0) {
       setCommentCache(resolvedUrl || url, danmus);
       if (originalUrl !== (resolvedUrl || url)) {

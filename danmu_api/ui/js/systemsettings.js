@@ -8,6 +8,7 @@ let cacheClearing = false;
 // [新增] 合并模式全局变量
 let isMergeMode = false;
 let stagingTags = [];
+let timelineOffsetSourceOptions = ['all'];
 
 /* ========================================
    显示/隐藏清理缓存模态框
@@ -862,6 +863,7 @@ function showDeleteSuccessAndRefresh(key) {
 function closeModal() {
     const modal = document.getElementById('env-modal');
     const modalContainer = modal.querySelector('.modal-container');
+    hideTimelineOffsetModal();
     
     if (modalContainer) {
         modalContainer.style.animation = 'modalSlideOut 0.3s ease-out';
@@ -987,12 +989,10 @@ document.getElementById('env-form').addEventListener('submit', async function(e)
             const pairs = [];
             lineInputs.forEach(input => {
                 const lineValue = input.value ? input.value.trim() : '';
-                if (!lineValue) return;
-                const parts = lineValue.split('@').map(s => s.trim()).filter(s => s);
-                if (parts.length < 3) return;
+                if (!lineValue || !lineValue.includes(':')) return;
                 pairs.push(lineValue);
             });
-            value = pairs.join(';');
+            value = pairs.join(',');
             itemData = { key, value, description, type };
         } else if (type === 'color-list') {
             // 安全获取 text-value
@@ -1291,38 +1291,10 @@ function renderValueInput(item) {
         \`;
 
     } else if (type === 'timeline-offset') {
-        const options = item && item.options ? item.options : [];
-        const entries = value ? value.split(';').map(entry => entry.trim()).filter(entry => entry) : [];
-        const offsetItems = entries.map(entry => {
-            const parts = entry.split('@');
-            if (parts.length < 3) return null;
-            const offsetValue = parts.pop().trim();
-            const platformsRaw = parts.pop().trim();
-            const titleValue = parts.join('@').trim();
-            if (!titleValue) return null;
-            let platforms = platformsRaw
-                .split(/[&,]/)
-                .map(p => p.trim())
-                .filter(p => p);
-            if (platforms.some(p => p.toLowerCase() === 'all' || p === '*')) {
-                platforms = ['all'];
-            }
-            return { title: titleValue, platforms, offset: offsetValue };
-        }).filter(Boolean);
-
-        const buildLineValue = (titleValue, platforms, offsetValue) => {
-            const platformValue = platforms.includes('all') ? 'all' : platforms.join('&');
-            return titleValue + '@' + platformValue + '@' + offsetValue;
-        };
-
-        const renderPlatformChips = (selectedPlatforms) => {
-            const normalized = selectedPlatforms && selectedPlatforms.includes('all') ? ['all'] : (selectedPlatforms || []);
-            return options.map(opt => {
-                const label = opt === 'all' ? '全部' : opt;
-                const selected = normalized.includes(opt) ? 'selected' : '';
-                return '<button type="button" class="platform-chip ' + selected + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetPlatform(this)">' + escapeHtml(label) + '</button>';
-            }).join('');
-        };
+        const sourceOptions = getTimelineOffsetSourceOptions(item && item.options ? item.options : []);
+        const entries = value ? value.split(/[;,]/).map(entry => entry.trim()).filter(entry => entry) : [];
+        const offsetItems = entries.map(parseTimelineOffsetLine).filter(Boolean);
+        timelineOffsetSourceOptions = sourceOptions;
 
         container.innerHTML = \`
             <div class="timeline-offset-panel">
@@ -1336,39 +1308,15 @@ function renderValueInput(item) {
                         <span>新增规则</span>
                     </button>
                 </div>
-                <div class="timeline-offset-help">点击“新增规则”填写：剧名、偏移量和平台。</div>
-                <div class="timeline-offset-form" id="timeline-offset-form" style="display: none;">
-                    <div class="timeline-offset-row">
-                        <div class="timeline-offset-field">
-                            <label>剧名</label>
-                            <input type="text" class="offset-title-input form-input" id="timeline-offset-title-input" placeholder="例如：庆余年">
-                        </div>
-                        <div class="timeline-offset-field offset-value-field">
-                            <label>偏移(秒)</label>
-                            <input type="number" step="0.1" class="offset-value-input form-input" id="timeline-offset-value-input" placeholder="-5">
-                        </div>
-                        <div class="timeline-offset-field offset-actions">
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideTimelineOffsetForm()">取消</button>
-                            <button type="button" class="btn btn-primary btn-sm" onclick="confirmTimelineOffsetAdd()">添加</button>
-                        </div>
-                    </div>
-                    <div class="timeline-offset-platforms">
-                        <div class="timeline-offset-platforms-label">平台（可多选，all 表示全部）</div>
-                        <div class="timeline-offset-platforms-chips" id="timeline-offset-form-platforms">
-                            \${renderPlatformChips([])}
-                        </div>
-                    </div>
-                </div>
+                <div class="timeline-offset-help">点击“新增规则”快速弹窗配置：剧名、来源、偏移方式和偏移值。</div>
                 <div class="timeline-offset-list" id="timeline-offset-container">
-                    \${offsetItems.map((item, index) => \`
-                        <div class="timeline-offset-line" data-index="\${index}">
-                            <input type="text" class="timeline-offset-line-input form-input" value="\${escapeHtml(buildLineValue(item.title, item.platforms, item.offset))}" readonly>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
-                        </div>
-                    \`).join('')}
+                    \${offsetItems.length > 0 ? offsetItems.map((entry, index) => buildTimelineOffsetLineMarkup(entry, index)).join('') : '<div class="timeline-offset-empty">暂无规则，点击右上角“新增规则”快速添加。</div>'}
                 </div>
             </div>
         \`;
+
+        renderTimelineOffsetModalContent();
+        setTimeout(() => updateTimelineOffsetPreview(), 0);
 
     } else if (type === 'color-list') {
         // 默认颜色池（与后端 danmu-util.js 保持一致）
@@ -2520,13 +2468,229 @@ function removeMapItem(button) {
     }
 }
 
+function getTimelineOffsetSourceOptions(options = []) {
+    const backendOptions = Array.isArray(options) && options.length > 0
+        ? options
+        : (Array.isArray(configCache?.envVarConfig?.SOURCE_ORDER?.options) ? configCache.envVarConfig.SOURCE_ORDER.options : []);
+
+    const normalized = backendOptions
+        .map(opt => String(opt || '').trim())
+        .filter(opt => opt);
+
+    return Array.from(new Set(['all', ...normalized]));
+}
+
+function normalizeTimelineOffsetSegment(value, prefix) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+
+    const upper = trimmed.toUpperCase();
+    const pureNumberMatch = upper.match(/^(\d+)$/);
+    if (pureNumberMatch) {
+        return prefix + String(parseInt(pureNumberMatch[1], 10)).padStart(2, '0');
+    }
+
+    const prefixedNumberMatch = upper.match(new RegExp('^' + prefix + '(\\d+)$'));
+    if (prefixedNumberMatch) {
+        return prefix + String(parseInt(prefixedNumberMatch[1], 10)).padStart(2, '0');
+    }
+
+    return upper;
+}
+
+function parseTimelineOffsetLine(lineValue) {
+    const raw = String(lineValue || '').trim();
+    if (!raw) return null;
+
+    const colonIdx = raw.lastIndexOf(':');
+    if (colonIdx === -1) {
+        return {
+            raw,
+            title: raw,
+            season: '',
+            episode: '',
+            sources: ['all'],
+            offset: '',
+            usePercent: false
+        };
+    }
+
+    let rawPath = raw.substring(0, colonIdx).trim();
+    const offset = raw.substring(colonIdx + 1).trim();
+    let usePercent = false;
+
+    if (rawPath.endsWith('%')) {
+        usePercent = true;
+        rawPath = rawPath.slice(0, -1).trim();
+    }
+
+    const atIdx = rawPath.lastIndexOf('@');
+    let pathPart = rawPath;
+    let sources = ['all'];
+
+    if (atIdx !== -1) {
+        pathPart = rawPath.substring(0, atIdx).trim();
+        const sourcePart = rawPath.substring(atIdx + 1).trim().toLowerCase();
+        if (sourcePart && sourcePart !== 'all' && sourcePart !== '*') {
+            sources = sourcePart.split('&').map(part => part.trim()).filter(part => part);
+        }
+    }
+
+    const segments = pathPart.split('/').map(part => part.trim()).filter(part => part);
+
+    return {
+        raw,
+        title: segments[0] || '',
+        season: segments[1] || '',
+        episode: segments[2] || '',
+        sources: sources.length > 0 ? sources : ['all'],
+        offset,
+        usePercent
+    };
+}
+
+function buildTimelineOffsetLineValue({ title, season = '', episode = '', sources = ['all'], offset, usePercent = false }) {
+    const titleValue = String(title || '').trim();
+    const offsetValue = String(offset || '').trim();
+    if (!titleValue || !offsetValue) return '';
+
+    const segments = [titleValue];
+    const seasonValue = normalizeTimelineOffsetSegment(season, 'S');
+    const episodeValue = normalizeTimelineOffsetSegment(episode, 'E');
+    if (seasonValue) segments.push(seasonValue);
+    if (episodeValue) segments.push(episodeValue);
+
+    const normalizedSources = Array.isArray(sources) && sources.length > 0 ? sources : ['all'];
+    const sourceValue = normalizedSources.includes('all') ? 'all' : normalizedSources.join('&');
+    const scopedPath = segments.join('/') + '@' + sourceValue;
+    return scopedPath + (usePercent ? '%' : '') + ':' + offsetValue;
+}
+
+function buildTimelineOffsetMeta(entry) {
+    const sources = Array.isArray(entry?.sources) && entry.sources.length > 0 ? entry.sources : ['all'];
+    const sourceLabel = sources.includes('all') ? '全部来源' : sources.join('、');
+    const modeLabel = entry?.usePercent ? '百分比' : '秒偏移';
+    const valueLabel = entry?.offset ? String(entry.offset) + (entry.usePercent ? '%' : 's') : '未设置';
+    return '来源：' + sourceLabel + ' · 方式：' + modeLabel + ' · 值：' + valueLabel;
+}
+
+function buildTimelineOffsetLineMarkup(entry, index = 0) {
+    const parsed = entry && entry.raw ? entry : parseTimelineOffsetLine(entry);
+    if (!parsed) return '';
+
+    const scopeParts = [parsed.title, parsed.season, parsed.episode].filter(Boolean);
+    const titleLabel = scopeParts.length > 0 ? scopeParts.join(' / ') : parsed.raw;
+
+    return \`
+        <div class="timeline-offset-line" data-index="\${index}">
+            <div class="timeline-offset-line-main">
+                <div class="timeline-offset-line-copy">
+                    <div class="timeline-offset-line-name">\${escapeHtml(titleLabel)}</div>
+                    <div class="timeline-offset-line-meta">\${escapeHtml(buildTimelineOffsetMeta(parsed))}</div>
+                </div>
+                <input type="text" class="timeline-offset-line-input form-input" value="\${escapeHtml(parsed.raw)}" readonly>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeTimelineOffsetItem(this)">删除</button>
+        </div>
+    \`;
+}
+
+function renderTimelineOffsetSourceChips(sourceOptions, selectedSources = ['all']) {
+    const normalizedSelected = Array.isArray(selectedSources) && selectedSources.includes('all')
+        ? ['all']
+        : (selectedSources || []);
+
+    return sourceOptions.map(opt => {
+        const label = opt === 'all' ? '全部' : opt;
+        const selected = normalizedSelected.includes(opt) ? 'selected' : '';
+        return '<button type="button" class="platform-chip ' + selected + '" data-value="' + escapeHtml(opt) + '" onclick="toggleTimelineOffsetSource(this)">' + escapeHtml(label) + '</button>';
+    }).join('');
+}
+
+function renderTimelineOffsetModalContent() {
+    const modalBody = document.getElementById('timeline-offset-modal-body');
+    if (!modalBody) return;
+
+    const sourceOptions = getTimelineOffsetSourceOptions(timelineOffsetSourceOptions);
+    modalBody.innerHTML = \`
+        <div class="timeline-offset-modal-grid">
+            <div class="form-group">
+                <label class="form-label">剧名</label>
+                <input type="text" class="form-input" id="timeline-offset-title-input" placeholder="例如：庆余年" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">季（可选）</label>
+                <input type="text" class="form-input" id="timeline-offset-season-input" placeholder="S01 或 1" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">集（可选）</label>
+                <input type="text" class="form-input" id="timeline-offset-episode-input" placeholder="E01 或 1" oninput="updateTimelineOffsetPreview()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">偏移方式</label>
+                <input type="hidden" id="timeline-offset-mode-input" value="seconds">
+                <div class="timeline-offset-mode-switch">
+                    <button type="button" class="timeline-offset-mode-btn active" data-mode="seconds" onclick="setTimelineOffsetMode('seconds')">秒偏移</button>
+                    <button type="button" class="timeline-offset-mode-btn" data-mode="percent" onclick="setTimelineOffsetMode('percent')">百分比</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" id="timeline-offset-value-label">偏移秒数</label>
+                <input type="number" step="0.1" class="form-input" id="timeline-offset-value-input" placeholder="-5" oninput="updateTimelineOffsetPreview()">
+                <div class="timeline-offset-field-hint" id="timeline-offset-value-hint">正数向后偏移，负数向前偏移。</div>
+            </div>
+        </div>
+        <div class="timeline-offset-platforms">
+            <div class="timeline-offset-platforms-label">来源（从后端加载，可多选，all 表示全部来源）</div>
+            <div class="timeline-offset-platforms-chips" id="timeline-offset-form-sources">
+                \${renderTimelineOffsetSourceChips(sourceOptions, ['all'])}
+            </div>
+        </div>
+        <div class="timeline-offset-preview">
+            <span class="timeline-offset-preview-label">规则预览</span>
+            <code class="timeline-offset-preview-text" id="timeline-offset-preview-text">请先填写剧名与偏移值</code>
+        </div>
+    \`;
+}
+
 function addTimelineOffsetItem() {
-    const form = document.getElementById('timeline-offset-form');
-    if (!form) return;
-    form.style.display = 'block';
+    openTimelineOffsetModal();
+}
+
+function openTimelineOffsetModal() {
+    const modal = document.getElementById('timeline-offset-modal');
+    if (!modal) return;
+
+    renderTimelineOffsetModalContent();
+    resetTimelineOffsetModal();
+
+    const modalContainer = modal.querySelector('.modal-container');
+    if (modalContainer) {
+        modalContainer.style.animation = 'modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    }
+    modal.classList.add('active');
+
     const titleInput = document.getElementById('timeline-offset-title-input');
     if (titleInput) {
-        titleInput.focus();
+        setTimeout(() => titleInput.focus(), 0);
+    }
+}
+
+function hideTimelineOffsetModal() {
+    const modal = document.getElementById('timeline-offset-modal');
+    if (!modal) return;
+
+    const modalContainer = modal.querySelector('.modal-container');
+    if (modalContainer) {
+        modalContainer.style.animation = 'modalSlideOut 0.3s ease-out';
+        setTimeout(() => {
+            modal.classList.remove('active');
+            modalContainer.style.animation = '';
+            resetTimelineOffsetModal();
+        }, 300);
+    } else {
+        modal.classList.remove('active');
+        resetTimelineOffsetModal();
     }
 }
 
@@ -2535,66 +2699,151 @@ function removeTimelineOffsetItem(button) {
     if (item) {
         item.remove();
     }
+
+    const container = document.getElementById('timeline-offset-container');
+    if (container && container.children.length === 0) {
+        container.innerHTML = '<div class="timeline-offset-empty">暂无规则，点击右上角“新增规则”快速添加。</div>';
+    }
 }
 
-function hideTimelineOffsetForm() {
-    const form = document.getElementById('timeline-offset-form');
-    if (!form) return;
-    form.style.display = 'none';
+function resetTimelineOffsetModal() {
     const titleInput = document.getElementById('timeline-offset-title-input');
+    const seasonInput = document.getElementById('timeline-offset-season-input');
+    const episodeInput = document.getElementById('timeline-offset-episode-input');
     const offsetInput = document.getElementById('timeline-offset-value-input');
+
     if (titleInput) titleInput.value = '';
+    if (seasonInput) seasonInput.value = '';
+    if (episodeInput) episodeInput.value = '';
     if (offsetInput) offsetInput.value = '';
-    const chips = form.querySelectorAll('.platform-chip');
-    chips.forEach(chip => chip.classList.remove('selected'));
+
+    setTimelineOffsetMode('seconds');
+
+    const sourceContainer = document.getElementById('timeline-offset-form-sources');
+    if (sourceContainer) {
+        const chips = Array.from(sourceContainer.querySelectorAll('.platform-chip'));
+        chips.forEach(chip => chip.classList.toggle('selected', chip.dataset.value === 'all'));
+    }
+
+    updateTimelineOffsetPreview();
+}
+
+function getTimelineOffsetSelectedSources() {
+    const sourceContainer = document.getElementById('timeline-offset-form-sources');
+    if (!sourceContainer) return ['all'];
+
+    const selected = Array.from(sourceContainer.querySelectorAll('.platform-chip.selected'))
+        .map(chip => chip.dataset.value)
+        .filter(value => value);
+
+    return selected.includes('all') || selected.length === 0 ? ['all'] : selected;
+}
+
+function setTimelineOffsetMode(mode) {
+    const normalizedMode = mode === 'percent' ? 'percent' : 'seconds';
+    const modeInput = document.getElementById('timeline-offset-mode-input');
+    const valueLabel = document.getElementById('timeline-offset-value-label');
+    const valueHint = document.getElementById('timeline-offset-value-hint');
+    const valueInput = document.getElementById('timeline-offset-value-input');
+    const buttons = document.querySelectorAll('.timeline-offset-mode-btn');
+
+    if (modeInput) modeInput.value = normalizedMode;
+    if (valueLabel) {
+        valueLabel.textContent = normalizedMode === 'percent' ? '百分比值' : '偏移秒数';
+    }
+    if (valueHint) {
+        valueHint.textContent = normalizedMode === 'percent'
+            ? '使用 % 规则生成配置值，沿用后端现有百分比偏移逻辑。'
+            : '正数向后偏移，负数向前偏移。';
+    }
+    if (valueInput) {
+        valueInput.placeholder = normalizedMode === 'percent' ? '10' : '-5';
+    }
+
+    buttons.forEach(button => {
+        button.classList.toggle('active', button.dataset.mode === normalizedMode);
+    });
+
+    updateTimelineOffsetPreview();
+}
+
+function updateTimelineOffsetPreview() {
+    const preview = document.getElementById('timeline-offset-preview-text');
+    if (!preview) return;
+
+    const titleInput = document.getElementById('timeline-offset-title-input');
+    const seasonInput = document.getElementById('timeline-offset-season-input');
+    const episodeInput = document.getElementById('timeline-offset-episode-input');
+    const offsetInput = document.getElementById('timeline-offset-value-input');
+    const modeInput = document.getElementById('timeline-offset-mode-input');
+
+    const lineValue = buildTimelineOffsetLineValue({
+        title: titleInput ? titleInput.value : '',
+        season: seasonInput ? seasonInput.value : '',
+        episode: episodeInput ? episodeInput.value : '',
+        sources: getTimelineOffsetSelectedSources(),
+        offset: offsetInput ? offsetInput.value : '',
+        usePercent: modeInput ? modeInput.value === 'percent' : false
+    });
+
+    preview.textContent = lineValue || '请先填写剧名与偏移值';
 }
 
 function confirmTimelineOffsetAdd() {
     const container = document.getElementById('timeline-offset-container');
-    const form = document.getElementById('timeline-offset-form');
-    if (!container || !form) return;
+    if (!container) return;
+
     const titleInput = document.getElementById('timeline-offset-title-input');
+    const seasonInput = document.getElementById('timeline-offset-season-input');
+    const episodeInput = document.getElementById('timeline-offset-episode-input');
     const offsetInput = document.getElementById('timeline-offset-value-input');
-    const titleValue = titleInput ? titleInput.value.trim() : '';
-    const offsetValue = offsetInput ? offsetInput.value.trim() : '';
-    const selected = Array.from(form.querySelectorAll('.platform-chip.selected')).map(chip => chip.dataset.value);
-    if (!titleValue || !offsetValue || selected.length === 0) {
-        customAlert('请填写剧名、偏移量并选择平台', '⚠️ 提示');
+    const modeInput = document.getElementById('timeline-offset-mode-input');
+
+    const lineValue = buildTimelineOffsetLineValue({
+        title: titleInput ? titleInput.value : '',
+        season: seasonInput ? seasonInput.value : '',
+        episode: episodeInput ? episodeInput.value : '',
+        sources: getTimelineOffsetSelectedSources(),
+        offset: offsetInput ? offsetInput.value : '',
+        usePercent: modeInput ? modeInput.value === 'percent' : false
+    });
+
+    if (!lineValue) {
+        customAlert('请填写剧名、偏移值，并至少选择一个来源', '⚠️ 提示');
         return;
     }
-    const platforms = selected.includes('all') ? ['all'] : selected;
-    const lineValue = titleValue + '@' + (platforms.includes('all') ? 'all' : platforms.join('&')) + '@' + offsetValue;
-    const item = document.createElement('div');
-    item.className = 'timeline-offset-line';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'timeline-offset-line-input form-input';
-    input.value = lineValue;
-    input.readOnly = true;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-danger btn-sm';
-    btn.textContent = '删除';
-    btn.addEventListener('click', () => removeTimelineOffsetItem(btn));
-    item.appendChild(input);
-    item.appendChild(btn);
-    container.appendChild(item);
-    hideTimelineOffsetForm();
+
+    const emptyState = container.querySelector('.timeline-offset-empty');
+    if (emptyState) {
+        emptyState.remove();
+    }
+
+    const parsed = parseTimelineOffsetLine(lineValue);
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = buildTimelineOffsetLineMarkup(parsed, container.querySelectorAll('.timeline-offset-line').length);
+    const newLine = wrapper.firstElementChild;
+    if (newLine) {
+        container.appendChild(newLine);
+    }
+
+    hideTimelineOffsetModal();
 }
 
-function toggleTimelineOffsetPlatform(button) {
+function toggleTimelineOffsetSource(button) {
     if (!button) return;
-    const form = document.getElementById('timeline-offset-form');
-    if (!form) return;
-    if (!form.contains(button)) return;
+
+    const sourceContainer = document.getElementById('timeline-offset-form-sources');
+    if (!sourceContainer || !sourceContainer.contains(button)) return;
+
     const value = button.dataset.value || '';
-    const chips = Array.from(form.querySelectorAll('.platform-chip'));
+    const chips = Array.from(sourceContainer.querySelectorAll('.platform-chip'));
     const isAll = value === 'all';
 
     if (isAll) {
         chips.forEach(chip => {
             chip.classList.toggle('selected', chip.dataset.value === 'all');
         });
+        updateTimelineOffsetPreview();
         return;
     }
 
@@ -2604,6 +2853,14 @@ function toggleTimelineOffsetPlatform(button) {
             chip.classList.remove('selected');
         }
     });
+
+    if (!chips.some(chip => chip.dataset.value !== 'all' && chip.classList.contains('selected'))) {
+        chips.forEach(chip => {
+            chip.classList.toggle('selected', chip.dataset.value === 'all');
+        });
+    }
+
+    updateTimelineOffsetPreview();
 }
 // 点击模态框背景关闭
 document.addEventListener('click', function(e) {

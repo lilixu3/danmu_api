@@ -3,6 +3,7 @@ import { log } from './log-util.js'
 import { Anime } from "../models/dandan-model.js";
 import { simpleHash } from "./codec-util.js";
 import { normalizeHanjutvEpisodeUrl } from "./hanjutv-util.js";
+import { normalizeTitleCacheKey } from './common-util.js';
 let fs, path;
 
 // =====================
@@ -64,6 +65,30 @@ function parseCacheContent(raw) {
 
 function shouldUseRuntimeResponseCache() {
     return true;
+}
+
+function normalizeRuntimeMapKey(key) {
+    return normalizeTitleCacheKey(key) || String(key ?? '').trim();
+}
+
+function findEquivalentMapKey(cacheMap, key) {
+    const rawKey = String(key ?? '');
+    const normalizedKey = normalizeRuntimeMapKey(rawKey);
+
+    if (normalizedKey && cacheMap.has(normalizedKey)) {
+        return normalizedKey;
+    }
+    if (rawKey && cacheMap.has(rawKey)) {
+        return rawKey;
+    }
+
+    for (const existingKey of cacheMap.keys()) {
+        if (normalizeRuntimeMapKey(existingKey) === normalizedKey) {
+            return existingKey;
+        }
+    }
+
+    return null;
 }
 
 export function clearDisabledRuntimeResponseCaches() {
@@ -901,18 +926,19 @@ export function isSearchCacheValid(keyword) {
         return false;
     }
 
-    if (!globals.searchCache.has(keyword)) {
+    const cacheKey = findEquivalentMapKey(globals.searchCache, keyword);
+    if (!cacheKey) {
         return false;
     }
 
-    const cached = globals.searchCache.get(keyword);
+    const cached = globals.searchCache.get(cacheKey);
     const now = Date.now();
     const cacheAgeMinutes = (now - cached.timestamp) / (1000 * 60);
 
     if (cacheAgeMinutes > globals.searchCacheMinutes) {
         // 缓存已过期，删除它
-        globals.searchCache.delete(keyword);
-        log("info", `Search cache for "${keyword}" expired after ${cacheAgeMinutes.toFixed(2)} minutes`);
+        globals.searchCache.delete(cacheKey);
+        log("info", `Search cache for "${cacheKey}" expired after ${cacheAgeMinutes.toFixed(2)} minutes`);
         return false;
     }
 
@@ -927,8 +953,9 @@ export function getSearchCache(keyword, detailStore = null) {
     }
 
     if (isSearchCacheValid(keyword)) {
-        log("info", `Using search cache for "${keyword}"`);
-        const cached = globals.searchCache.get(keyword);
+        const cacheKey = findEquivalentMapKey(globals.searchCache, keyword);
+        log("info", `Using search cache for "${cacheKey}"`);
+        const cached = globals.searchCache.get(cacheKey);
         const details = Array.isArray(cached.details) ? cached.details : [];
         details.forEach(anime => storeAnimeInDetailStore(detailStore, anime));
         // 命中搜索缓存时顺带预热详情索引，确保被 MAX_ANIMES 裁剪后的详情仍可回填。
@@ -954,23 +981,28 @@ export function setSearchCache(keyword, results, detailStore = null) {
         return;
     }
 
+    const cacheKey = normalizeRuntimeMapKey(keyword);
+    const legacyKey = findEquivalentMapKey(globals.searchCache, keyword);
     const timestamp = Date.now();
     const details = collectMatchedSearchDetails(results, detailStore);
     cacheAnimeDetails(details, timestamp);
 
     // 先删除再写入，确保命中的 key 会刷新到最新顺序
-    if (globals.searchCache.has(keyword)) {
-        globals.searchCache.delete(keyword);
+    if (legacyKey && legacyKey !== cacheKey) {
+        globals.searchCache.delete(legacyKey);
+    }
+    if (globals.searchCache.has(cacheKey)) {
+        globals.searchCache.delete(cacheKey);
     }
 
-    globals.searchCache.set(keyword, {
+    globals.searchCache.set(cacheKey, {
         results: results,
         details: details,
         timestamp
     });
     enforceCacheMaxItems(globals.searchCache, Number(globals.searchCacheMaxItems), 'search');
 
-    log("info", `Cached search results for "${keyword}" (${results.length} animes)`);
+    log("info", `Cached search results for "${cacheKey}" (${results.length} animes)`);
 }
 
 // 检查弹幕缓存是否有效（未过期）
@@ -1264,13 +1296,15 @@ export function removeEarliestAnime() {
 
 // 将所有动漫的 animeId 存入 lastSelectMap 的 animeIds 数组中
 export function storeAnimeIdsToMap(curAnimes, key) {
+    const mapKey = normalizeRuntimeMapKey(key);
     const uniqueAnimeIds = new Set();
     for (const anime of curAnimes) {
         uniqueAnimeIds.add(anime.animeId);
     }
 
     // 保存旧的 prefer/source/offsets（兼容旧结构）
-    const oldValue = globals.lastSelectMap.get(key);
+    const existingKey = findEquivalentMapKey(globals.lastSelectMap, key);
+    const oldValue = existingKey ? globals.lastSelectMap.get(existingKey) : undefined;
     const oldPrefer = oldValue?.prefer;
     const oldSource = oldValue?.source;
     const oldPreferBySeason = oldValue?.preferBySeason;
@@ -1288,12 +1322,15 @@ export function storeAnimeIdsToMap(curAnimes, key) {
     }
 
     // 如果key已存在，先删除它（为了更新顺序，保证 FIFO）
-    if (globals.lastSelectMap.has(key)) {
-        globals.lastSelectMap.delete(key);
+    if (existingKey) {
+        globals.lastSelectMap.delete(existingKey);
+    }
+    if (globals.lastSelectMap.has(mapKey)) {
+        globals.lastSelectMap.delete(mapKey);
     }
 
     // 添加新记录，保留 prefer/source/offsets 结构
-    globals.lastSelectMap.set(key, {
+    globals.lastSelectMap.set(mapKey, {
         animeIds: [...uniqueAnimeIds],
         ...(Object.keys(preferBySeason).length > 0 && { preferBySeason }),
         ...(Object.keys(sourceBySeason).length > 0 && { sourceBySeason }),
@@ -1351,7 +1388,8 @@ export function setPreferByAnimeId(animeId, source, season = null, offset = null
 
 // 通过 title 查询优选 animeId（按 season 维度）
 export function getPreferAnimeId(title, season = null) {
-  const value = globals.lastSelectMap.get(title);
+  const cacheKey = findEquivalentMapKey(globals.lastSelectMap, title);
+  const value = cacheKey ? globals.lastSelectMap.get(cacheKey) : null;
   if (!value) {
     return [null, null, null];
   }

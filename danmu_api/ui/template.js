@@ -1135,6 +1135,32 @@ export const HTML_TEMPLATE = /* html */ `
         </div>
     </div>
 
+    <!-- 模态框：时间轴偏移快速配置 -->
+    <div class="modal-overlay" id="timeline-offset-modal" onclick="if (event.target === this) hideTimelineOffsetModal()">
+        <div class="modal-container timeline-offset-quick-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">快速新增偏移规则</h3>
+                <button class="modal-close" type="button" onclick="hideTimelineOffsetModal()">×</button>
+            </div>
+            <div class="modal-body timeline-offset-modal-body" id="timeline-offset-modal-body"></div>
+            <div class="modal-footer modal-footer-compact">
+                <button type="button" class="btn btn-secondary btn-modal" onclick="hideTimelineOffsetModal()">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span>取消</span>
+                </button>
+                <button type="button" class="btn btn-primary btn-modal" onclick="confirmTimelineOffsetAdd()">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <line x1="12" y1="5" x2="12" y2="19" stroke-width="2"/>
+                        <line x1="5" y1="12" x2="19" y2="12" stroke-width="2"/>
+                    </svg>
+                    <span>添加规则</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 加载遮罩 -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-content">

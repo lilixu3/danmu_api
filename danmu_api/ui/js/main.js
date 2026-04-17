@@ -24,6 +24,7 @@ let configCacheFetchedAt = 0;
 let currentToken = 'globals.currentToken';
 let currentAdminToken = '';
 let originalToken = '87654321';
+const PROTECTED_UI_SECTIONS = ['logs', 'api', 'env', 'push', 'cookie', 'request-records'];
 const RUNTIME_MODAL_REFRESH_INTERVAL_MS = 1000;
 const SIDEBAR_REFRESH_INTERVAL_MS = 1000;
 const CONFIG_CACHE_TTL_MS = 5000;
@@ -826,7 +827,7 @@ function ensureSectionData(section, options = {}) {
         return;
     }
 
-    if (section === 'env' && (force || !sectionLoadedState.env)) {
+    if (section === 'env' && hasProtectedUiAccessToken() && (force || !sectionLoadedState.env)) {
         sectionLoadedState.env = true;
         if (preloadedConfig || !configCache) {
             loadEnvVariables(preloadedConfig);
@@ -842,7 +843,7 @@ function ensureSectionData(section, options = {}) {
         return;
     }
 
-    if (section === 'request-records' && typeof refreshRequestRecords === 'function') {
+    if (section === 'request-records' && hasProtectedUiAccessToken() && typeof refreshRequestRecords === 'function') {
         sectionLoadedState['request-records'] = true;
         refreshRequestRecords();
     }
@@ -853,11 +854,10 @@ function ensureSectionData(section, options = {}) {
    ======================================== */
 function switchSection(section) {
     // 检查是否尝试访问受token保护的section
-    if (section === 'logs' || section === 'api' || section === 'env' || section === 'push' || section === 'cookie' || section === 'request-records') {
-        const urlToken = getUrlTokenFromLocation();
+    if (PROTECTED_UI_SECTIONS.includes(section)) {
         const _reverseProxy = customBaseUrl;
 
-        if (!urlToken && originalToken !== "87654321") {
+        if (!hasProtectedUiAccessToken()) {
             setTimeout(() => {
                 // 获取当前页面的协议、主机和端口
                 const protocol = window.location.protocol;
@@ -1019,9 +1019,8 @@ function performSectionSwitch(section, isInitialLoad = false) {
 
     // 保存当前页面到存储，以便刷新后恢复
     // 安全优化：受 TOKEN/ADMIN_TOKEN 保护的页面仅使用 sessionStorage 记忆，避免关闭页面后仍“卡在管理页”
-    const protectedSections = ['logs', 'api', 'env', 'push', 'request-records'];
     try {
-        if (protectedSections.includes(section)) {
+        if (PROTECTED_UI_SECTIONS.includes(section)) {
             sessionStorage.setItem('activeSection', section);
             localStorage.removeItem('activeSection');
         } else {
@@ -1201,20 +1200,24 @@ function getUrlTokenFromLocation() {
 }
 
 function hasProtectedUiAccessToken() {
-    if (currentToken && currentToken !== 'globals.currentToken') {
-        return true;
-    }
-
-    if (originalToken === '87654321') {
-        return true;
-    }
-
     const urlToken = getUrlTokenFromLocation();
     if (!urlToken) {
         return false;
     }
 
-    return urlToken === originalToken || (currentAdminToken && currentAdminToken.trim() !== '' && urlToken === currentAdminToken);
+    if (currentAdminToken && currentAdminToken.trim() !== '' && urlToken === currentAdminToken) {
+        return true;
+    }
+
+    if (originalToken && urlToken === originalToken) {
+        return true;
+    }
+
+    if (currentToken && currentToken !== 'globals.currentToken' && urlToken === currentToken) {
+        return true;
+    }
+
+    return false;
 }
 
 /* ========================================
@@ -2390,8 +2393,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let savedSection = sessionStorage.getItem('activeSection') || localStorage.getItem('activeSection');
     // 没有 URL token 时，避免恢复到受保护页面（例如 /ADMIN_TOKEN 进入后直接关闭导致下次仍停留在管理页）
     const urlToken = getUrlTokenFromLocation();
-    const protectedSections = ['logs', 'api', 'env', 'push', 'request-records'];
-    if (!urlToken && savedSection && protectedSections.includes(savedSection)) {
+    if (!urlToken && savedSection && PROTECTED_UI_SECTIONS.includes(savedSection)) {
         try {
             sessionStorage.removeItem('activeSection');
             localStorage.removeItem('activeSection');

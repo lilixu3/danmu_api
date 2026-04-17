@@ -186,6 +186,7 @@ export default class DandanSource extends BaseSource {
           "Content-Type": "application/json",
           "User-Agent": DandanUserAgent,
         },
+        retries: 1,
       });
 
       // 判断 resp 和 resp.data 是否存在
@@ -424,144 +425,22 @@ export default class DandanSource extends BaseSource {
   // 接收 mergedSources 参数，包含所有参与合并的具体源链接信息，用于避免重复获取
   async getEpisodeDanmu(id, mergedSources = []) {
     let allDanmus = [];
-    let relatedShifts = {}; // 存储传给合并工具的精确偏移值，格式: { 'sourceName:coreUrl': shift }
-    const stats = {}; // 统计各源弹幕数量
 
     try {
-      // 获取 dandan 弹幕
-      const dandanPromise = httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=%2Fv2%2Fcomment%2F${id}%3Ffrom%3D0%26withRelated%3Dtrue%26chConvert%3D0`, {
+      const resp = await httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=%2Fv2%2Fcomment%2F${id}%3Ffrom%3D0%26withRelated%3Dtrue%26chConvert%3D0`, {
         headers: {
           "Content-Type": "application/json",
           "User-Agent": DandanUserAgent,
         },
         retries: 1,
-      }).catch(e => { log('error', `dandan base comments error: ${e.message}`); return null; });
-
-      // 根据功能开关决定是否请求 related 关联数据，避免未开启功能时产生无效的网络开销
-      // 判定条件：全局开启了实时拉取，或全局开启了合并功能，或当前请求明确处于合并管线中
-      let relatedPromise = Promise.resolve(null);
-      if (globals.realTimePullDandan || (globals.mergeSourcePairs && globals.mergeSourcePairs.length > 0) || (mergedSources && mergedSources.length > 0)) {
-        relatedPromise = httpGet(`https://api.danmaku.weeblify.app/ddp/v1?path=/v2/related/${id}`, {
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": DandanUserAgent,
-          },
-          retries: 1,
-        }).catch(e => { log('error', `dandan related data error: ${e.message}`); return null; });
-      }
-
-      const [resp, relatedResp] = await Promise.all([dandanPromise, relatedPromise]);
+      }).catch(e => {
+        log('error', `dandan base comments error: ${e.message}`);
+        return null;
+      });
 
       if (resp && resp.data && resp.data.comments) {
         allDanmus = resp.data.comments;
-        stats['dandan'] = allDanmus.length;
-      } else {
-        stats['dandan'] = 0;
       }
-
-      // 处理第三方关联源
-      if (relatedResp && relatedResp.data && relatedResp.data.relateds) {
-        const relatedTasks = [];
-
-        // 核心标识提取函数：滤除干扰因素，提取唯一特征以供比对
-        const getCoreIdentifier = (targetStr, sName) => {
-          // 巴哈姆特专属逻辑：提取纯数字ID
-          if (sName === 'bahamut') {
-            const match = targetStr.match(/sn=(\d+)/) || targetStr.match(/\d+$/);
-            return match ? (match[1] || match[0]) : targetStr;
-          }
-
-          // 常规平台逻辑：统一剥离 http/https 协议、www. 前缀
-          let core = targetStr.replace(/^https?:\/\/(www\.)?/, '');
-
-          // 保留 B 站分 P 和合并分 P 关键参数，避免同源多链接互相覆盖偏移量
-          if (sName === 'bilibili' || sName === 'bilibili1') {
-            if (/\/combine\?/.test(core)) {
-              return core.replace(/#.*/, '');
-            }
-
-            const pMatch = core.match(/\b(p=\d+)\b/);
-            core = core.replace(/\?.*/, '');
-            if (pMatch) {
-              core += `?${pMatch[1]}`;
-            }
-            return core;
-          }
-
-          // 其他平台默认去掉查询参数
-          return core.replace(/\?.*/, '');
-        };
-
-        for (const rel of relatedResp.data.relateds) {
-          const url = rel.url;
-          const shift = rel.shift || 0;
-          const sourceInfo = this.parseRelatedUrl(url);
-
-          if (!sourceInfo) continue;
-
-          const { sourceName } = sourceInfo;
-          const coreUrl = getCoreIdentifier(url, sourceName);
-
-          // 构建唯一键存储偏移量，包含平台与核心标识，防止同平台多链接导致数据覆盖
-          relatedShifts[`${sourceName}:${coreUrl}`] = shift;
-
-          // 拦截：判断用户是否开启实时拉取功能
-          if (!globals.realTimePullDandan) {
-            continue;
-          }
-
-          // 拦截：判断用户是否开启该源
-          if (!globals.sourceOrderArr.includes(sourceName)) {
-            continue;
-          }
-
-          // 拦截：判断当前关联的具体链接是否已被合并工具明确包含，支持同源多链接的精细区分
-          const isAlreadyMerged = mergedSources.some(part => {
-            const firstColonIndex = part.indexOf(':');
-            if (firstColonIndex === -1) return false;
-            const mSource = part.substring(0, firstColonIndex);
-            const mId = part.substring(firstColonIndex + 1);
-
-            // 来源标识必须一致
-            if (mSource !== sourceName) return false;
-
-            const coreMId = getCoreIdentifier(mId, mSource);
-
-            // 核心特征双向包含比对
-            return coreUrl.includes(coreMId) || coreMId.includes(coreUrl);
-          });
-
-          if (isAlreadyMerged) {
-            log("info", `[Dandan] 链接 ${url} 已被合并工具包含，交由合并工具处理，跳过原生实时拉取`);
-            continue;
-          }
-
-          // 执行本地实时拉取，并应用偏移，同时统计返回的弹幕数量
-          log("info", `[Dandan] 触发第三方源实时拉取: ${sourceName} - ${url} (偏移: ${shift}s)`);
-          relatedTasks.push(
-            this.pullRealTimeDanmu(sourceName, url, shift).then(comments => {
-              stats[sourceName] = (stats[sourceName] || 0) + comments.length;
-              return comments;
-            })
-          );
-        }
-
-        // 并发等待所有第三方弹幕请求
-        if (relatedTasks.length > 0) {
-          const extraDanmusArrays = await Promise.all(relatedTasks);
-          for (const extra of extraDanmusArrays) {
-            if (extra && Array.isArray(extra) && extra.length > 0) {
-              allDanmus = allDanmus.concat(extra);
-            }
-          }
-
-          // 汇总日志：仅在产生实际拉取任务时，输出拉取总数与原生基础数据
-          const totalCount = allDanmus.length;
-          const dandanCount = stats['dandan'] || 0;
-          log("info", `[Dandan] 实时拉取原始数据完成: 现总计 ${totalCount} 条 (原始弹幕数：${dandanCount})`);
-        }
-      }
-
     } catch (error) {
       log("error", "getEpisodeDanmu error:", {
         message: error.message,
@@ -570,8 +449,6 @@ export default class DandanSource extends BaseSource {
       });
     }
 
-    // 挂载精确偏移量字典，以便外层截获
-    allDanmus.relatedShifts = relatedShifts;
     return allDanmus;
   }
 

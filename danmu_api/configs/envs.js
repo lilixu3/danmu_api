@@ -2,6 +2,8 @@
  * 环境变量管理模块
  * 提供获取和设置环境变量的函数，支持 Cloudflare Workers 和 Node.js
  */
+import { parseOffsetRules } from '../utils/offset-util.js';
+
 export class Envs {
   static env;
 
@@ -13,9 +15,6 @@ export class Envs {
   static ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'acfun', 'aiyifan', 'animeko', 'custom']; // 全部源允许的播放平台
   static ALLOWED_SOURCES = ['360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'acfun', 'aiyifan', 'animeko', 'custom']; // 允许的源
   static MERGE_ALLOWED_SOURCES = ['tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui', 'acfun', 'aiyifan', 'animeko']; // 允许的源合并
-  static TIMELINE_OFFSET_ALL = 'all';
-  static TIMELINE_OFFSET_ALLOWED_PLATFORMS = Envs.ALLOWED_PLATFORMS;
-
   static DEFAULT_AI_MATCH_PROMPT = `你是一个专业的影视匹配专家，你的的任务是根据用户提供的 JSON 数据，从候选动漫列表中匹配最符合条件的动漫及集数。
 
 输入字段说明：
@@ -478,65 +477,6 @@ export class Envs {
   }
 
   /**
-   * 解析剧名-平台-偏移量配置
-   * @returns {Array} 偏移配置数组 [{ title, platforms, offset, all }]
-   */
-  static resolveTitlePlatformOffsetRules() {
-    const config = this.get('TITLE_PLATFORM_OFFSET_TABLE', '', 'string').trim();
-    if (!config) return [];
-
-    const allowedPlatforms = new Set(this.TIMELINE_OFFSET_ALLOWED_PLATFORMS || []);
-
-    return config
-      .split(';')
-      .map(item => item.trim())
-      .filter(Boolean)
-      .map(item => {
-        const parts = item.split('@');
-        if (parts.length < 3) return null;
-
-        const offsetRaw = parts.pop().trim();
-        const platformsRaw = parts.pop().trim();
-        const title = parts.join('@').trim();
-
-        if (!title || !platformsRaw) return null;
-
-        const offset = parseFloat(offsetRaw);
-        if (Number.isNaN(offset)) return null;
-
-        const platformParts = platformsRaw
-          .split(/[&,]/)
-          .map(p => p.trim())
-          .filter(Boolean);
-
-        const hasAll = platformParts.some(p => {
-          const lowered = p.toLowerCase();
-          return lowered === this.TIMELINE_OFFSET_ALL || lowered === '*';
-        });
-
-        if (hasAll) {
-          return {
-            title,
-            platforms: [this.TIMELINE_OFFSET_ALL],
-            offset,
-            all: true
-          };
-        }
-
-        const platforms = [...new Set(platformParts.filter(p => allowedPlatforms.has(p)))];
-        if (platforms.length === 0) return null;
-
-        return {
-          title,
-          platforms,
-          offset,
-          all: false
-        };
-      })
-      .filter(Boolean);
-  }
-
-  /**
    * 获取记录的环境变量 JSON
    * @returns {Map<any, any>} JSON 字符串
    */
@@ -554,7 +494,6 @@ export class Envs {
     this.env = env;
 
     // 环境变量分类和描述映射
-    const timelineOffsetOptions = [this.TIMELINE_OFFSET_ALL, ...(this.TIMELINE_OFFSET_ALLOWED_PLATFORMS || [])];
     const envVarConfig = {
       // API配置
       'TOKEN': { category: 'api', type: 'text', description: 'API访问令牌' },
@@ -569,10 +508,10 @@ export class Envs {
       'VOD_RETURN_MODE': { category: 'source', type: 'select', options: ['all', 'fastest'], description: 'VOD返回模式：all（所有站点）或 fastest（最快的站点），默认fastest' },
       'VOD_REQUEST_TIMEOUT': { category: 'source', type: 'number', description: 'VOD请求超时时间，默认10000', min: 5000, max: 30000 },
       'BILIBILI_COOKIE': { category: 'source', type: 'text', description: 'B站Cookie' },
-      'DOUBAN_COOKIE': { category: 'source', type: 'text', description: '豆瓣Cookie，用于降低 Douban 搜索接口 403 风控概率，建议填写浏览器中 m.douban.com 的完整 Cookie' },
+      'DOUBAN_COOKIE': { category: 'source', type: 'text', description: '豆瓣Cookie，用于降低 Douban 搜索与部分详情 GET 请求的 403 风控概率，相关请求会优先直接携带 Cookie，建议填写浏览器中 m.douban.com 的完整 Cookie' },
       'YOUKU_CONCURRENCY': { category: 'source', type: 'number', description: '优酷并发配置，默认8', min: 1, max: 16 },
       'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },
-      'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '弹弹第三方弹幕源实时拉取开关，默认为false（关闭），可选值：true、false' },
+      'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '已废弃兼容项：弹弹 related 接口已下线，当前版本保留该变量仅为兼容旧配置，不再生效' },
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置，可以配置自动匹配时的优选平台。\n当配置合并平台的时候，可以指定期望的合并源，\n示例：一个结果返回了“dandan&bilibili1&animeko”和“youku”时，\n当配置“youku”时返回“youku” \n当配置“dandan&animeko”时返回“dandan&bilibili1&animeko”' },
       'ANIME_TITLE_FILTER': { category: 'match', type: 'text', description: '剧名过滤规则' },
@@ -600,7 +539,7 @@ export class Envs {
       'DANMU_OUTPUT_FORMAT': { category: 'danmu', type: 'select', options: ['json', 'xml'], description: '弹幕输出格式，默认json' },
       'DANMU_PUSH_URL': { category: 'danmu', type: 'text', description: '弹幕推送地址，示例 http://127.0.0.1:9978/action?do=refresh&type=danmaku&path= ' },
       'LIKE_SWITCH': { category: 'danmu', type: 'boolean', description: '弹幕点赞数显示开关，默认开启' },
-      'TITLE_PLATFORM_OFFSET_TABLE': { category: 'danmu', type: 'timeline-offset', options: timelineOffsetOptions, description: '剧名-平台-时间轴偏移配置，格式：剧名@平台1&平台2@-5;剧名2@all@5（all 表示全部平台），偏移单位为秒' },
+      'DANMU_OFFSET': { category: 'danmu', type: 'timeline-offset', options: this.ALLOWED_SOURCES, description: '弹幕时间偏移配置，格式：剧名:秒 或 剧名/季:秒 或 剧名/季/集:秒，支持指定来源：剧名@来源:秒 或 剧名/季@来源1&来源2:秒，多条用逗号分隔，正数表示弹幕延后（向右），负数表示弹幕提前（向左）。支持百分比模式：在路径或来源末尾追加 %，如 东方/S03/E02@tencent%:11，按公式 原时间 * (视频时长 + 偏移秒数) / 视频时长 缩放全部弹幕时间。示例：overlord/S01:90,re-zero/S02@bilibili:120,re-zero/S02/E03@dandan&bilibili:10,东方/S03/E02@tencent%:11' },
 
       // 缓存配置
       'SEARCH_CACHE_MINUTES': { category: 'cache', type: 'number', description: '搜索结果缓存时间(分钟)，默认3', min: 1, max: 120 },
@@ -647,7 +586,7 @@ export class Envs {
       doubanCookie: this.get('DOUBAN_COOKIE', '', 'string', true), // 豆瓣 cookie，用于降低 Douban 搜索接口 403 风控概率
       youkuConcurrency: Math.min(this.get('YOUKU_CONCURRENCY', 8, 'number'), 16), // 优酷并发配置
       mergeSourcePairs: this.resolveMergeSourcePairs(), // 源合并配置，用于将源合并获取
-      realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 弹弹第三方弹幕源实时拉取开关
+      realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 已废弃兼容项：保留旧配置读取，不再驱动 related 实时拉取逻辑
       platformOrderArr: this.resolvePlatformOrder(), // 自动匹配优选平台
       animeTitleFilter: this.resolveAnimeTitleFilter(), // 剧名正则过滤
       episodeTitleFilter: this.resolveEpisodeTitleFilter(), // 剧集标题正则过滤
@@ -668,6 +607,8 @@ export class Envs {
       })(),
       danmuPushUrl: this.get('DANMU_PUSH_URL', '', 'string'), // 代理/反代地址
       likeSwitch: this.get('LIKE_SWITCH', true, 'boolean'), // 弹幕点赞数显示开关，默认开启
+      danmuOffset: this.get('DANMU_OFFSET', '', 'string'), // 弹幕时间偏移配置
+      danmuOffsetRules: parseOffsetRules(this.get('DANMU_OFFSET', '', 'string')), // 解析后的偏移规则（缓存）
       tmdbApiKey: this.get('TMDB_API_KEY', '', 'string', true), // TMDB API KEY
       redisUrl: this.get('UPSTASH_REDIS_REST_URL', '', 'string', true), // upstash redis url
       redisToken: this.get('UPSTASH_REDIS_REST_TOKEN', '', 'string', true), // upstash redis url
@@ -689,7 +630,6 @@ export class Envs {
       titleToChinese: this.get('TITLE_TO_CHINESE', false, 'boolean'), // 外语标题转换中文开关
       animeTitleSimplified: this.get('ANIME_TITLE_SIMPLIFIED', false, 'boolean'), // 搜索的剧名标题自动繁转简
       titleMappingTable: this.resolveTitleMappingTable(), // 剧名映射表，用于自动匹配时替换标题进行搜索
-      titlePlatformOffsetRules: this.resolveTitlePlatformOffsetRules(), // 剧名-平台-时间轴偏移配置
       aiBaseUrl: this.get('AI_BASE_URL', 'https://api.openai.com/v1', 'string'), // AI服务基础URL
       aiModel: this.get('AI_MODEL', 'gpt-4o', 'string'), // AI模型名称
       aiApiKey: this.get('AI_API_KEY', '', 'string', true), // AI服务API密钥
