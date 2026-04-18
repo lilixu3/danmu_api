@@ -31,6 +31,7 @@ import XiguaSource from "./sources/xigua.js";
 import MaiduiduiSource from "./sources/maiduidui.js";
 import AnimekoSource from "./sources/animeko.js";
 import AiyifanSource from "./sources/aiyifan.js";
+import DoubanSource from "./sources/douban.js";
 import OtherSource from "./sources/other.js";
 import { NodeHandler } from "./configs/handlers/node-handler.js";
 import { VercelHandler } from "./configs/handlers/vercel-handler.js";
@@ -373,6 +374,61 @@ test('Douban search should carry configured cookie,使用搜索页 Referer，并
       calls[0].headers.Referer,
       'https://m.douban.com/search/?query=%E7%BB%BF%E9%87%8E%E4%BB%99%E8%B8%AA'
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    Globals.init({});
+  }
+});
+
+test('DoubanSource.search should fallback to public api when rexxar search is empty', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const source = new DoubanSource(null, null, null, null, null);
+  Globals.init({});
+
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    calls.push({ url: String(url), method });
+
+    if (String(url).startsWith('https://m.douban.com/rexxar/api/v2/search?')) {
+      return createFetchResponse({ subjects: { items: [] }, smart_box: [] });
+    }
+
+    if (String(url) === 'https://api.douban.com/v2/movie/search' && method === 'POST') {
+      return createFetchResponse({
+        subjects: [{
+          id: '1291561',
+          title: '公开兜底测试',
+          subtype: 'tv',
+          year: '2024',
+          genres: ['剧情'],
+          directors: [{ name: '导演甲' }],
+          casts: [{ name: '演员甲' }],
+          collect_count: 321,
+          rating: { average: 8.6, max: 10, stars: '40' },
+          images: {
+            large: 'https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2887095203.jpg'
+          }
+        }]
+      });
+    }
+
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  try {
+    const result = await source.search('公开兜底测试');
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].method, 'GET');
+    assert.equal(calls[1].method, 'POST');
+    assert.equal(result.length, 1);
+    assert.equal(result[0].layout, 'subject');
+    assert.equal(result[0].type_name, '电视剧');
+    assert.equal(result[0].target_id, '1291561');
+    assert.equal(result[0].target.title, '公开兜底测试');
+    assert.match(result[0].target.cover_url, /p2887095203/);
+    assert.match(result[0].target.card_subtitle, /2024/);
   } finally {
     globalThis.fetch = originalFetch;
     Globals.init({});
