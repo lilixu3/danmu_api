@@ -14,6 +14,8 @@ export const AIYIFAN_SIGNING_CONFIG_TTL_MS = 30 * 60 * 1000;
 export const AIYIFAN_SIGNING_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 
 const AIYIFAN_SIGNING_CACHE_KEY = "aiyifanSigningConfig";
+const RUNTIME_JSON_FILE_CACHE_MODULE_PATH = "../runtime/json-file-cache.js";
+let runtimeJsonFileCacheModulePromise;
 
 function isNodeRuntimeAvailable() {
   return Boolean(typeof process !== "undefined" && process.versions && process.versions.node);
@@ -25,10 +27,18 @@ function isNodeFileCacheEnabled() {
   return isNodeRuntimeAvailable() && !redisConfigured && (deployPlatform === "node" || deployPlatform === "nodejs");
 }
 
-async function getDefaultFileCachePath() {
-  const path = await import("node:path");
-  const { fileURLToPath } = await import("node:url");
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".cache", `${AIYIFAN_SIGNING_CACHE_KEY}.json`);
+async function getRuntimeJsonFileCacheModule() {
+  if (runtimeJsonFileCacheModulePromise === undefined) {
+    runtimeJsonFileCacheModulePromise = import(RUNTIME_JSON_FILE_CACHE_MODULE_PATH)
+      .then(function(mod) {
+        return mod;
+      })
+      .catch(function() {
+        return null;
+      });
+  }
+
+  return runtimeJsonFileCacheModulePromise;
 }
 
 function safeGet(obj, path, defaultValue) {
@@ -413,7 +423,16 @@ export class AiyifanSigningProvider {
   }
 
   async resolveFileCachePath() {
-    return this.fileCachePath || await getDefaultFileCachePath();
+    if (this.fileCachePath) {
+      return this.fileCachePath;
+    }
+
+    const fileCacheModule = await getRuntimeJsonFileCacheModule();
+    if (!fileCacheModule || typeof fileCacheModule.resolveCacheFilePathFromModuleUrl !== "function") {
+      return "";
+    }
+
+    return fileCacheModule.resolveCacheFilePathFromModuleUrl(import.meta.url, AIYIFAN_SIGNING_CACHE_KEY);
   }
 
   async readFileCache() {
@@ -422,18 +441,17 @@ export class AiyifanSigningProvider {
     }
 
     try {
-      const fs = await import("node:fs");
+      const fileCacheModule = await getRuntimeJsonFileCacheModule();
+      if (!fileCacheModule || typeof fileCacheModule.readJsonFileCache !== "function") {
+        return null;
+      }
+
       const fileCachePath = await this.resolveFileCachePath();
-      if (!fs.existsSync(fileCachePath)) {
+      if (!fileCachePath) {
         return null;
       }
 
-      const raw = fs.readFileSync(fileCachePath, "utf8");
-      if (!raw || !raw.trim()) {
-        return null;
-      }
-
-      return normalizeSigningCacheRecord(raw);
+      return normalizeSigningCacheRecord(fileCacheModule.readJsonFileCache(fileCachePath));
     } catch (error) {
       log("warn", "[Aiyifan] 读取本地签名缓存文件失败: " + ((error && error.message) || "未知错误"));
       return null;
@@ -451,18 +469,22 @@ export class AiyifanSigningProvider {
     }
 
     try {
-      const fs = await import("node:fs");
-      const path = await import("node:path");
+      const fileCacheModule = await getRuntimeJsonFileCacheModule();
+      if (!fileCacheModule || typeof fileCacheModule.writeJsonFileCache !== "function") {
+        return;
+      }
+
       const fileCachePath = await this.resolveFileCachePath();
+      if (!fileCachePath) {
+        return;
+      }
+
       const payload = {
         publicKey: normalized.signingConfig.publicKey,
         privateKey: normalized.signingConfig.privateKey,
         fetchedAt: normalized.fetchedAt || this.now()
       };
-      fs.mkdirSync(path.dirname(fileCachePath), { recursive: true });
-      const tempFilePath = `${fileCachePath}.tmp`;
-      fs.writeFileSync(tempFilePath, JSON.stringify(payload, null, 2), "utf8");
-      fs.renameSync(tempFilePath, fileCachePath);
+      fileCacheModule.writeJsonFileCache(fileCachePath, payload);
     } catch (error) {
       log("warn", "[Aiyifan] 写入本地签名缓存文件失败: " + ((error && error.message) || "未知错误"));
     }

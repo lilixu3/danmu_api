@@ -128,13 +128,52 @@ async function resolveUrlDuration(url) {
     return normalizeDurationValue(durationMs);
   }
 
-  if (!/^https?:\/\//i.test(url)) return 0;
+  try {
+    let targetUrl = url;
+    let segmentResult = null;
 
-  const response = await getCommentByUrl(url, 'json', true);
-  if (!response?.ok) return 0;
+    if (typeof targetUrl !== 'string' || !targetUrl) {
+      return 0;
+    }
 
-  const segmentResult = await response.json();
-  return extractDurationFromSegments(segmentResult);
+    if (targetUrl.includes('.qq.com')) {
+      segmentResult = await tencentSource.getComments(targetUrl, 'qq', true);
+    } else if (targetUrl.includes('.iqiyi.com')) {
+      segmentResult = await iqiyiSource.getComments(targetUrl, 'qiyi', true);
+    } else if (targetUrl.includes('.mgtv.com')) {
+      segmentResult = await mangoSource.getComments(targetUrl, 'imgo', true);
+    } else if (targetUrl.includes('.bilibili.com') || targetUrl.includes('b23.tv')) {
+      if (targetUrl.includes('b23.tv')) {
+        targetUrl = await bilibiliSource.resolveB23Link(targetUrl);
+      }
+      segmentResult = await bilibiliSource.getComments(targetUrl, 'bilibili1', true);
+    } else if (targetUrl.includes('.youku.com')) {
+      segmentResult = await youkuSource.getComments(targetUrl, 'youku', true);
+    } else if (targetUrl.includes('.miguvideo.com')) {
+      segmentResult = await miguSource.getComments(targetUrl, 'migu', true);
+    } else if (targetUrl.includes('.sohu.com')) {
+      segmentResult = await sohuSource.getComments(targetUrl, 'sohu', true);
+    } else if (targetUrl.includes('.le.com')) {
+      segmentResult = await leshiSource.getComments(targetUrl, 'leshi', true);
+    } else if (targetUrl.includes('.douyin.com') || targetUrl.includes('.ixigua.com')) {
+      segmentResult = await xiguaSource.getComments(targetUrl, 'xigua', true);
+    } else if (targetUrl.includes('.mddcloud.com.cn')) {
+      segmentResult = await maiduiduiSource.getComments(targetUrl, 'maiduidui', true);
+    } else if (targetUrl.includes('.yfsp.tv')) {
+      segmentResult = await aiyifanSource.getComments(targetUrl, 'aiyifan', true);
+    } else if (/^https?:\/\//i.test(targetUrl)) {
+      const response = await getCommentByUrl(targetUrl, 'json', true);
+      if (!response?.ok) return 0;
+      segmentResult = await response.json();
+    } else {
+      return 0;
+    }
+
+    return extractDurationFromSegments(segmentResult);
+  } catch (error) {
+    log('warn', '[Duration] 获取时长失败: ' + error.message);
+    return 0;
+  }
 }
 
 function extractMergedUrls(url) {
