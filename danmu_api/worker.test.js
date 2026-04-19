@@ -2783,6 +2783,189 @@ test('worker.js API endpoints', async (t) => {
     assert.deepEqual(matches.map(item => item.animeTitle), ['神探狄仁杰 第三部(2008)【电视剧】from iqiyi']);
   });
 
+  await t.test('applyMergeLogic should not merge 少年神探狄仁杰 into numbered 神探狄仁杰 parts when only core words overlap', async () => {
+    Globals.init({ MERGE_SOURCE_PAIRS: 'tencent&iqiyi&youku' });
+    Globals.MAX_ANIMES = 100;
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+
+    addAnime({
+      animeId: 711,
+      bangumiId: 'merge-711',
+      animeTitle: '少年神探狄仁杰(N/A)【电视剧】from iqiyi',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: 'N/A',
+      episodeCount: 36,
+      rating: 0,
+      isFavorited: false,
+      source: 'iqiyi',
+      links: Array.from({ length: 36 }, (_, i) => ({
+        id: 71101 + i,
+        url: `https://example.com/shaonian-${i + 1}`,
+        title: `【qiyi】 少年神探狄仁杰第${i + 1}集`
+      }))
+    });
+    addAnime({
+      animeId: 712,
+      bangumiId: 'merge-712',
+      animeTitle: '神探狄仁杰 第一部(2004)【电视剧】from youku',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2004-01-01T00:00:00.000Z',
+      episodeCount: 27,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: Array.from({ length: 27 }, (_, i) => ({
+        id: 71201 + i,
+        url: `https://example.com/part1-${i + 1}`,
+        title: `【youku】 第${i + 1}集 神探狄仁杰 第一部 ${String(i + 1).padStart(2, '0')}`
+      }))
+    });
+    addAnime({
+      animeId: 713,
+      bangumiId: 'merge-713',
+      animeTitle: '神探狄仁杰 第二部(2006)【电视剧】from youku',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2006-01-01T00:00:00.000Z',
+      episodeCount: 40,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: Array.from({ length: 40 }, (_, i) => ({
+        id: 71301 + i,
+        url: `https://example.com/part2-${i + 1}`,
+        title: `【youku】 第${i + 1}集 神探狄仁杰 第二部 ${String(i + 1).padStart(2, '0')}`
+      }))
+    });
+    addAnime({
+      animeId: 714,
+      bangumiId: 'merge-714',
+      animeTitle: '神探狄仁杰 第三部(2008)【电视剧】from youku',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2008-01-01T00:00:00.000Z',
+      episodeCount: 48,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: Array.from({ length: 48 }, (_, i) => ({
+        id: 71401 + i,
+        url: `https://example.com/part3-${i + 1}`,
+        title: `【youku】 第${i + 1}集 神探狄仁杰 第三部 ${String(i + 1).padStart(2, '0')}`
+      }))
+    });
+
+    const curAnimes = globals.animes.map(anime => ({
+      animeId: anime.animeId,
+      bangumiId: anime.bangumiId,
+      animeTitle: anime.animeTitle,
+      type: anime.type,
+      typeDescription: anime.typeDescription,
+      imageUrl: anime.imageUrl,
+      startDate: anime.startDate,
+      episodeCount: anime.episodeCount,
+      rating: anime.rating,
+      isFavorited: anime.isFavorited,
+      source: anime.source,
+      links: anime.links.map(link => ({ ...link }))
+    }));
+
+    await applyMergeLogic(curAnimes);
+
+    assert.equal(curAnimes.length, 4);
+    assert.equal(curAnimes.some(anime => anime.animeTitle.includes('from iqiyi&youku')), false);
+    assert.deepEqual(
+      curAnimes.map(anime => anime.animeTitle).sort(),
+      [
+        '少年神探狄仁杰(N/A)【电视剧】from iqiyi',
+        '神探狄仁杰 第一部(2004)【电视剧】from youku',
+        '神探狄仁杰 第二部(2006)【电视剧】from youku',
+        '神探狄仁杰 第三部(2008)【电视剧】from youku'
+      ].sort()
+    );
+  });
+
+  await t.test('applyMergeLogic should treat 中文第X部 markers as different seasons instead of merging them together', async () => {
+    Globals.init({ MERGE_SOURCE_PAIRS: 'iqiyi&youku' });
+    Globals.MAX_ANIMES = 100;
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+
+    addAnime({
+      animeId: 715,
+      bangumiId: 'merge-715',
+      animeTitle: '神探狄仁杰 第一部(2004)【电视剧】from iqiyi',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2004-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: false,
+      source: 'iqiyi',
+      links: [
+        { id: 71501, url: 'https://example.com/cn-part-1-1', title: '【qiyi】 神探狄仁杰 第一部 第1集' },
+        { id: 71502, url: 'https://example.com/cn-part-1-2', title: '【qiyi】 神探狄仁杰 第一部 第2集' }
+      ]
+    });
+    addAnime({
+      animeId: 716,
+      bangumiId: 'merge-716',
+      animeTitle: '神探狄仁杰 第二部(2006)【电视剧】from youku',
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2006-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: false,
+      source: 'youku',
+      links: [
+        { id: 71601, url: 'https://example.com/cn-part-2-1', title: '【youku】 神探狄仁杰 第二部 第1集' },
+        { id: 71602, url: 'https://example.com/cn-part-2-2', title: '【youku】 神探狄仁杰 第二部 第2集' }
+      ]
+    });
+
+    const curAnimes = globals.animes.map(anime => ({
+      animeId: anime.animeId,
+      bangumiId: anime.bangumiId,
+      animeTitle: anime.animeTitle,
+      type: anime.type,
+      typeDescription: anime.typeDescription,
+      imageUrl: anime.imageUrl,
+      startDate: anime.startDate,
+      episodeCount: anime.episodeCount,
+      rating: anime.rating,
+      isFavorited: anime.isFavorited,
+      source: anime.source,
+      links: anime.links.map(link => ({ ...link }))
+    }));
+
+    await applyMergeLogic(curAnimes);
+
+    assert.equal(curAnimes.length, 2);
+    assert.equal(curAnimes.some(anime => anime.animeTitle.includes('from iqiyi&youku')), false);
+  });
+
   await t.test('applyMergeLogic should preserve hanjutv tv variant when multi-source aggregation rewrites merged urls', async () => {
     Globals.init({ MERGE_SOURCE_PAIRS: 'renren&hanjutv&aiyifan' });
     Globals.MAX_ANIMES = 100;
