@@ -15,7 +15,7 @@ import { getImdbepisodes } from "./utils/imdb-util.js";
 import { getTMDBChineseTitle, getTmdbJpDetail, searchTmdbTitles } from "./utils/tmdb-util.js";
 import { getDoubanDetail, getDoubanInfoByImdbId, searchDoubanTitles } from "./utils/douban-util.js";
 import AIClient from './utils/ai-util.js';
-import { alignSourceTimelines, applyMergeLogic, MERGE_DELIMITER } from "./utils/merge-util.js";
+import { alignSourceTimelines, applyMergeLogic, findSecondaryMatches, MERGE_DELIMITER } from "./utils/merge-util.js";
 import RenrenSource from "./sources/renren.js";
 import HanjutvSource from "./sources/hanjutv.js";
 import BahamutSource from "./sources/bahamut.js";
@@ -2707,6 +2707,80 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(mergedAnime.links.length, 1);
     assert.ok(mergedAnime.links[0].url.includes(`tencent:https://example.com/tencent-1${MERGE_DELIMITER}iqiyi:https://example.com/iqiyi-1`));
     assert.ok(mergedAnime.links[0].url.includes(`${MERGE_DELIMITER}youku:https://example.com/youku-1`));
+  });
+
+  await t.test('findSecondaryMatches should reject Detective Dee spinoff titles with different strict bases', async () => {
+    const createAnime = (animeId, source, animeTitle, year = '2024-01-01T00:00:00.000Z') => ({
+      animeId,
+      source,
+      animeTitle,
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: year,
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(701, 'iqiyi', '少年神探狄仁杰(N/A)【电视剧】from iqiyi', null);
+    const secondaries = [
+      createAnime(702, 'youku', '神探狄仁杰 第一部(2004)【电视剧】from youku', '2004-01-01T00:00:00.000Z'),
+      createAnime(703, 'youku', '神探狄仁杰 第二部(2006)【电视剧】from youku', '2006-01-01T00:00:00.000Z'),
+      createAnime(704, 'youku', '神探狄仁杰 第三部(2008)【电视剧】from youku', '2008-01-01T00:00:00.000Z')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), []);
+  });
+
+  await t.test('findSecondaryMatches should treat 第2部 and 第二部 as the same season marker', async () => {
+    const createAnime = (animeId, source, animeTitle) => ({
+      animeId,
+      source,
+      animeTitle,
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2006-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(705, 'youku', '神探狄仁杰 第2部(2006)【电视剧】from youku');
+    const secondaries = [
+      createAnime(706, 'iqiyi', '神探狄仁杰 第二部(2006)【电视剧】from iqiyi')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), ['神探狄仁杰 第二部(2006)【电视剧】from iqiyi']);
+  });
+
+  await t.test('findSecondaryMatches should treat 第3部 and 第三部 as the same season marker', async () => {
+    const createAnime = (animeId, source, animeTitle) => ({
+      animeId,
+      source,
+      animeTitle,
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2008-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(707, 'youku', '神探狄仁杰 第3部(2008)【电视剧】from youku');
+    const secondaries = [
+      createAnime(708, 'iqiyi', '神探狄仁杰 第三部(2008)【电视剧】from iqiyi')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), ['神探狄仁杰 第三部(2008)【电视剧】from iqiyi']);
   });
 
   await t.test('applyMergeLogic should preserve hanjutv tv variant when multi-source aggregation rewrites merged urls', async () => {

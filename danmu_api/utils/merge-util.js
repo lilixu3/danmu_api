@@ -144,7 +144,7 @@ const RegexStore = {
         PART_NORM_2: /(?:Part|P)[\s.]*(\d+)/gi,
         FINAL: /(?:The\s+)?Final\s+Season/gi,
         NORM: /(?:Season|S)\s*(\d+)/gi,
-        CN: /第([一二三四五六七八九十])季/g,
+        CN: /第([一二三四五六七八九十壹贰貳叁參肆伍陆陸柒捌玖拾两兩]+)(季|期|部)(?!分)/g,
         ROMAN: /(\s|^)(IV|III|II|I)(\s|$)/g,
         INFO_STRONG: /(?:season|s|第)\s*[0-9一二三四五六七八九十]+\s*(?:季|期|部(?!分))?/gi,
         PART_INFO_STRONG: /(?:part|p|第)\s*\d+\s*(?:部分)?/gi,
@@ -261,6 +261,37 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function parseChineseOrdinalNumber(token) {
+    if (!token) return null;
+    if (/^\d+$/.test(token)) return parseInt(token, 10);
+    const normalized = String(token)
+        .replace(/[壹一]/g, '一')
+        .replace(/[贰貳两兩二]/g, '二')
+        .replace(/[叁參三]/g, '三')
+        .replace(/[肆四]/g, '四')
+        .replace(/[伍五]/g, '五')
+        .replace(/[陆陸六]/g, '六')
+        .replace(/[柒七]/g, '七')
+        .replace(/[捌八]/g, '八')
+        .replace(/[玖九]/g, '九')
+        .replace(/[拾十]/g, '十');
+
+    const digitMap = { '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+    if (Object.prototype.hasOwnProperty.call(digitMap, normalized)) return digitMap[normalized];
+    if (normalized === '十') return 10;
+    if (normalized.startsWith('十')) {
+        const ones = digitMap[normalized.slice(1)] || 0;
+        return 10 + ones;
+    }
+    const tenIdx = normalized.indexOf('十');
+    if (tenIdx > 0) {
+        const tens = digitMap[normalized.slice(0, tenIdx)] || 0;
+        const ones = digitMap[normalized.slice(tenIdx + 1)] || 0;
+        return tens * 10 + ones;
+    }
+    return null;
+}
+
 /**
  * 引擎级标题语义转换器 (Semantic Normalizer)
  */
@@ -333,8 +364,10 @@ function cleanText(text) {
   clean = clean.replace(RegexStore.Season.FINAL, '最终季');
   clean = clean.replace(RegexStore.Season.NORM, '第$1季');
 
-  const cnNums = {'一':'1', '二':'2', '三':'3', '四':'4', '五':'5', '六':'6', '七':'7', '八':'8', '九':'9', '十':'10'};
-  clean = clean.replace(RegexStore.Season.CN, (m, num) => `第${cnNums[num]}季`);
+  clean = clean.replace(RegexStore.Season.CN, (match, num, suffix) => {
+      const parsed = parseChineseOrdinalNumber(num);
+      return parsed !== null ? `第${parsed}${suffix}` : match;
+  });
   clean = clean.replace(RegexStore.Season.ROMAN, (match, p1, roman, p2) => {
       const rMap = {'I':'1', 'II':'2', 'III':'3', 'IV':'4'};
       return `${p1}第${rMap[roman]}季${p2}`;
@@ -349,6 +382,41 @@ function cleanText(text) {
   clean = clean.replace(/{{DOT}}/g, '.');
 
   return clean.replace(RegexStore.Clean.WHITESPACE, ' ').toLowerCase().trim();
+}
+
+function getStrictMergeTitleBase(text) {
+    if (!text) return '';
+    let clean = normalizeTitleForEngine(text);
+    clean = clean.replace(RegexStore.Clean.SOURCE_TAG, '');
+    clean = clean.replace(RegexStore.Clean.FROM_SUFFIX, '');
+    clean = clean.replace(RegexStore.Clean.YEAR_TAG, '');
+    clean = clean.replace(RegexStore.Clean.NA_TAG, '');
+    clean = cleanText(clean);
+    clean = clean.replace(RegexStore.Season.INFO_STRONG, ' ');
+    clean = clean.replace(RegexStore.Season.PART_INFO_STRONG, ' ');
+    clean = clean.replace(RegexStore.Season.SUFFIX_SEQUEL, ' ');
+    clean = clean.replace(/最终季/g, ' ');
+    clean = clean.replace(/(?<=[\u4e00-\u9fa5])之(?=[\u4e00-\u9fa5])/g, '');
+    clean = clean.replace(RegexStore.Clean.NON_ALPHANUM_CN, '');
+    return clean.trim();
+}
+
+function buildStrictMergeTitleBaseSet(anime) {
+    const set = new Set();
+    const values = [anime?.animeTitle, ...(Array.isArray(anime?.aliases) ? anime.aliases : [])];
+    for (const value of values) {
+        const base = getStrictMergeTitleBase(value);
+        if (base) set.add(base);
+    }
+    return set;
+}
+
+function hasSetIntersection(setA, setB) {
+    if (!setA || !setB || setA.size === 0 || setB.size === 0) return false;
+    for (const value of setA) {
+        if (setB.has(value)) return true;
+    }
+    return false;
 }
 
 /**
@@ -1018,6 +1086,8 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
   const primaryDate = (rawPrimaryTitle.includes('N/A') || isPrimaryIgnoredYear) ? { year: null, month: null } : parseDate(primaryAnime.startDate);
   const primaryCount = primaryAnime.episodeCount || (primaryAnime.links ? primaryAnime.links.length : 0);
   const primaryLang = getLanguageType(rawPrimaryTitle);
+  const primaryCategory = getContentCategory(rawPrimaryTitle, primaryAnime.typeDescription, primaryAnime.source);
+  const primaryStrictTitleBases = buildStrictMergeTitleBaseSet(primaryAnime);
 
   const primaryCleanForZhi = cleanText(primaryTitleForSim);
   const cleanPrimarySim = cleanTitleForSimilarity(primaryTitleForSim);
@@ -1050,6 +1120,7 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
     const isSecDub = !!(secTitleForSim.match(RegexStore.Lang.CN_DUB_VER)) || RegexStore.Lang.CN.test(secTitleForSim);
     const isDubRelation = isPrimaryDub || isSecDub;
     const secCount = secAnime.episodeCount || (secAnime.links ? secAnime.links.length : 0);
+    const secCategory = getContentCategory(rawSecTitle, secAnime.typeDescription, secAnime.source);
 
     // 之字结构强阻断
     if (secTitleForSim.includes('之')) {
@@ -1062,10 +1133,23 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
     }
 
     if (checkMediaTypeMismatch(rawPrimaryTitle, rawSecTitle, primaryAnime.typeDescription, secAnime.typeDescription, primaryCount, secCount, primaryAnime.source, secAnime.source)) {
-        const pType = getContentCategory(rawPrimaryTitle, primaryAnime.typeDescription, primaryAnime.source);
-        const sType = getContentCategory(rawSecTitle, secAnime.typeDescription, secAnime.source);
-        logReason(rawSecTitle, `媒体类型或维数不匹配 (P:${pType}/${getStrictMediaType(rawPrimaryTitle, primaryAnime.typeDescription)} [${primaryAnime.typeDescription}] vs S:${sType}/${getStrictMediaType(rawSecTitle, secAnime.typeDescription)} [${secAnime.typeDescription}])`);
+        logReason(rawSecTitle, `媒体类型或维数不匹配 (P:${primaryCategory}/${getStrictMediaType(rawPrimaryTitle, primaryAnime.typeDescription)} [${primaryAnime.typeDescription}] vs S:${secCategory}/${getStrictMediaType(rawSecTitle, secAnime.typeDescription)} [${secAnime.typeDescription}])`);
         continue;
+    }
+
+    const shouldApplyStrictTitleGate = !isAnyCollection
+        && primaryCategory === 'REAL'
+        && secCategory === 'REAL'
+        && /[\u4e00-\u9fa5]/.test(rawPrimaryTitle)
+        && /[\u4e00-\u9fa5]/.test(rawSecTitle);
+    if (shouldApplyStrictTitleGate) {
+        const secStrictTitleBases = buildStrictMergeTitleBaseSet(secAnime);
+        if (!hasSetIntersection(primaryStrictTitleBases, secStrictTitleBases)) {
+            const primaryBase = Array.from(primaryStrictTitleBases)[0] || cleanPrimarySim;
+            const secBase = Array.from(secStrictTitleBases)[0] || cleanTitleForSimilarity(secTitleForSim);
+            logReason(rawSecTitle, `严格标题基底不一致 (P:${primaryBase} vs S:${secBase})`);
+            continue;
+        }
     }
 
     const isDateValid = (primaryDate.year !== null && secDate.year !== null);
