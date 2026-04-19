@@ -144,9 +144,9 @@ const RegexStore = {
         PART_NORM_2: /(?:Part|P)[\s.]*(\d+)/gi,
         FINAL: /(?:The\s+)?Final\s+Season/gi,
         NORM: /(?:Season|S)\s*(\d+)/gi,
-        CN: /第([一二三四五六七八九十])季/g,
+        CN: /第([一二三四五六七八九十两壹贰叁肆伍陆柒捌玖拾])季/g,
         ROMAN: /(\s|^)(IV|III|II|I)(\s|$)/g,
-        INFO_STRONG: /(?:season|s|第)\s*[0-9一二三四五六七八九十]+\s*(?:季|期|部(?!分))?/gi,
+        INFO_STRONG: /(?:season|s|第)\s*[0-9一二三四五六七八九十两壹贰叁肆伍陆柒捌玖拾]+\s*(?:季|期|部(?!分))?/gi,
         PART_INFO_STRONG: /(?:part|p|第)\s*\d+\s*(?:部分)?/gi,
         PART_ANY: /(?:part|p)\s*\d+/gi,
         CN_STRUCTURE: /(?:^|\s|×\d+\s?)(承|转|结)(?=$|[\s\(\（\[【])/i,
@@ -208,6 +208,30 @@ const SUFFIX_SPECIFIC_MAP = [
     { regex: /(?:\s|^)ViVid$/i, val: 'S4' },
     { regex: /(?:\s|^)SuperS$/i, val: 'S4' } 
 ];
+
+const CHINESE_SEASON_NUM_MAP = Object.freeze({
+  '一': 1,
+  '二': 2,
+  '三': 3,
+  '四': 4,
+  '五': 5,
+  '六': 6,
+  '七': 7,
+  '八': 8,
+  '九': 9,
+  '十': 10,
+  '两': 2,
+  '壹': 1,
+  '贰': 2,
+  '叁': 3,
+  '肆': 4,
+  '伍': 5,
+  '陆': 6,
+  '柒': 7,
+  '捌': 8,
+  '玖': 9,
+  '拾': 10
+});
 
 const SEASON_PATTERNS = [
   { regex: /(?:第)?(\d+)(?:季|期|部(?!分))/, prefix: 'S' },
@@ -380,6 +404,16 @@ function cleanTitleForSimilarity(text) {
     clean = clean.replace(RegexStore.Clean.LONE_VER_CHAR, ''); 
     clean = clean.replace(RegexStore.Clean.NON_ALPHANUM_CN, '');
     return clean.toLowerCase();
+}
+
+function buildStrictMergeBaseTitle(text) {
+    return cleanTitleForSimilarity(text || '').trim();
+}
+
+function hasStrictMergeBaseMatch(primaryTitle, secondaryTitles = []) {
+    const primaryBase = buildStrictMergeBaseTitle(primaryTitle);
+    if (!primaryBase) return false;
+    return secondaryTitles.some(title => buildStrictMergeBaseTitle(title) === primaryBase);
 }
 
 /**
@@ -673,9 +707,8 @@ function extractSeasonMarkers(title, typeDesc = '') {
   if (type.includes('剧场版') || type.includes('movie') || type.includes('film') || type.includes('电影')) markers.add('MOVIE');
   if (/\b(ova|oad)\b/i.test(type)) markers.add('OVA');
   if (/\b(sp|special)\b/i.test(type)) markers.add('SP');
-  const cnNums = {'一':1, '二':2, '三':3, '四':4, '五':5, 'final': 99};
-  for (const [cn, num] of Object.entries(cnNums)) {
-    if (t.includes(`第${cn}季`)) markers.add(`S${num}`);
+  for (const [cn, num] of Object.entries(CHINESE_SEASON_NUM_MAP)) {
+    if (t.includes(`第${cn}季`) || t.includes(`第${cn}部`)) markers.add(`S${num}`);
   }
   const hasSeason = Array.from(markers).some(m => m.startsWith('S'));
   const hasPart = Array.from(markers).some(m => m.startsWith('P'));
@@ -1147,6 +1180,16 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
             let cleanAlias = alias.replace(RegexStore.Clean.YEAR_TAG, '').replace(/【(电影|电视剧)】/g, '').trim();
             if (cleanAlias) secCandidates.push(cleanAlias);
         });
+    }
+
+    const primaryCategory = getContentCategory(rawPrimaryTitle, primaryAnime.typeDescription, primaryAnime.source);
+    const secondaryCategory = getContentCategory(rawSecTitle, secAnime.typeDescription, secAnime.source);
+    const shouldApplyStrictTitleGate = !isAnyCollection && primaryCategory === 'REAL' && secondaryCategory === 'REAL';
+    if (shouldApplyStrictTitleGate && !hasStrictMergeBaseMatch(primaryTitleForSim, secCandidates)) {
+        const primaryBase = buildStrictMergeBaseTitle(primaryTitleForSim);
+        const secondaryBases = secCandidates.map(title => buildStrictMergeBaseTitle(title)).filter(Boolean);
+        logReason(rawSecTitle, `严格主标题不一致 (Primary:"${primaryBase}", Secondary:${JSON.stringify(secondaryBases)})`);
+        continue;
     }
 
     let bestScoreFull = 0, bestScoreBase = 0;
