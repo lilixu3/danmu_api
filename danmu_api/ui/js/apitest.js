@@ -80,6 +80,15 @@ const apiConfigs = {
                 required: true,
                 placeholder: '示例: 生万物 S02E08',
                 description: '支持多种命名格式，如: 无忧渡.S02E08.2160p.WEB-DL.H265.DDP.5.1'
+            },
+            {
+                name: 'debug',
+                label: '调试模式',
+                type: 'select',
+                required: false,
+                options: ['1', '0'],
+                default: '0',
+                description: '开启后会请求 /api/v2/match?debug=1，并返回结构化匹配解释信息'
             }
         ]
     },
@@ -470,6 +479,11 @@ function testApi() {
         }
     }
 
+    // match explain/debug 兼容：仅在显式开启时通过 query 传 debug=1，避免污染 POST body
+    if (apiKey === 'matchAnime' && params.debug !== '1') {
+        delete params.debug;
+    }
+
     addLog(\`🚀 调用接口: \${config.name} (\${config.method} \${config.path})\`, 'info');
     addLog(\`📤 请求参数: \${JSON.stringify(params)}\`, 'info');
 
@@ -501,6 +515,16 @@ function testApi() {
         if (config.method === 'GET') {
             const queryString = new URLSearchParams(params).toString();
             url = url + '?' + queryString;
+        } else if (config.method === 'POST' && apiKey === 'matchAnime') {
+            const queryParams = {};
+            if (params.debug) {
+                queryParams.debug = params.debug;
+                delete params.debug;
+            }
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                url = url + '?' + queryString;
+            }
         } else if (config.method === 'POST' && apiKey === 'getSegmentComment') {
             // 对于 getSegmentComment 接口，需要将 format 参数添加到 URL 查询参数中
             const queryParams = {};
