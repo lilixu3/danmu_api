@@ -2286,6 +2286,259 @@ test('worker.js API endpoints', async (t) => {
     );
   });
 
+  await t.test('POST /api/v2/match?debug=1 should preserve legacy response and append first-version debug payload', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '调试版太平年';
+    const animeId = 6201;
+    const bangumiId = 'debug-6201';
+    const source = 'iqiyi';
+    const baseAnime = {
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 3,
+      rating: 0,
+      isFavorited: false,
+      source
+    };
+    const links = Array.from({ length: 3 }, (_, index) => ({
+      url: `https://debug-match.example.com/${index + 1}`,
+      title: `【qiyi】 ${title}第${index + 1}集`
+    }));
+    const detailStore = new Map();
+    addAnime({ ...baseAnime, links }, detailStore);
+    setSearchCache(title, [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 3,
+      rating: 0,
+      isFavorited: false,
+      source
+    }], detailStore);
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match?debug=1', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E2`,
+        matchMode: 'fileNameOnly'
+      }
+    });
+
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, true);
+    assert.equal(body.matches.length, 1);
+    assert.equal(body.matches[0].animeId, animeId);
+    assert.ok(body.debug, 'Expected debug payload when debug=1');
+    assert.equal(body.debug.version, 1);
+    assert.equal(body.debug.input.fileName, `${title} S01E2`);
+    assert.equal(body.debug.input.preferredPlatform, '');
+    assert.equal(body.debug.normalized.title, title);
+    assert.equal(body.debug.normalized.season, 1);
+    assert.equal(body.debug.normalized.episode, 2);
+    assert.equal(body.debug.search.candidateCount, 1);
+    assert.equal(body.debug.final.matched, true);
+  });
+
+  await t.test('POST /api/v2/match?debug=1 should expose first-version failure reason when search has no candidates', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '完全搜不到的调试片';
+    setSearchCache(title, [], new Map());
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match?debug=1', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E1`,
+        matchMode: 'fileNameOnly'
+      }
+    });
+
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, false);
+    assert.deepEqual(body.matches, []);
+    assert.ok(body.debug, 'Expected debug payload when debug=1');
+  assert.equal(body.debug.search.candidateCount, 0);
+  assert.equal(body.debug.final.matched, false);
+  assert.equal(body.debug.final.reasonCode, 'search_empty');
+  });
+
+  await t.test('POST /api/v2/match?debug=1 should record candidate rejection reason when year mismatches', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '年份冲突测试';
+    const animeId = 6301;
+    const bangumiId = 'debug-year-6301';
+    const source = 'iqiyi';
+    const detailStore = new Map();
+    addAnime({
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2023)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2023-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source,
+      links: [{ url: 'https://debug-year.example.com/1', title: `【qiyi】 ${title}第1集` }]
+    }, detailStore);
+    setSearchCache(title, [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2023)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2023-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      source
+    }], detailStore);
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match?debug=1', {
+      method: 'POST',
+      body: {
+        fileName: `${title}.2024.S01E1`,
+        matchMode: 'fileNameOnly'
+      }
+    });
+
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, false);
+    assert.ok(Array.isArray(body.debug.attempts));
+    assert.ok(body.debug.attempts.length > 0, 'Expected detailed attempts in second version');
+    assert.equal(body.debug.attempts[0].candidates[0].reasonCode, 'year_miss');
+    assert.equal(body.debug.final.reasonCode, 'year_miss');
+  });
+
+  await t.test('POST /api/v2/match?debug=1 should record episode_not_found when anime matches but target episode is missing', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '缺集测试';
+    const animeId = 6401;
+    const bangumiId = 'debug-episode-6401';
+    const source = 'iqiyi';
+    const detailStore = new Map();
+    addAnime({
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: false,
+      source,
+      links: [
+        { url: 'https://debug-episode.example.com/1', title: `【qiyi】 ${title}第1集` },
+        { url: 'https://debug-episode.example.com/2', title: `【qiyi】 ${title}第2集` }
+      ]
+    }, detailStore);
+    setSearchCache(title, [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: false,
+      source
+    }], detailStore);
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match?debug=1', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E9`,
+        matchMode: 'fileNameOnly'
+      }
+    });
+
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, false);
+    assert.ok(Array.isArray(body.debug.attempts));
+    assert.ok(body.debug.attempts.length > 0, 'Expected detailed attempts in second version');
+    assert.equal(body.debug.attempts[0].candidates[0].reasonCode, 'episode_not_found');
+    assert.equal(body.debug.final.reasonCode, 'episode_not_found');
+  });
+
   await t.test('applyMergeLogic should merge multi-secondary matches without ReferenceError', async () => {
     Globals.init({ MERGE_SOURCE_PAIRS: 'tencent&iqiyi&youku' });
     Globals.MAX_ANIMES = 100;

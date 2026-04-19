@@ -41,6 +41,7 @@ import AiyifanSource from "../sources/aiyifan.js";
 import AnimekoSource from "../sources/animeko.js";
 import OtherSource from "../sources/other.js";
 import { Anime, AnimeMatch, Episodes, Bangumi } from "../models/dandan-model.js";
+import { createMatchDebugCollector, isMatchDebugEnabled } from '../utils/match-debug-util.js';
 
 // =====================
 // 兼容弹弹play接口
@@ -1259,86 +1260,99 @@ function computeTargetEpisode(offsets, season, episode, filteredEpisodes, target
   return targetEpisode;
 }
 
-async function matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets, detailStore = null) {
-  // 定义最佳匹配结果容器
+async function matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets, detailStore = null, debugCollector = null) {
   let bestRes = {
     anime: null,
     episode: null,
-    score: -9999 // 初始分数为极低值
+    score: -9999
   };
 
   const normalizedTitle = normalizeTitleForComparison(title);
+  const attemptTrace = debugCollector?.enabled ? {
+    phase: 'normal',
+    platform: platform ?? null,
+    candidates: []
+  } : null;
 
-  // 遍历所有搜索结果，寻找最佳匹配
   for (const anime of searchData.animes) {
-    // 偏好过滤
+    const candidateTrace = attemptTrace ? {
+      animeId: anime?.animeId ?? null,
+      animeTitle: anime?.animeTitle ?? '',
+      source: anime?.source ?? '',
+      decision: 'rejected',
+      reasonCode: 'title_miss'
+    } : null;
+
     const animeIsNotPrefer =
-        globals.rememberLastSelect &&
-        preferAnimeId &&
-        String(anime.bangumiId) !== String(preferAnimeId) &&
-        String(anime.animeId) !== String(preferAnimeId);
-    if (animeIsNotPrefer) continue;
+      globals.rememberLastSelect &&
+      preferAnimeId &&
+      String(anime.bangumiId) !== String(preferAnimeId) &&
+      String(anime.animeId) !== String(preferAnimeId);
+    if (animeIsNotPrefer) {
+      if (candidateTrace) attemptTrace.candidates.push({ ...candidateTrace, reasonCode: 'prefer_filtered' });
+      continue;
+    }
 
     let isMatch = false;
-
-    // 构建待匹配的标题候选池 (主标题 + 所有别名)
+    let candidateReason = 'title_miss';
     const candidateTitles = [anime.animeTitle];
     if (anime.aliases && Array.isArray(anime.aliases)) {
-        candidateTitles.push(...anime.aliases);
+      candidateTitles.push(...anime.aliases);
     }
 
-    // 1. 标题/年份/别名综合匹配检查
     for (const candTitle of candidateTitles) {
-        if (!candTitle) continue;
+      if (!candTitle) continue;
 
-        if (season && episode) {
-            // 剧集模式
-            if (normalizeTitleForComparison(candTitle).includes(normalizedTitle)) {
-                // 年份匹配依然以原始 anime 为准，且年份匹配优先于季匹配
-                if (!matchYear(anime, year)) {
-                    log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
-                    continue;
-                }
+      if (season && episode) {
+        if (normalizeTitleForComparison(candTitle).includes(normalizedTitle)) {
+          if (!matchYear(anime, year)) {
+            candidateReason = 'year_miss';
+            log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+            continue;
+          }
 
-                // 年份匹配通过后，再判断 season
-                const animeIsPrefer =
-                  globals.rememberLastSelect &&
-                  preferAnimeId &&
-                  (String(anime.bangumiId) === String(preferAnimeId) ||
-                  String(anime.animeId) === String(preferAnimeId));
+          candidateReason = 'season_miss';
+          const animeIsPrefer =
+            globals.rememberLastSelect &&
+            preferAnimeId &&
+            (String(anime.bangumiId) === String(preferAnimeId) ||
+            String(anime.animeId) === String(preferAnimeId));
 
-                // 当命中别名时，用别名参与季后缀判断
-                const tempAnime = { ...anime, animeTitle: candTitle };
-                if (matchSeason(tempAnime, title, season) || animeIsPrefer) {
-                    isMatch = true;
-                    break;
-                }
-            }
-        } else {
-            // 电影模式
-            const cleanTitle = extractAnimeTitle(candTitle);
-            if (normalizeTitleForComparison(cleanTitle) === normalizedTitle) {
-                if (!matchYear(anime, year)) {
-                    log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
-                    continue;
-                }
-                isMatch = true;
-                break;
-            }
+          const tempAnime = { ...anime, animeTitle: candTitle };
+          if (matchSeason(tempAnime, title, season) || animeIsPrefer) {
+            isMatch = true;
+            candidateReason = 'matched';
+            break;
+          }
         }
+      } else {
+        const cleanTitle = extractAnimeTitle(candTitle);
+        if (normalizeTitleForComparison(cleanTitle) === normalizedTitle) {
+          if (!matchYear(anime, year)) {
+            candidateReason = 'year_miss';
+            log("info", `Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+            continue;
+          }
+          isMatch = true;
+          candidateReason = 'matched';
+          break;
+        }
+      }
     }
 
-    if (!isMatch) continue;
+    if (!isMatch) {
+      if (candidateTrace) attemptTrace.candidates.push({ ...candidateTrace, reasonCode: candidateReason });
+      continue;
+    }
 
-    // 2. 获取剧集详情 (无条件获取，确保数据完整性)
     const bangumiData = getBangumiDataForMatch(anime, detailStore);
     if (!bangumiData?.success || !Array.isArray(bangumiData?.bangumi?.episodes) || bangumiData.bangumi.episodes.length === 0) {
       log("warn", `[matchAniAndEp] 跳过无效 bangumi: ${anime.bangumiId || anime.animeId} / ${anime.animeTitle}`);
+      if (candidateTrace) attemptTrace.candidates.push({ ...candidateTrace, reasonCode: 'detail_missing' });
       continue;
     }
     const bangumiEpisodes = bangumiData.bangumi.episodes;
 
-    // 输出匹配分数及摘要日志，避免 info 级别打印超大对象
     log("info", "判断剧集", `Anime: ${anime.animeTitle}`);
     log("debug", "[matchAniAndEp] bangumi摘要", {
       animeId: anime.animeId,
@@ -1347,90 +1361,115 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
     });
 
     let matchedEpisode = null;
+    let targetEpisode = episode;
+    let filteredEpisodeCount = bangumiEpisodes.length;
 
     if (season && episode) {
-        // 剧集模式逻辑
-        const filteredTmpEpisodes = globals.enableAnimeEpisodeFilter
-          ? bangumiEpisodes.filter(curEpisode => !globals.episodeTitleFilter.test(curEpisode.episodeTitle))
-          : bangumiEpisodes;
-        const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
+      const filteredTmpEpisodes = globals.enableAnimeEpisodeFilter
+        ? bangumiEpisodes.filter(curEpisode => !globals.episodeTitleFilter.test(curEpisode.episodeTitle))
+        : bangumiEpisodes;
+      const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
+      filteredEpisodeCount = filteredEpisodes.length;
 
-        log("info", "过滤后的集标题", filteredEpisodes.map(episode => episode.episodeTitle));
+      log("info", "过滤后的集标题", filteredEpisodes.map(item => item.episodeTitle));
 
-        let targetEpisode = episode;
-        if (offsets && offsets[String(season)] !== undefined) {
-          targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
+      if (offsets && offsets[String(season)] !== undefined) {
+        targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
+      }
+
+      matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, platform);
+    } else if (bangumiEpisodes.length > 0) {
+      if (platform) {
+        const targetEp = bangumiEpisodes.find(ep => {
+          const epTitlePlatform = extractEpisodeTitle(ep.episodeTitle);
+          return getPlatformMatchScore(epTitlePlatform, platform) > 0;
+        });
+        if (targetEp) {
+          matchedEpisode = targetEp;
         }
+      } else {
+        matchedEpisode = bangumiEpisodes[0];
+      }
+    }
 
-        // 匹配集数 (注意：findEpisodeByNumber 已增强支持模糊平台匹配)
-        matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, platform);
+    if (!matchedEpisode) {
+      if (candidateTrace) {
+        attemptTrace.candidates.push({
+          ...candidateTrace,
+          reasonCode: 'episode_not_found',
+          requestedEpisode: episode ?? null,
+          targetEpisode: targetEpisode ?? null,
+          filteredEpisodeCount
+        });
+      }
+      continue;
+    }
+
+    const actualPlatform = extractPlatformFromTitle(anime.animeTitle) || anime.source;
+    let currentScore = 0;
+
+    if (platform) {
+      currentScore = getPlatformMatchScore(actualPlatform, platform);
     } else {
-        // 电影模式逻辑
-        if (bangumiEpisodes.length > 0) {
-            if (platform) {
-                // 在剧集列表中寻找匹配特定平台的资源
-                const targetEp = bangumiEpisodes.find(ep => {
-                    const epTitlePlatform = extractEpisodeTitle(ep.episodeTitle);
-                    return getPlatformMatchScore(epTitlePlatform, platform) > 0;
-                });
-
-                if (targetEp) {
-                    matchedEpisode = targetEp;
-                }
-            } else {
-                matchedEpisode = bangumiEpisodes[0];
-            }
-        }
+      currentScore = 1;
     }
 
-    // 3. 匹配结果处理与评分比较
-    if (matchedEpisode) {
-        // 计算当前匹配的得分
-        const actualPlatform = extractPlatformFromTitle(anime.animeTitle) || anime.source;
-        let currentScore = 0;
-
-        if (platform) {
-            // 如果指定了平台偏好，计算匹配得分
-            currentScore = getPlatformMatchScore(actualPlatform, platform);
-        } else {
-            // 如果没有指定平台偏好，默认为 1
-            currentScore = 1;
-        }
-
-        // 比较并更新最佳结果
-        // 逻辑：如果有更好的分数，或者之前没有匹配到任何结果，则更新
-        if (currentScore > bestRes.score) {
-             bestRes = {
-                anime: anime,
-                episode: matchedEpisode,
-                score: currentScore
-            };
-        }
-
-        // 如果没有指定平台偏好 (platform 为空)，则保持原版行为：
-        // 找到第一个符合条件的就立刻返回，不进行后续比较
-        if (!platform) {
-            break;
-        }
-
-        // 如果指定了平台偏好，则继续循环查找是否有得分更高的源（最小杂质匹配）
+    if (candidateTrace) {
+      attemptTrace.candidates.push({
+        ...candidateTrace,
+        decision: 'matched',
+        reasonCode: 'matched',
+        score: currentScore,
+        matchedEpisodeTitle: matchedEpisode.episodeTitle
+      });
     }
+
+    if (currentScore > bestRes.score) {
+      bestRes = {
+        anime,
+        episode: matchedEpisode,
+        score: currentScore
+      };
+    }
+
+    if (!platform) {
+      break;
+    }
+  }
+
+  if (attemptTrace) {
+    debugCollector.addAttempt(attemptTrace);
   }
 
   return { resEpisode: bestRes.episode, resAnime: bestRes.anime };
 }
 
-async function fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets, detailStore = null) {
+async function fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets, detailStore = null, debugCollector = null) {
+  const attemptTrace = debugCollector?.enabled ? {
+    phase: 'fallback',
+    platform: null,
+    candidates: []
+  } : null;
+
   for (const anime of searchData.animes) {
-    // 年份匹配优先（如果提供了年份）
+    const candidateTrace = attemptTrace ? {
+      animeId: anime?.animeId ?? null,
+      animeTitle: anime?.animeTitle ?? '',
+      source: anime?.source ?? '',
+      decision: 'rejected',
+      reasonCode: 'no_match'
+    } : null;
+
     if (year && !matchYear(anime, year)) {
       log("info", `Fallback: Year mismatch: anime year ${extractYear(anime.animeTitle)} vs query year ${year}`);
+      if (candidateTrace) attemptTrace.candidates.push({ ...candidateTrace, reasonCode: 'year_miss' });
       continue;
     }
 
     const bangumiData = getBangumiDataForMatch(anime, detailStore);
     if (!bangumiData?.success || !Array.isArray(bangumiData?.bangumi?.episodes) || bangumiData.bangumi.episodes.length === 0) {
       log("warn", `[fallbackMatchAniAndEp] 跳过无效 bangumi: ${anime.bangumiId || anime.animeId} / ${anime.animeTitle}`);
+      if (candidateTrace) attemptTrace.candidates.push({ ...candidateTrace, reasonCode: 'detail_missing' });
       continue;
     }
     const bangumiEpisodes = bangumiData.bangumi.episodes;
@@ -1439,13 +1478,11 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
       bangumiId: anime.bangumiId,
       episodeCount: bangumiEpisodes.length
     });
+
     if (season && episode) {
-      // 过滤集标题正则条件的 episode
       const filteredTmpEpisodes = globals.enableAnimeEpisodeFilter
         ? bangumiEpisodes.filter(curEpisode => !globals.episodeTitleFilter.test(curEpisode.episodeTitle))
         : bangumiEpisodes;
-
-      // 过滤集标题一致的 episode，且保留首次出现的集标题的 episode
       const filteredEpisodes = filterSameEpisodeTitle(filteredTmpEpisodes);
 
       let targetEpisode = episode;
@@ -1453,21 +1490,49 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
         targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
       }
 
-      // 使用新的集数匹配策略
       const matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, null);
       if (matchedEpisode) {
+        if (candidateTrace) {
+          attemptTrace.candidates.push({
+            ...candidateTrace,
+            decision: 'matched',
+            reasonCode: 'matched',
+            matchedEpisodeTitle: matchedEpisode.episodeTitle
+          });
+        }
         resEpisode = matchedEpisode;
         resAnime = anime;
         break;
       }
-    } else {
-      if (bangumiEpisodes.length > 0) {
-        resEpisode = bangumiEpisodes[0];
-        resAnime = anime;
-        break;
+
+      if (candidateTrace) {
+        attemptTrace.candidates.push({
+          ...candidateTrace,
+          reasonCode: 'episode_not_found',
+          requestedEpisode: episode ?? null,
+          targetEpisode: targetEpisode ?? null,
+          filteredEpisodeCount: filteredEpisodes.length
+        });
       }
+    } else if (bangumiEpisodes.length > 0) {
+      if (candidateTrace) {
+        attemptTrace.candidates.push({
+          ...candidateTrace,
+          decision: 'matched',
+          reasonCode: 'matched',
+          matchedEpisodeTitle: bangumiEpisodes[0].episodeTitle
+        });
+      }
+      resEpisode = bangumiEpisodes[0];
+      resAnime = anime;
+      break;
     }
   }
+
+  if (attemptTrace) {
+    debugCollector.addAttempt(attemptTrace);
+  }
+
   return {resEpisode, resAnime};
 }
 
@@ -1548,6 +1613,49 @@ export async function extractTitleSeasonEpisode(cleanFileName) {
 }
 
 // Extracted function for POST /api/v2/match
+function summarizeMatchDebugAnimeCandidate(anime) {
+  return {
+    animeId: anime?.animeId ?? null,
+    bangumiId: anime?.bangumiId ?? null,
+    animeTitle: anime?.animeTitle ?? '',
+    source: anime?.source ?? '',
+    episodeCount: anime?.episodeCount ?? 0,
+    year: anime?.startDate ? String(anime.startDate).slice(0, 4) : null,
+    aliases: Array.isArray(anime?.aliases) ? anime.aliases.slice(0, 5) : []
+  };
+}
+
+function buildMatchSearchUrl(url, title) {
+  return new URL(`/api/v2/search/anime?keyword=${encodeURIComponent(title)}`, url.origin);
+}
+
+function deriveMatchFinalReasonCode(debugCollector, fallbackReasonCode) {
+  if (!debugCollector?.enabled) return fallbackReasonCode;
+
+  const attempts = debugCollector.toJSON()?.attempts || [];
+  const reasons = attempts
+    .flatMap(attempt => Array.isArray(attempt?.candidates) ? attempt.candidates : [])
+    .filter(candidate => candidate?.decision !== 'matched')
+    .map(candidate => candidate?.reasonCode)
+    .filter(Boolean);
+
+  if (reasons.length === 0) return fallbackReasonCode;
+
+  const uniqueReasons = [...new Set(reasons)];
+  if (uniqueReasons.length === 1) return uniqueReasons[0];
+
+  const priority = [
+    'episode_not_found',
+    'year_miss',
+    'detail_missing',
+    'season_miss',
+    'title_miss',
+    'prefer_filtered'
+  ];
+
+  return priority.find(reason => uniqueReasons.includes(reason)) || fallbackReasonCode;
+}
+
 export async function matchAnime(url, req, clientIp = null) {
   let body;
   try {
@@ -1571,6 +1679,8 @@ export async function matchAnime(url, req, clientIp = null) {
       );
     }
 
+    const debugCollector = createMatchDebugCollector(isMatchDebugEnabled(url));
+
     // 处理请求体中的数据
     // 假设请求体包含一个字段，比如 { query: "anime name" }
     const { fileName } = body;
@@ -1586,14 +1696,22 @@ export async function matchAnime(url, req, clientIp = null) {
     const { cleanFileName, preferredPlatform } = parseFileName(fileName);
     log("info", `Processing anime match for query: ${fileName}`);
     log("info", `Parsed cleanFileName: ${cleanFileName}, preferredPlatform: ${preferredPlatform}`);
+    debugCollector.set('input', {
+      fileName,
+      cleanFileName,
+      preferredPlatform
+    });
 
     let {title, season, episode, year} = await extractTitleSeasonEpisode(cleanFileName);
     title = stripInvisibleChars(title);
+    let mappedFrom = null;
+    let simplifiedFrom = null;
 
     // 使用剧名映射表转换剧名
     if (globals.titleMappingTable && globals.titleMappingTable.size > 0) {
       const mappedTitle = globals.titleMappingTable.get(title);
       if (mappedTitle) {
+        mappedFrom = title;
         title = mappedTitle;
         log("info", `Title mapped from original: ${url.searchParams.get("keyword")} to: ${title}`);
       }
@@ -1603,8 +1721,18 @@ export async function matchAnime(url, req, clientIp = null) {
     if (globals.animeTitleSimplified) {
       const simplifiedTitle = simplized(title);
       log("info", `matchAnime converted traditional to simplified: ${title} -> ${simplifiedTitle}`);
+      simplifiedFrom = title;
       title = simplifiedTitle;
     }
+
+    debugCollector.set('normalized', {
+      title,
+      season,
+      episode,
+      year,
+      mappedFrom,
+      simplifiedFrom
+    });
 
     // 获取 prefer animeId（按 season 维度）
     const [preferAnimeId, preferSource, offsets] = getPreferAnimeId(title, season);
@@ -1615,6 +1743,12 @@ export async function matchAnime(url, req, clientIp = null) {
     log("info", "Original platformOrderArr:", globals.platformOrderArr);
     log("info", "Dynamic platformOrder:", dynamicPlatformOrder);
     log("info", `Preferred platform: ${preferredPlatform || 'none'}`);
+    debugCollector.set('preference', {
+      preferAnimeId: preferAnimeId ?? null,
+      preferSource: preferSource ?? null,
+      offsets: offsets ?? null,
+      dynamicPlatformOrder
+    });
 
     const requestAnimeDetailsMap = new Map();
     getSearchCache(title, requestAnimeDetailsMap);
@@ -1628,6 +1762,8 @@ export async function matchAnime(url, req, clientIp = null) {
       "isMatched": false,
       "matches": []
     };
+    let finalMode = 'none';
+    let finalReasonCode = 'no_match';
 
     // 快速路径：命中上次选择且本地缓存有链接时，直接匹配剧集，避免全源搜索
     const fastMatched = tryFastMatchFromPreferCache({
@@ -1644,10 +1780,30 @@ export async function matchAnime(url, req, clientIp = null) {
     if (fastMatched.resAnime && fastMatched.resEpisode) {
       resAnime = fastMatched.resAnime;
       resEpisode = fastMatched.resEpisode;
+      finalMode = 'fast_match';
+      finalReasonCode = 'fast_match_cache_hit';
       log("info", `[FastMatch] 使用偏好缓存命中: ${resAnime.animeTitle}; episode: ${resEpisode.episodeTitle}`);
       log("info", `[AI匹配] 已跳过，原因：${getAiReasonText("fast_match_cache_hit")}`);
+      debugCollector.set('search', {
+        used: false,
+        skippedReason: 'fast_match_cache_hit',
+        rawCandidateCount: 0,
+        candidateCount: 0,
+        candidates: []
+      });
+      debugCollector.set('ai', {
+        attempted: false,
+        matched: false,
+        reasonCode: 'fast_match_cache_hit',
+        skippedReason: 'fast_match_cache_hit',
+        latencyMs: 0,
+        preferredPlatform: preferredPlatform || dynamicPlatformOrder[0] || null,
+        selectedAnimeId: null,
+        selectedAnimeTitle: null,
+        selectedEpisodeTitle: null
+      });
     } else {
-      let originSearchUrl = new URL(req.url.replace("/match", `/search/anime?keyword=${title}`));
+      const originSearchUrl = buildMatchSearchUrl(url, title);
       log("info", `[matchAnime] 开始搜索候选: title=${title}`);
       const searchRes = await searchAnime(originSearchUrl, preferAnimeId, preferSource, requestAnimeDetailsMap);
       const searchData = await searchRes.json();
@@ -1666,6 +1822,13 @@ export async function matchAnime(url, req, clientIp = null) {
       }
       searchData.animes = validAnimes;
       log("info", `[matchAnime] 有效候选数量: ${searchData.animes.length}`);
+      debugCollector.set('search', {
+        used: true,
+        skippedReason: null,
+        rawCandidateCount: rawAnimes.length,
+        candidateCount: searchData.animes.length,
+        candidates: searchData.animes.slice(0, 20).map(summarizeMatchDebugAnimeCandidate)
+      });
 
       if (searchData.animes.length > 0) {
         // 尝试使用AI进行匹配
@@ -1676,27 +1839,44 @@ export async function matchAnime(url, req, clientIp = null) {
         const aiLatencyMs = Date.now() - aiStartTime;
         const aiMatched = Boolean(aiMatchResult.resAnime && aiMatchResult.resEpisode);
         const aiReasonText = getAiReasonText(aiMatchResult.reason);
+        debugCollector.set('ai', {
+          attempted: true,
+          matched: aiMatched,
+          reasonCode: aiMatchResult.reason || null,
+          skippedReason: null,
+          latencyMs: aiLatencyMs,
+          preferredPlatform: aiPreferredPlatform,
+          selectedAnimeId: aiMatchResult.resAnime?.animeId ?? null,
+          selectedAnimeTitle: aiMatchResult.resAnime?.animeTitle ?? null,
+          selectedEpisodeTitle: aiMatchResult.resEpisode?.episodeTitle ?? null
+        });
         log("info", `[AI匹配] 结果：${aiMatched ? "命中" : "未命中"}；原因：${aiReasonText}；耗时：${aiLatencyMs}ms；候选数：${searchData?.animes?.length || 0}；偏好平台：${aiPreferredPlatform || "无"}`);
         if (aiMatched) {
           resAnime = aiMatchResult.resAnime;
           resEpisode = aiMatchResult.resEpisode;
+          finalMode = 'ai';
+          finalReasonCode = 'matched';
           log("info", `AI 匹配命中: ${resAnime.animeTitle}; 剧集: ${resEpisode.episodeTitle}`);
         } else {
           if (aiMatchResult.resAnime && !aiMatchResult.resEpisode) {
             log("warn", `AI 已选中动漫但未命中剧集，回退常规匹配: ${aiMatchResult.resAnime.animeTitle}`);
           }
           if (shouldSkipFallbackByAiResult(aiMatchResult)) {
+            finalMode = 'ai';
+            finalReasonCode = aiMatchResult.reason || 'ai_no_candidate';
             log("info", `[AI匹配] 已启用AI结果信任，跳过常规兜底；原因：${aiReasonText}`);
           } else {
             log("info", `[AI匹配] 未命中，进入常规匹配流程`);
             // AI匹配失败或未配置，使用传统匹配方式
             log("info", `[常规匹配] 平台尝试顺序: ${JSON.stringify(dynamicPlatformOrder)}`);
             for (const platform of dynamicPlatformOrder) {
-              const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets, requestAnimeDetailsMap);
+              const __ret = await matchAniAndEp(season, episode, year, searchData, title, req, platform, preferAnimeId, offsets, requestAnimeDetailsMap, debugCollector);
               resEpisode = __ret.resEpisode;
               resAnime = __ret.resAnime;
 
               if (resAnime) {
+                finalMode = 'normal';
+                finalReasonCode = 'matched';
                 log("info", `Found match with platform: ${platform || 'default'}`);
                 break;
               }
@@ -1705,18 +1885,36 @@ export async function matchAnime(url, req, clientIp = null) {
             // 如果都没有找到则返回第一个满足剧集数的剧集
             if (!resAnime) {
               log("info", `[常规匹配] 未命中，进入最终兜底匹配`);
-              const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets, requestAnimeDetailsMap);
+              const __ret = await fallbackMatchAniAndEp(searchData, req, season, episode, year, resEpisode, resAnime, offsets, requestAnimeDetailsMap, debugCollector);
               resEpisode = __ret.resEpisode;
               resAnime = __ret.resAnime;
               if (resAnime) {
+                finalMode = 'fallback';
+                finalReasonCode = 'matched';
                 log("info", `[兜底匹配] 命中: ${resAnime.animeTitle}`);
               } else {
+                finalMode = 'fallback';
+                finalReasonCode = 'no_match';
                 log("info", `[兜底匹配] 未命中`);
               }
             }
           }
         }
       } else {
+        const searchFailureReason = rawAnimes.length === 0 ? 'search_empty' : 'search_no_valid_candidates';
+        finalMode = 'search';
+        finalReasonCode = searchFailureReason;
+        debugCollector.set('ai', {
+          attempted: false,
+          matched: false,
+          reasonCode: null,
+          skippedReason: searchFailureReason,
+          latencyMs: 0,
+          preferredPlatform: preferredPlatform || dynamicPlatformOrder.find(Boolean) || null,
+          selectedAnimeId: null,
+          selectedAnimeTitle: null,
+          selectedEpisodeTitle: null
+        });
         log("info", "[matchAnime] 无可用候选，跳过 AI 与回退匹配");
       }
     }
@@ -1738,6 +1936,19 @@ export async function matchAnime(url, req, clientIp = null) {
           "imageUrl": resAnime.imageUrl
         })
       ]
+    }
+
+    debugCollector.finish({
+      matched: Boolean(resAnime && resEpisode),
+      mode: finalMode,
+      reasonCode: resEpisode ? 'matched' : deriveMatchFinalReasonCode(debugCollector, finalReasonCode),
+      animeId: resAnime?.animeId ?? null,
+      animeTitle: resAnime?.animeTitle ?? null,
+      episodeId: resEpisode?.episodeId ?? null,
+      episodeTitle: resEpisode?.episodeTitle ?? null
+    });
+    if (debugCollector.enabled) {
+      resData.debug = debugCollector.toJSON();
     }
 
     log("info", "resMatchData:", resData);
