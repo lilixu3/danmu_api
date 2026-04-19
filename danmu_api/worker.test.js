@@ -2286,6 +2286,92 @@ test('worker.js API endpoints', async (t) => {
     );
   });
 
+  await t.test('POST /api/v2/match should prefer offset array index over misleading episode title numbers in fast path', async () => {
+    Globals.init({});
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+
+    const title = '偏移优先测试';
+    const animeId = 5202;
+    const bangumiId = 'offset-priority-5202';
+    const source = 'iqiyi';
+    const baseAnime = {
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 10,
+      rating: 0,
+      isFavorited: false,
+      source
+    };
+    const links = [
+      { url: 'https://offset-priority.example.com/1', title: `【qiyi】 ${title}第1集` },
+      { url: 'https://offset-priority.example.com/2', title: `【qiyi】 ${title}第2集` },
+      { url: 'https://offset-priority.example.com/3', title: `【qiyi】 ${title}第3集` },
+      { url: 'https://offset-priority.example.com/4', title: `【qiyi】 ${title}第4集` },
+      { url: 'https://offset-priority.example.com/5', title: `【qiyi】 ${title}第9集 错位` },
+      { url: 'https://offset-priority.example.com/6', title: `【qiyi】 ${title}第5集` },
+      { url: 'https://offset-priority.example.com/7', title: `【qiyi】 ${title}第6集` }
+    ];
+    const searchResults = [{
+      animeId,
+      bangumiId,
+      animeTitle: `${title}(2024)`,
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: links.length,
+      rating: 0,
+      isFavorited: false,
+      source
+    }];
+
+    const detailStore = new Map();
+    addAnime({ ...baseAnime, links }, detailStore);
+    setSearchCache(title, searchResults, detailStore);
+
+    Globals.lastSelectMap.set(title, {
+      animeIds: [animeId],
+      preferBySeason: { '1': animeId },
+      sourceBySeason: { '1': source },
+      offsets: { '1': `1:【qiyi】 ${title}第4集` }
+    });
+
+    const req = new MockRequest(urlPrefix + '/api/v2/match', {
+      method: 'POST',
+      body: {
+        fileName: `${title} S01E2`,
+        fileHash: 'hash-offset-priority',
+        fileSize: 0,
+        videoDuration: 0,
+        matchMode: 'fileNameOnly'
+      }
+    });
+    const res = await handleRequest(req);
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.isMatched, true);
+    assert.equal(body.matches.length, 1);
+    assert.equal(body.matches[0].animeId, animeId);
+    assert.equal(body.matches[0].episodeTitle, `【qiyi】 ${title}第9集 错位`);
+  });
+
   await t.test('POST /api/v2/match?debug=1 should preserve legacy response and append first-version debug payload', async () => {
     Globals.init({});
     Globals.animes = [];

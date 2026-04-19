@@ -570,7 +570,7 @@ function tryFastMatchFromPreferCache({ title, season, episode, year, preferAnime
     if (offsets && offsets[String(season)] !== undefined) {
       targetEpisode = computeTargetEpisode(offsets, season, episode, episodes, targetEpisode);
     }
-    matchedEpisode = findEpisodeByNumber(episodes, targetEpisode, preferredPlatform || null);
+    matchedEpisode = findEpisodeByNumber(episodes, episode, targetEpisode, preferredPlatform || null);
   } else {
     if (preferredPlatform) {
       matchedEpisode = episodes.find((ep) => {
@@ -1020,7 +1020,7 @@ function extractPlatformFromTitle(title) {
 }
 
 // 根据集数匹配episode（优先使用集标题中的集数，其次使用episodeNumber，最后使用数组索引）
-function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
+function findEpisodeByNumber(filteredEpisodes, episode, targetEpisode, platform = null) {
   if (!filteredEpisodes || filteredEpisodes.length === 0) {
     return null;
   }
@@ -1039,10 +1039,11 @@ function findEpisodeByNumber(filteredEpisodes, targetEpisode, platform = null) {
     return null;
   }
 
-  // 策略1：从集标题中提取集数进行匹配
+  // 仅在未应用偏移时，才优先信任标题中解析出的集数；
+  // 一旦 targetEpisode 经过偏移修正，应优先按数组索引定位，避免被标题数字误导。
   for (const ep of platformEpisodes) {
     const extractedNumber = extractEpisodeNumberFromTitle(ep.episodeTitle);
-    if (extractedNumber === targetEpisode) {
+    if (episode === targetEpisode && extractedNumber === targetEpisode) {
       log("info", `Found episode by title number: ${ep.episodeTitle} (extracted: ${extractedNumber})`);
       return ep;
     }
@@ -1191,7 +1192,7 @@ async function matchAniAndEpByAi(season, episode, year, searchData, title, req, 
         }
 
         // 匹配集数（优先沿用请求中的平台偏好）
-        filteredEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, aiPreferredPlatform);
+        filteredEpisode = findEpisodeByNumber(filteredEpisodes, episode, targetEpisode, aiPreferredPlatform);
     } else {
         // 电影模式逻辑
         if (bangumiEpisodes.length > 0) {
@@ -1376,7 +1377,7 @@ async function matchAniAndEp(season, episode, year, searchData, title, req, plat
         targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
       }
 
-      matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, platform);
+      matchedEpisode = findEpisodeByNumber(filteredEpisodes, episode, targetEpisode, platform);
     } else if (bangumiEpisodes.length > 0) {
       if (platform) {
         const targetEp = bangumiEpisodes.find(ep => {
@@ -1489,7 +1490,7 @@ async function fallbackMatchAniAndEp(searchData, req, season, episode, year, res
         targetEpisode = computeTargetEpisode(offsets, season, episode, filteredEpisodes, targetEpisode);
       }
 
-      const matchedEpisode = findEpisodeByNumber(filteredEpisodes, targetEpisode, null);
+      const matchedEpisode = findEpisodeByNumber(filteredEpisodes, episode, targetEpisode, null);
       if (matchedEpisode) {
         if (candidateTrace) {
           attemptTrace.candidates.push({
