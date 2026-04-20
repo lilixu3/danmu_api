@@ -1479,6 +1479,54 @@ test('worker.js API endpoints', async (t) => {
     }
   });
 
+  await t.test('hanjutv getHxqEpisodes should skip dead series2 fallback and query programs_v2 directly after empty detail', async () => {
+    const source = new HanjutvSource();
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+
+    const mockJsonResponse = (data, url) => ({
+      ok: true,
+      status: 200,
+      url,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(data),
+    });
+
+    globalThis.fetch = async (url) => {
+      const targetUrl = String(url);
+      calls.push(targetUrl);
+
+      if (targetUrl === 'https://hxqapi.hiyun.tv/api/series/detail?sid=hxq-sid-fallback') {
+        return mockJsonResponse({ rescode: 0, playItems: [] }, targetUrl);
+      }
+
+      if (targetUrl === 'https://hxqapi.hiyun.tv/api/series/programs_v2?sid=hxq-sid-fallback') {
+        return mockJsonResponse({
+          rescode: 0,
+          programs: [{ pid: 'pid-fallback-1', serialNo: 1, title: '第1集' }],
+        }, targetUrl);
+      }
+
+      throw new Error(`unexpected fetch: ${targetUrl}`);
+    };
+
+    try {
+      const episodes = await source.getHxqEpisodes('hxq-sid-fallback');
+      assert.equal(episodes.length, 1);
+      assert.equal(episodes[0].pid, 'pid-fallback-1');
+      assert.deepEqual(calls, [
+        'https://hxqapi.hiyun.tv/api/series/detail?sid=hxq-sid-fallback',
+        'https://hxqapi.hiyun.tv/api/series/programs_v2?sid=hxq-sid-fallback',
+      ]);
+    } finally {
+      if (originalFetch === undefined) {
+        delete globalThis.fetch;
+      } else {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  });
+
   await t.test('hanjutv segment list should expose a full-episode fallback segment without faking duration', async () => {
     const source = new HanjutvSource();
     const segments = await source.getComments('play-1', 'hanjutv', true);

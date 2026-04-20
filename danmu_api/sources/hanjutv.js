@@ -36,7 +36,6 @@ export default class HanjutvSource extends BaseSource {
     this.tvHost = "https://api.xiawen.tv";
     this.fallbackDanmuHost = "https://hxqapi.zmdcq.com";
     this.danmuHosts = Array.from(new Set([this.appHost, this.fallbackDanmuHost]));
-    this.defaultRefer = "2JGztvGjRVpkxcr0T4ZWG2k+tOlnHmDGUNMwAGSeq548YV2FMbs0h0bXNi6DJ00L";
     this.webUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
     this.appUserAgent = HANJUTV_APP_PROFILE.userAgent;
   }
@@ -437,15 +436,6 @@ export default class HanjutvSource extends BaseSource {
             retries: 1,
           });
           return this.normalizeHxqEpisodes(Array.isArray(r?.data?.playItems) ? r.data.playItems : []);
-        },
-        async () => {
-          const r = await httpGet(`${this.appHost}/api/series2/episodes?sid=${sid}&refer=${encodeURIComponent(this.defaultRefer)}`, {
-            headers: this.getAppHeaders(),
-            timeout: 10000,
-            retries: 1,
-          });
-          const data = r?.data;
-          return this.normalizeHxqEpisodes(data?.programs || data?.episodes || data?.qxkPrograms || []);
         },
         async () => {
           const r = await httpGet(`${this.appHost}/api/series/programs_v2?sid=${sid}`, {
