@@ -2498,6 +2498,99 @@ test('worker.js API endpoints', async (t) => {
     assert.equal(body.debug.final.matched, true);
   });
 
+  await t.test('POST /api/v2/match?debug=1 should keep isMatched=true when AI path succeeds', async () => {
+    Globals.init({
+      AI_BASE_URL: 'https://ai.example.com/v1',
+      AI_MODEL: 'test-model',
+      AI_API_KEY: 'test-key',
+      AI_MATCH_PROMPT: '请返回 JSON'
+    });
+    Globals.animes = [];
+    Globals.episodeIds = [];
+    Globals.episodeNum = 10001;
+    Globals.searchCache = new Map();
+    Globals.commentCache = new Map();
+    Globals.animeDetailsCache = new Map();
+    Globals.episodeDetailsCache = new Map();
+    Globals.requestHistory = new Map();
+    Globals.lastSelectMap = new Map();
+    Globals.logBuffer = [];
+    Globals.envs.rateLimitMaxRequests = 0;
+    Globals.aiValid = true;
+
+    const originalAsk = AIClient.prototype.ask;
+    AIClient.prototype.ask = async () => JSON.stringify({ animeIndex: 0 });
+
+    try {
+      const title = 'AI命中番剧';
+      const animeId = 6202;
+      const bangumiId = 'debug-ai-6202';
+      const source = 'iqiyi';
+      const links = Array.from({ length: 3 }, (_, index) => ({
+        url: `https://debug-ai-match.example.com/${index + 1}`,
+        title: `【qiyi】 ${title}第${index + 1}集`
+      }));
+      const detailStore = new Map();
+      addAnime({
+        animeId,
+        bangumiId,
+        animeTitle: `${title}(2024)`,
+        type: 'tvseries',
+        typeDescription: 'TV',
+        imageUrl: '',
+        startDate: '2024-01-01T00:00:00.000Z',
+        episodeCount: 3,
+        rating: 0,
+        isFavorited: false,
+        source,
+        links
+      }, detailStore);
+      setSearchCache(title, [{
+        animeId,
+        bangumiId,
+        animeTitle: `${title}(2024)`,
+        type: 'tvseries',
+        typeDescription: 'TV',
+        imageUrl: '',
+        startDate: '2024-01-01T00:00:00.000Z',
+        episodeCount: 3,
+        rating: 0,
+        isFavorited: false,
+        source
+      }], detailStore);
+
+      const req = new MockRequest(urlPrefix + '/api/v2/match?debug=1', {
+        method: 'POST',
+        body: {
+          fileName: `${title} S01E2`,
+          matchMode: 'fileNameOnly'
+        }
+      });
+
+      const res = await handleRequest(req);
+      const body = await parseResponse(res);
+
+      assert.equal(res.status, 200);
+      assert.equal(body.success, true);
+      assert.equal(body.isMatched, true);
+      assert.equal(body.matches.length, 1);
+      assert.equal(body.matches[0].animeId, animeId);
+      assert.equal(body.matches[0].episodeTitle, `【qiyi】 ${title}第2集`);
+      assert.ok(body.debug, 'Expected debug payload when debug=1');
+      assert.equal(body.debug.ai.attempted, true);
+      assert.equal(body.debug.ai.matched, true);
+      assert.equal(body.debug.ai.selectedAnimeId, animeId);
+      assert.equal(body.debug.ai.selectedEpisodeTitle, `【qiyi】 ${title}第2集`);
+      assert.equal(body.debug.final.matched, true);
+      assert.equal(body.debug.final.mode, 'ai');
+      assert.equal(body.debug.final.reasonCode, 'matched');
+      assert.deepEqual(body.debug.attempts, []);
+    } finally {
+      AIClient.prototype.ask = originalAsk;
+      Globals.aiValid = false;
+    }
+  });
+
   await t.test('POST /api/v2/match?debug=1 should expose first-version failure reason when search has no candidates', async () => {
     Globals.init({});
     Globals.animes = [];
