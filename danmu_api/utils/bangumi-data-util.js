@@ -1,7 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-import { pipeline } from 'stream/promises';
-import fetch from 'node-fetch';
 import { globals } from '../configs/globals.js';
 import { log } from './log-util.js';
 import { titleMatches } from './common-util.js';
@@ -18,9 +14,80 @@ let memoryFootprintMB = '0.00';
 let hasLoggedCacheWarning = false;
 
 // 定义缓存目录和文件名
-const CACHE_DIR = path.join(process.cwd(), '.cache');
+const CACHE_DIRNAME = '.cache';
 const CACHE_FILENAME = 'bangumi-data-cache.json';
 const DOWNLOAD_TIMEOUT_MS = 20000;
+const dynamicImport = new Function('specifier', 'return import(specifier)');
+
+let nodeRuntimePromise = null;
+let fetchImplPromise = null;
+
+function getHeapUsed() {
+    if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
+        return 0;
+    }
+    return process.memoryUsage().heapUsed;
+}
+
+function getTotalMemMB() {
+    if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
+        return null;
+    }
+    return (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
+}
+
+async function importOptionalModule(specifier) {
+    try {
+        return await dynamicImport(specifier);
+    } catch {
+        return null;
+    }
+}
+
+async function getNodeRuntime() {
+    if (!nodeRuntimePromise) {
+        nodeRuntimePromise = (async () => {
+            const [fsModule, pathModule, streamPromisesModule] = await Promise.all([
+                importOptionalModule('node:fs'),
+                importOptionalModule('node:path'),
+                importOptionalModule('node:stream/promises'),
+            ]);
+
+            const fs = fsModule?.default ?? fsModule;
+            const path = pathModule?.default ?? pathModule;
+            const pipeline = streamPromisesModule?.pipeline ?? streamPromisesModule?.default?.pipeline;
+
+            if (!fs || !path || typeof pipeline !== 'function') {
+                return null;
+            }
+
+            return { fs, path, pipeline };
+        })();
+    }
+
+    return nodeRuntimePromise;
+}
+
+async function getFetchImpl(preferNodeFetch = false) {
+    if (!preferNodeFetch && typeof globalThis.fetch === 'function') {
+        return globalThis.fetch.bind(globalThis);
+    }
+
+    if (!fetchImplPromise) {
+        fetchImplPromise = importOptionalModule('node-fetch').then(mod => mod?.default ?? mod);
+    }
+
+    const fetchImpl = await fetchImplPromise;
+    if (fetchImpl) {
+        return fetchImpl;
+    }
+
+    if (typeof globalThis.fetch === 'function') {
+        return globalThis.fetch.bind(globalThis);
+    }
+
+    return null;
+}
 
 /**
  * 初始化 Bangumi Data 数据源
@@ -34,12 +101,18 @@ export async function initBangumiData(deployPlatform, isDataDependentRequest = f
     if (!globals.useBangumiData) return;
 
     let cachePath = null;
+    let nodeRuntime = null;
     const cacheDays = globals.bangumiDataCacheDays !== undefined ? globals.bangumiDataCacheDays : 7;
     const expireMs = cacheDays * 24 * 60 * 60 * 1000;
 
     if (deployPlatform === 'node') {
-        if (fs.existsSync(CACHE_DIR)) {
-            cachePath = path.join(CACHE_DIR, CACHE_FILENAME);
+        nodeRuntime = await getNodeRuntime();
+        const cacheDir = nodeRuntime?.path && typeof process !== 'undefined' && typeof process.cwd === 'function'
+            ? nodeRuntime.path.join(process.cwd(), CACHE_DIRNAME)
+            : null;
+
+        if (cacheDir && nodeRuntime.fs.existsSync(cacheDir)) {
+            cachePath = nodeRuntime.path.join(cacheDir, CACHE_FILENAME);
         } else if (!hasLoggedCacheWarning) {
             log("warn", "[Bangumi-Data] 未检测到根目录的 .cache 文件夹！");
             log("warn", "[Bangumi-Data] 按照项目规范，请手动挂载或创建 .cache 目录以启用持久化。");
@@ -68,34 +141,34 @@ export async function initBangumiData(deployPlatform, isDataDependentRequest = f
             log("info", `[Bangumi-Data] 内存数据${cacheDays === 0 ? '强制更新' : '已过期'}，保留老数据服务本次请求，启动后台静默更新...`);
             isDownloading = true;
             downloadLockTime = Date.now();
-            downloadAndCache(cachePath).finally(() => { isDownloading = false; });
+            downloadAndCache(cachePath, nodeRuntime).finally(() => { isDownloading = false; });
         }
         return;
     }
 
     // 磁盘数据生命周期校验
-    if (cachePath && fs.existsSync(cachePath)) {
+    if (cachePath && nodeRuntime?.fs.existsSync(cachePath)) {
         try {
-            const stats = fs.statSync(cachePath);
-            const memBefore = process.memoryUsage().heapUsed;
+            const stats = nodeRuntime.fs.statSync(cachePath);
+            const memBefore = getHeapUsed();
             const startTime = Date.now();
 
-            memoryCache = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+            memoryCache = JSON.parse(nodeRuntime.fs.readFileSync(cachePath, 'utf-8'));
 
-            const memAfter = process.memoryUsage().heapUsed;
+            const memAfter = getHeapUsed();
             const loadTimeMs = Date.now() - startTime;
             memoryFootprintMB = Math.max(0, (memAfter - memBefore) / 1024 / 1024).toFixed(2);
-            const totalMemMB = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
+            const totalMemMB = getTotalMemMB();
             memoryCacheTime = Date.now();
 
-            log("info", `[Bangumi-Data] 成功从本地磁盘加载基础数据，条目数: ${memoryCache.items.length}，解析耗时: ${loadTimeMs} ms，约占内存: ${memoryFootprintMB} MB`);
+            log("info", `[Bangumi-Data] 成功从本地磁盘加载基础数据，条目数: ${memoryCache.items.length}，解析耗时: ${loadTimeMs} ms，约占内存: ${memoryFootprintMB} MB${totalMemMB ? ` (当前项目总占用: ${totalMemMB} MB)` : ''}`);
 
             if (cacheDays === 0 || (Date.now() - stats.mtimeMs >= expireMs)) {
                 if (isDataDependentRequest && !isDownloading) {
                     log("info", `[Bangumi-Data] 磁盘数据${cacheDays === 0 ? '强制更新' : '已过期'}，保留老数据服务本次请求，启动后台静默更新...`);
                     isDownloading = true;
                     downloadLockTime = Date.now();
-                    downloadAndCache(cachePath).finally(() => { isDownloading = false; });
+                    downloadAndCache(cachePath, nodeRuntime).finally(() => { isDownloading = false; });
                 }
             }
             return;
@@ -111,7 +184,7 @@ export async function initBangumiData(deployPlatform, isDataDependentRequest = f
         isDownloading = true;
         downloadLockTime = Date.now();
 
-        const downloadPromise = downloadAndCache(cachePath).finally(() => { isDownloading = false; });
+        const downloadPromise = downloadAndCache(cachePath, nodeRuntime).finally(() => { isDownloading = false; });
 
         if (isDataDependentRequest) {
             await downloadPromise;
@@ -143,10 +216,10 @@ export async function initBangumiData(deployPlatform, isDataDependentRequest = f
  * @param {string|null} cachePath - 缓存文件写入路径，为 null 时仅加载到内存
  * @returns {Promise<void>}
  */
-async function downloadAndCache(cachePath) {
+async function downloadAndCache(cachePath, nodeRuntime = null) {
     log("info", "[Bangumi-Data] 开始优选节点下载最新数据 (约 7MB)...");
     try {
-        const memBefore = process.memoryUsage().heapUsed;
+        const memBefore = getHeapUsed();
         const startTime = Date.now();
 
         let parseStartTime = 0;
@@ -172,11 +245,16 @@ async function downloadAndCache(cachePath) {
             log("info", `[请求模拟] HTTP GET: ${url}`);
         });
 
+        const fetchImpl = await getFetchImpl(Boolean(cachePath));
+        if (typeof fetchImpl !== 'function') {
+            throw new Error('Fetch implementation is unavailable for Bangumi-Data download');
+        }
+
         // 构建完整下载任务的 Promise 数组
         const racePromises = CDNS.map(async (url, index) => {
             const controller = controllers[index];
 
-            const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
+            const response = await fetchImpl(url, { ...fetchOptions, signal: controller.signal });
             if (!response.ok) throw new Error(`HTTP error ${response.status} from ${url}`);
 
             let resultData = null;
@@ -185,7 +263,7 @@ async function downloadAndCache(cachePath) {
             if (cachePath) {
                 // 物理磁盘模式：为每个并发流生成独立的临时文件
                 tempFilePath = `${cachePath}.tmp${index}`;
-                await pipeline(response.body, fs.createWriteStream(tempFilePath));
+                await nodeRuntime.pipeline(response.body, nodeRuntime.fs.createWriteStream(tempFilePath));
             } else {
                 // 纯内存模式：直接解析完整的 JSON
                 resultData = await response.json();
@@ -210,23 +288,23 @@ async function downloadAndCache(cachePath) {
             CDNS.forEach((_, i) => {
                 if (i !== winner.index) {
                     const loserTempPath = `${cachePath}.tmp${i}`;
-                    if (fs.existsSync(loserTempPath)) {
-                        try { fs.unlinkSync(loserTempPath); } catch (e) {}
+                    if (nodeRuntime.fs.existsSync(loserTempPath)) {
+                        try { nodeRuntime.fs.unlinkSync(loserTempPath); } catch (e) {}
                     }
                 }
             });
         }
 
         const downloadTime = ((Date.now() - startTime) / 1000).toFixed(2);
-        log("info", `[Bangumi-Data] 流式下载并写入磁盘成功(优选节点: ${new URL(winner.url).hostname} ,网络耗时: ${downloadTime} 秒)`);
+        log("info", `[Bangumi-Data] ${cachePath ? '流式下载并写入磁盘成功' : '下载成功'}(优选节点: ${new URL(winner.url).hostname} ,网络耗时: ${downloadTime} 秒)`);
 
         // 数据处理流
         if (cachePath) {
             // 将胜出者的临时文件正式重命名为缓存文件
-            fs.renameSync(winner.tempFilePath, cachePath);
+            nodeRuntime.fs.renameSync(winner.tempFilePath, cachePath);
 
             parseStartTime = Date.now();
-            memoryCache = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+            memoryCache = JSON.parse(nodeRuntime.fs.readFileSync(cachePath, 'utf-8'));
             parseTimeMs = Date.now() - parseStartTime;
         } else {
             parseStartTime = Date.now();
@@ -234,14 +312,14 @@ async function downloadAndCache(cachePath) {
             parseTimeMs = Date.now() - parseStartTime;
         }
 
-        const memAfter = process.memoryUsage().heapUsed;
+        const memAfter = getHeapUsed();
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
         memoryFootprintMB = Math.max(0, (memAfter - memBefore) / 1024 / 1024).toFixed(2);
-        const totalMemMB = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
+        const totalMemMB = getTotalMemMB();
         memoryCacheTime = Date.now();
 
-        log("info", `[Bangumi-Data] 加载到内存成功，条目数: ${memoryCache.items.length}，解析耗时: ${parseTimeMs} ms，全链路总耗时: ${totalTime} 秒，约占内存: ${memoryFootprintMB} MB (当前项目总占用: ${totalMemMB} MB)`);
+        log("info", `[Bangumi-Data] 加载到内存成功，条目数: ${memoryCache.items.length}，解析耗时: ${parseTimeMs} ms，全链路总耗时: ${totalTime} 秒，约占内存: ${memoryFootprintMB} MB${totalMemMB ? ` (当前项目总占用: ${totalMemMB} MB)` : ''}`);
     } catch (e) {
         // 提取所有请求均失败时的具体错误信息
         const errorMessage = e instanceof AggregateError ? e.errors.map(err => err.message).join(' | ') : e.message;
@@ -360,8 +438,8 @@ export function clearBangumiDataCache() {
         const itemCount = memoryCache.items ? memoryCache.items.length : 0;
         memoryCache = null; // 切断引用，等待 GC 回收
         memoryCacheTime = 0; // 重置寿命时钟
-        const totalMemMB = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
-        log("info", `[Bangumi-Data] 内存缓存已主动释放 (原条目数: ${itemCount}，释放: ${memoryFootprintMB} MB，当前项目总占用: ${totalMemMB} MB)`);
+        const totalMemMB = getTotalMemMB();
+        log("info", `[Bangumi-Data] 内存缓存已主动释放 (原条目数: ${itemCount}，释放: ${memoryFootprintMB} MB${totalMemMB ? `，当前项目总占用: ${totalMemMB} MB` : ''})`);
         memoryFootprintMB = '0.00'; // 重置探针
         hasLoggedCacheWarning = false; // 重置警告标记
     }
