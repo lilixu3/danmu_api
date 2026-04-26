@@ -176,16 +176,16 @@ export class Envs {
   static resolveMergeSourcePairs() {
     const config = this.get('MERGE_SOURCE_PAIRS', '', 'string');
     if (!config) return [];
-    
+
     // 使用正则同时支持分号(;)和逗号(,)作为配置组的分隔符
     return config.split(/[,;]/)
       .map(group => {
         // 过滤空字符串
         if (!group) return null;
-        
+
         // 按 & 分割，第一个是主源，剩余的是副源列表
         const parts = group.split('&').map(s => s.trim()).filter(s => s);
-        
+
         // 允许单源配置 (length >= 1)
         if (parts.length < 1) return null;
 
@@ -196,7 +196,7 @@ export class Envs {
         if (!this.MERGE_ALLOWED_SOURCES.includes(primary)) return null;
 
         // 过滤有效的副源，且排除主源本身（防止自我合并）
-        const validSecondaries = secondaries.filter(sec => 
+        const validSecondaries = secondaries.filter(sec =>
             sec !== primary && this.MERGE_ALLOWED_SOURCES.includes(sec)
         );
 
@@ -244,30 +244,30 @@ export class Envs {
    * @returns {RegExp} 过滤正则表达式
    */
   static resolveEpisodeTitleFilter() {
-    const defaultFilter = 
+    const defaultFilter =
       // [1] 基础物料与口语词防御，保护: 企划书, 预告犯, 被抢先了, 抢先一步, 化学反应, 一直拍, 单纯享
       '(特别|惊喜|纳凉)?企划(?!(书|案|部))|合伙人手记|超前(营业|vlog)?|速览|vlog|' +
       '(?<!(Chain|Chemical|Nuclear|连锁|化学|核|生化|生理|应激))reaction|' +
       '(?<!(单))纯享|加更(版|篇)?|抢先(看|版|集|篇)?|(?<!(被|争|谁))抢[先鲜](?!(一步|手|攻|了|告|言|机|话))|抢鲜|' +
       '预告(?!(函|信|书|犯))|(?<!(死亡|恐怖|灵异|怪谈))花絮(独家)?|(?<!(一|直))直拍|' +
-      
+
       // [2] 影像特辑与PV防御，保护: 行动彩蛋, 采访吸血鬼, HPV/MPV, 鸦片花
       '(制作|拍摄|幕后|花絮|未播|独家|演员|导演|主创|杀青|探班|收官|开播|先导|彩蛋|NG|回顾|高光|个人|主创)特辑|' +
       '(?<!(行动|计划|游戏|任务|危机|神秘|黄金))彩蛋|(?<!(嫌疑人|证人|家属|律师|警方|凶手|死者))专访|' +
       '(?<!(证人))采访(?!(吸血鬼|鬼))|(正式|角色|先导|概念|首曝|定档|剧情|动画|宣传|主题曲|印象)[\\s\\.]*[PpＰｐ][VvＶｖ]|' +
       '(?<!(鸦|雪|纸|相|照|图|名|大))片花|' +
-      
+
       // [3] 幕后/衍生/直播防御，保护: 幕后主谋, 番外地, 直播杀人/犯罪
       '(?<!(退居|回归|走向|转战|隐身|藏身|的))幕后(?!(主谋|主使|黑手|真凶|玩家|老板|金主|英雄|功臣|推手|大佬|操纵|交易|策划|博弈|BOSS|真相))(故事|花絮|独家)?|' +
       '衍生(?!(品|物|兽))|番外(?!(地|人))|直播(陪看|回顾)?|直播(?!(.*(事件|杀人|自杀|谋杀|犯罪|现场|游戏|挑战)))|' +
       '未播(片段)?|会员(专享|加长|尊享|专属|版)?|' +
-      
+
       // [4] 解读/回顾/盘点防御，保护: 生命精华, 案情回顾, 财务盘点, 新闻发布会
       '(?<!(提取|吸收|生命|魔法|修护|美白))精华|看点|速看|解读(?!.*(密文|密码|密电|电报|档案|书信|遗书|碑文|代码|信号|暗号|讯息|谜题|人心|唇语|真相|谜团|梦境))|' +
       '(?<!(案情|人生|死前|历史|世纪))回顾|影评|解说|吐槽|(?<!(年终|季度|库存|资产|物资|财务|收获|战利))盘点|' +
       '拍摄花絮|制作花絮|幕后花絮|未播花絮|独家花絮|花絮特辑|先导预告|终极预告|正式预告|官方预告|彩蛋片段|删减片段|未播片段|' +
       '番外彩蛋|精彩片段|精彩看点|精彩集锦|看点解析|看点预告|NG镜头|NG花絮|' +
-      
+
       // [5] 音乐/访谈/版本标识防御，保护: 生活插曲, Love Plus, 导演特别版, 独家记忆
       '番外篇|番外特辑|制作特辑|拍摄特辑|幕后特辑|导演特辑|演员特辑|片尾曲|(?<!(生命|生活|情感|爱情|一段|小|意外))插曲|' +
       '高光回顾|背景音乐|OST|音乐MV|歌曲MV|前季回顾|剧情回顾|往期回顾|内容总结|剧情盘点|精选合集|剪辑合集|混剪视频|' +
@@ -275,10 +275,10 @@ export class Envs {
       '(?<!(Love|Disney|One|C|Note|S\\d+|\\+|&|\\s))Plus|独家版|(?<!(导演|加长|周年))特别版(?!(图|画))|短片|' +
       '(?<!(新闻|紧急|临时|召开|破坏|大闹|澄清|道歉|新品|产品|事故))发布会|解忧局|走心局|火锅局|巅峰时刻|坞里都知道|福持目标坞民|' +
       '福利(?!(院|会|主义|课))篇|(福利|加更|番外|彩蛋|衍生|特别|收官|游戏|整蛊|日常)篇|独家(?!(记忆|试爱|报道|秘方|占有|宠爱|恩宠))|' +
-      
+
       // [6] “局”字深度逻辑防御，保护: 公安/警察/税务/教育/档案/交通等局, 以及做局/破局/局中局/局长
       '.{2,}(?<!(市|分|警|总|省|卫|药|政|监|结|大|开|破|布|僵|困|骗|赌|胜|败|定|乱|危|迷|谜|入|搅|设|中|残|平|和|终|变|对|安|做|书|画|察|务|案|通|信|育|商|象|源|业|冰))局(?!(长|座|势|面|部|内|外|中|限|促|气))|' +
-      
+
       // [7] 观察室/纪录片/揭秘防御，保护: ICU观察室, 宇宙/自然/赛事全纪录, 揭秘者
       '(?<!(重症|隔离|实验|心理|审讯|单向|术后))观察室|上班那点事儿|周top|赛段|VLOG|' +
       '(?<!(大案|要案|刑侦|侦查|破案|档案|风云|历史|战争|探案|自然|人文|科学|医学|地理|宇宙|赛事|世界杯|奥运))全纪录|' +
@@ -526,6 +526,7 @@ export class Envs {
       'AI_API_KEY': { category: 'match', type: 'text', description: 'AI服务API密钥，默认为空，需手动填写' },
       'AI_MATCH_PROMPT': { category: 'match', type: 'text', description: 'AI自动匹配提示词模板，不填提供默认提示词，默认提示词请查看README' },
       'AI_TRUST_MATCH_RESULT': { category: 'match', type: 'boolean', description: '是否信任AI匹配结论（开启后AI未命中时不再执行常规兜底匹配）' },
+      'USE_BANGUMI_DATA': { category: 'match', type: 'boolean', description: 'Bangumi Data 加速匹配开关，开启后将动画元数据缓存至本地或内存中给源调用，提升动画源的检索与匹配速度并解锁隐藏/区域番剧。\n本地和Docker部署使用时请先挂载.cache目录获得最佳体验，云部署使用时会将数据缓存至临时内存中如果体验不佳请关闭。' },
 
       // 弹幕配置
       'BLOCKED_WORDS': { category: 'danmu', type: 'text', description: '屏蔽词列表' },
@@ -552,6 +553,7 @@ export class Envs {
       'UPSTASH_REDIS_REST_URL': { category: 'cache', type: 'text', description: 'Upstash Redis请求链接' },
       'UPSTASH_REDIS_REST_TOKEN': { category: 'cache', type: 'text', description: 'Upstash Redis访问令牌' },
       'LOCAL_REDIS_URL': { category: 'cache', type: 'text', description: '本地 Redis 连接URL，示例：redis://:password@127.0.0.1:6379/0，只支持本地部署和docker部署' },
+      'BANGUMI_DATA_CACHE_DAYS': { category: 'cache', type: 'number', description: 'Bangumi Data 缓存有效期(天)，设置0则每次请求时强制异步更新，默认7天', min: 0, max: 30 },
 
       // 系统配置
       'PROXY_URL': { category: 'system', type: 'text', description: '代理/反代地址' },
@@ -635,9 +637,11 @@ export class Envs {
       aiApiKey: this.get('AI_API_KEY', '', 'string', true), // AI服务API密钥
       aiMatchPrompt: this.get('AI_MATCH_PROMPT', this.DEFAULT_AI_MATCH_PROMPT, 'string'), // AI自动匹配提示词模板
       aiTrustMatchResult: this.get('AI_TRUST_MATCH_RESULT', false, 'boolean'), // 是否信任AI匹配结论（默认 false，关闭）
+      useBangumiData: this.get('USE_BANGUMI_DATA', false, 'boolean'), // Bangumi Data 加速匹配开关
       rememberLastSelect: this.get('REMEMBER_LAST_SELECT', true, 'boolean'), // 是否记住手动选择结果，用于match自动匹配时优选上次的选择（默认 true，记住）
       MAX_LAST_SELECT_MAP: this.get('MAX_LAST_SELECT_MAP', 100, 'number'), // 记住上次选择映射缓存大小限制（默认 100）
       MAX_ANIMES: this.get('MAX_ANIMES', 100, 'number'), // 动漫标题缓存最大数量（默认 100）
+      bangumiDataCacheDays: this.get('BANGUMI_DATA_CACHE_DAYS', 7, 'number'), // Bangumi Data 缓存有效期(天)，默认7天
       deployPlatformAccount: this.get('DEPLOY_PLATFROM_ACCOUNT', '', 'string', true), // 部署平台账号ID配置（默认空）
       deployPlatformProject: this.get('DEPLOY_PLATFROM_PROJECT', '', 'string', true), // 部署平台项目名称配置（默认空）
       deployPlatformToken: this.get('DEPLOY_PLATFROM_TOKEN', '', 'string', true), // 部署平台项目名称配置（默认空）

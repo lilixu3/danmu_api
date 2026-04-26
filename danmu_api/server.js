@@ -16,6 +16,8 @@ import chokidar from 'chokidar';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { handleRequest } from './worker.js';
+import { Globals } from './configs/globals.js';
+import { clearBangumiDataCache, initBangumiData } from './utils/bangumi-data-util.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,6 +130,10 @@ function setupEnvWatcher() {
         loadEnv();
         console.log('[server] Environment variables reloaded successfully');
         console.log('[server] dotenv keys:', Array.from(dotenvKeys).join(', '));
+
+        if (process.env.USE_BANGUMI_DATA === 'false') {
+          clearBangumiDataCache();
+        }
       } catch (err) {
         console.log('[server] Error reloading .env:', err?.message || err);
       } finally {
@@ -479,6 +485,10 @@ const mainPort = Number.isNaN(configuredMainPort) ? 9321 : configuredMainPort;
 mainServer = createServer();
 mainServer.listen(mainPort, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${mainPort}`);
+
+  if (process.env.USE_BANGUMI_DATA === 'true') {
+    setTimeout(() => initBangumiData('node', true).catch(console.error), 1000);
+  }
 });
 
 if (hasForwardProxyConfig()) {

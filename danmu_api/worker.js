@@ -6,6 +6,7 @@ import { cleanupExpiredIPs, findUrlById, getCommentCache, getLocalCaches, judgeL
 import { formatDanmuResponse } from "./utils/danmu-util.js";
 import { parseBoolean } from "./utils/common-util.js";
 import AIClient from './utils/ai-util.js';
+import { initBangumiData } from "./utils/bangumi-data-util.js";
 import { getBangumi, getComment, getCommentByUrl, getCommentDuration, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
 import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleRuntimeInfo, handleRuntimeCheckUpdate, handleRuntimeUpdate } from "./apis/system-api.js";
 import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
@@ -87,13 +88,20 @@ function getAdminGuardResponse(path, method, authContext) {
   return null;
 }
 
-async function handleRequest(req, env, deployPlatform, clientIp) {
+async function handleRequest(req, env, deployPlatform, clientIp, ctx) {
   // 加载全局变量和环境变量配置
   globals = Globals.init(env);
 
   const url = new URL(req.url);
   let path = url.pathname;
   const method = req.method;
+
+  //  Bangumi Data 辅助函数，用于判断数据更新
+  const isDataDependentRequest = path.includes('/search') || path.includes('/match');
+
+  if (globals.useBangumiData) {
+      await initBangumiData(deployPlatform, isDataDependentRequest, ctx);
+  }
 
   globals.deployPlatform = deployPlatform;
   if (deployPlatform === "node") {
@@ -153,9 +161,9 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   const isDefaultToken = globals.token === "87654321";
   const isValidToken = firstPart === globals.token || firstPart === globals.adminToken;
 
-  const currentToken = 
+  const currentToken =
     isValidToken ? firstPart :
-    isDefaultToken && (firstPart === "87654321" || knownApiPaths.includes(firstPart)) ? 
+    isDefaultToken && (firstPart === "87654321" || knownApiPaths.includes(firstPart)) ?
       (firstPart === "87654321" ? firstPart : "87654321") :
     "";
   const authContext = buildAuthContext(currentToken);
@@ -357,7 +365,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   log("info", path);
 
   // 智能处理API路径前缀，确保最终有一个正确的 /api/v2
-  if (path !== "/" && path !== "/api/logs" && !path.startsWith('/api/env') 
+  if (path !== "/" && path !== "/api/logs" && !path.startsWith('/api/env')
     && !path.startsWith('/api/deploy') && !path.startsWith('/api/cache')
     && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
     && !path.startsWith('/api/runtime')
@@ -389,7 +397,7 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
 
       // 补全：如果路径缺少前缀（例如请求原始路径为 /search/anime 或 /v2/search/anime），则智能补全
       const pathBeforePrefixCheck = path;
-      if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs') 
+      if (!path.startsWith('/api/v2') && path !== '/' && !path.startsWith('/api/logs')
         && !path.startsWith('/api/env') && !path.startsWith('/api/cache')
         && !path.startsWith('/api/cookie') && !path.startsWith('/api/config')
         && !path.startsWith('/api/runtime')
@@ -807,7 +815,7 @@ export default {
     // 获取客户端的真实 IP
     const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
 
-    return handleRequest(request, env, isRunningOnVercel() ? "vercel" : "cloudflare", clientIp);
+    return handleRequest(request, env, isRunningOnVercel() ? "vercel" : "cloudflare", clientIp, ctx);
   },
 };
 

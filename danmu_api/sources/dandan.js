@@ -13,6 +13,7 @@ import BilibiliSource from "./bilibili.js";
 import YoukuSource from "./youku.js";
 import BahamutSource from "./bahamut.js";
 import { titleMatches, getExplicitSeasonNumber } from "../utils/common-util.js";
+import { searchBangumiData } from '../utils/bangumi-data-util.js';
 
 const tencentSource = new TencentSource();
 const iqiyiSource = new IqiyiSource();
@@ -33,6 +34,27 @@ export default class DandanSource extends BaseSource {
    * @param {boolean} isFallback 标记当前是否处于降级搜索状态
    */
   async search(keyword, isFallback = false) {
+    if (globals.useBangumiData && !isFallback) {
+      const localMatches = searchBangumiData(keyword, ['anidb']);
+      if (localMatches.length > 0) {
+        log("info", `[Dandan] Bangumi-Data 本地命中 ${localMatches.length} 条数据`);
+        return localMatches.map(m => {
+          const displayTitle = m.titles.find(t => t && t.includes(keyword)) || m.titles[1] || m.title;
+          const finalTitle = displayTitle + (m.titleSuffix || '');
+
+          return {
+            animeId: parseInt(m.siteId),
+            animeTitle: finalTitle,
+            type: m.typeId,
+            typeDescription: m.typeStr,
+            imageUrl: "",
+            startDate: m.begin,
+            rating: 0
+          };
+        });
+      }
+    }
+
     try {
       log("info", `[Dandan] 原始搜索词: ${keyword}`);
 
@@ -523,7 +545,7 @@ export default class DandanSource extends BaseSource {
             }
           }
           // 打上免二次解析的标记
-          c.isRealTimePulled = true; 
+          c.isRealTimePulled = true;
           // 将标准平台标识传给外部，供 danmu-util 组装标签
           c.realTimeSource = platName;
         }
