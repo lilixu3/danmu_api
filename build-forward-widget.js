@@ -98,9 +98,12 @@ try {
               outputContent = outputContent.replace(/await\s+httpGet/g, 'await Widget.http.get');
               outputContent = outputContent.replace(/await\s+httpPost/g, 'await Widget.http.post');
 
-              // 删除本地redis相关
-              outputContent = outputContent.replace(/.*setLocalRedisKey.*\n?/g, '\n');
-              outputContent = outputContent.replace(/.*updateLocalRedisCaches.*\n?/g, '\n');
+              // 删除 Forward 运行时不需要的本地 Redis 写入调用。
+              // 注意：不能按函数名整行删除，否则会误删函数声明，导致 bundle 残留孤立函数体。
+              // esbuild 可能把外部导入改名为 updateLocalRedisCaches2 / setLocalRedisKey2。
+              outputContent = outputContent.replace(/^import\s*\{[^}]*\}\s*from\s*["'][^"']*local-redis-util\.js["'];?\s*$/gm, '');
+              outputContent = outputContent.replace(/^\s*await\s+updateLocalRedisCaches\w*\(\);\s*$/gm, '');
+              outputContent = outputContent.replace(/^\s*setLocalRedisKey\w*\([^;\n]*\);\s*$/gm, '');
 
               fs.writeFileSync(distPath, outputContent);
             }

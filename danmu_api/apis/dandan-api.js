@@ -1801,7 +1801,8 @@ export async function matchAnime(url, req, clientIp = null) {
     log("info", `prefer animeId: ${preferAnimeId} from ${preferSource}`);
 
     // 根据指定平台创建动态平台顺序
-    const dynamicPlatformOrder = createDynamicPlatformOrder(preferredPlatform);
+    const platformRuleTitles = [title, simplifiedFrom, mappedFrom].filter(Boolean);
+    const dynamicPlatformOrder = createDynamicPlatformOrder(preferredPlatform, platformRuleTitles, season);
     log("info", "Original platformOrderArr:", globals.platformOrderArr);
     log("info", "Dynamic platformOrder:", dynamicPlatformOrder);
     log("info", `Preferred platform: ${preferredPlatform || 'none'}`);

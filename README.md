@@ -587,6 +587,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | 变量 | 说明 |
 |---|---|
 | `PLATFORM_ORDER` | 自动匹配优选平台 |
+| `MATCH_PLATFORM_RULES` | 按剧名 / 季度配置自动匹配平台优先级，平台名沿用 `PLATFORM_ORDER`；只调整匹配偏好，不裁剪搜索源；文件名显式 `@平台` 优先；配合标题映射时原始标题和映射后标题都可命中，如 `葬送的芙莉莲->dandan;葬送的芙莉莲/S01->bilibili1,animeko` |
 | `MERGE_SOURCE_PAIRS` | 多源合并规则 |
 | `ENABLE_ANIME_EPISODE_FILTER` | 是否启用剧名 / 集标题过滤 |
 | `ANIME_TITLE_FILTER` | 剧名过滤规则 |
@@ -595,7 +596,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `TITLE_TO_CHINESE` | 外语标题转中文，通常配合 `TMDB_API_KEY` |
 | `ANIME_TITLE_SIMPLIFIED` | 搜索时繁转简 |
 | `TITLE_MAPPING_TABLE` | 标题映射表 |
-| `TITLE_PLATFORM_OFFSET_TABLE` | 按剧名和平台配置时间轴偏移 |
+| `DANMU_OFFSET` | 按剧名 / 季度 / 集数和来源配置弹幕时间轴偏移 |
 | `AI_BASE_URL` | AI 接口地址，支持 OpenAI 兼容服务 |
 | `AI_MODEL` | AI 模型名 |
 | `AI_API_KEY` | AI 密钥 |

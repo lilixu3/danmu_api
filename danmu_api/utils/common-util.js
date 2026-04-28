@@ -261,32 +261,81 @@ function normalizePlatformName(inputPlatform) {
   return '';
 }
 
+function normalizeRuleSeason(season) {
+  if (season === null || season === undefined || season === '') return null;
+  const match = String(season).trim().match(/^S?(\d+)$/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function appendPlatformOrder(target, item) {
+  if (!item || item === null) return;
+  if (!target.includes(item)) {
+    target.push(item);
+  }
+}
+
+function mergePlatformOrders(primaryOrder = [], fallbackOrder = []) {
+  const result = [];
+  primaryOrder.forEach(item => appendPlatformOrder(result, item));
+  fallbackOrder.forEach(item => appendPlatformOrder(result, item));
+  result.push(null);
+  return result;
+}
+
+function resolveMatchPlatformRuleOrder(title, season = null) {
+  const rules = Array.isArray(globals.matchPlatformRules) ? globals.matchPlatformRules : [];
+  if (!title || rules.length === 0) return [];
+
+  const normalizedTitles = new Set(
+    (Array.isArray(title) ? title : [title])
+      .map(item => normalizeTitleForComparison(item))
+      .filter(Boolean)
+  );
+  if (normalizedTitles.size === 0) return [];
+
+  const normalizedSeason = normalizeRuleSeason(season);
+  let genericMatch = null;
+  let seasonMatch = null;
+
+  for (const rule of rules) {
+    const ruleTitle = normalizeTitleForComparison(rule?.title || '');
+    if (!ruleTitle || !normalizedTitles.has(ruleTitle)) continue;
+
+    const ruleSeason = normalizeRuleSeason(rule?.season);
+    if (ruleSeason !== null && normalizedSeason !== null && ruleSeason === normalizedSeason) {
+      seasonMatch = rule;
+    } else if (ruleSeason === null) {
+      genericMatch = rule;
+    }
+  }
+
+  const matchedRule = seasonMatch || genericMatch;
+  return Array.isArray(matchedRule?.platforms) ? matchedRule.platforms : [];
+}
+
 // 根据指定平台创建动态平台顺序
-export function createDynamicPlatformOrder(preferredPlatform) {
+export function createDynamicPlatformOrder(preferredPlatform, title = '', season = null) {
+  const ruleOrder = resolveMatchPlatformRuleOrder(title, season);
+
   if (!preferredPlatform) {
+    if (ruleOrder.length > 0) {
+      return mergePlatformOrders(ruleOrder, globals.platformOrderArr);
+    }
     return [...globals.platformOrderArr]; // 返回默认顺序的副本
   }
 
   // 验证平台是否有效
   if (!globals.allowedPlatforms.includes(preferredPlatform)) {
     log("warn", `Invalid platform: ${preferredPlatform}, using default order`);
+    if (ruleOrder.length > 0) {
+      return mergePlatformOrders(ruleOrder, globals.platformOrderArr);
+    }
     return [...globals.platformOrderArr];
   }
 
-  // 创建新的平台顺序，将指定平台放在最前面
-  const dynamicOrder = [preferredPlatform];
-
-  // 添加其他平台（排除已指定的平台）
-  for (const platform of globals.platformOrderArr) {
-    if (platform !== preferredPlatform && platform !== null) {
-      dynamicOrder.push(platform);
-    }
-  }
-
-  // 最后添加 null（用于回退逻辑）
-  dynamicOrder.push(null);
-
-  return dynamicOrder;
+  return mergePlatformOrders([preferredPlatform, ...ruleOrder], globals.platformOrderArr);
 }
 
 /**

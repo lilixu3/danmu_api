@@ -238,6 +238,69 @@ export class Envs {
     return orderArr.length > 0 ? [...orderArr, null] : [null];
   }
 
+  static isAllowedPlatformOrderItem(item) {
+    if (!item) return false;
+    if (item.includes('&')) {
+      const parts = item.split('&').map(p => p.trim());
+      return parts.length > 1 && parts.every(p => p && this.ALLOWED_PLATFORMS.includes(p));
+    }
+    return this.ALLOWED_PLATFORMS.includes(item);
+  }
+
+  static parseMatchPlatformRuleKey(rawKey) {
+    const normalized = String(rawKey || '').trim();
+    if (!normalized) return null;
+
+    const slashIdx = normalized.lastIndexOf('/');
+    if (slashIdx === -1) {
+      return { title: normalized, season: null };
+    }
+
+    const seasonPart = normalized.substring(slashIdx + 1).trim();
+    const seasonMatch = seasonPart.match(/^S?(\d+)$/i);
+    if (!seasonMatch) {
+      return { title: normalized, season: null };
+    }
+
+    const title = normalized.substring(0, slashIdx).trim();
+    const season = Number.parseInt(seasonMatch[1], 10);
+    if (!title || !Number.isFinite(season)) return null;
+
+    return { title, season };
+  }
+
+  /**
+   * 解析按剧名/季度配置的匹配平台优先级
+   * 格式：剧名->平台1,平台2;剧名/S01->平台1&平台2,平台3
+   * @returns {Array<{title: string, season: number|null, platforms: string[]}>}
+   */
+  static resolveMatchPlatformRules() {
+    const rawRules = this.get('MATCH_PLATFORM_RULES', '', 'string').trim();
+    if (!rawRules) return [];
+
+    return rawRules
+      .split(/[;\n]+/)
+      .map(entry => {
+        const trimmed = entry.trim();
+        const arrowIdx = trimmed.indexOf('->');
+        if (arrowIdx === -1) return null;
+
+        const key = this.parseMatchPlatformRuleKey(trimmed.substring(0, arrowIdx));
+        if (!key) return null;
+
+        const platforms = trimmed.substring(arrowIdx + 2)
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => this.isAllowedPlatformOrderItem(s));
+
+        const uniquePlatforms = [...new Set(platforms)];
+        if (uniquePlatforms.length === 0) return null;
+
+        return { ...key, platforms: uniquePlatforms };
+      })
+      .filter(Boolean);
+  }
+
   /**
    * 解析剧集标题过滤正则
    * @description 过滤非正片内容，同时内置白名单防止误杀正片
@@ -514,6 +577,7 @@ export class Envs {
       'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '已废弃兼容项：弹弹 related 接口已下线，当前版本保留该变量仅为兼容旧配置，不再生效' },
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置，可以配置自动匹配时的优选平台。\n当配置合并平台的时候，可以指定期望的合并源，\n示例：一个结果返回了“dandan&bilibili1&animeko”和“youku”时，\n当配置“youku”时返回“youku” \n当配置“dandan&animeko”时返回“dandan&bilibili1&animeko”' },
+      'MATCH_PLATFORM_RULES': { category: 'match', type: 'map', description: '按剧名/季度配置自动匹配平台优先级，平台名沿用 PLATFORM_ORDER，不影响搜索源。格式：剧名->平台1,平台2;剧名/S01->平台1&平台2,平台3。文件名显式 @平台 优先级最高；配合 TITLE_MAPPING_TABLE 时原始标题和映射后标题都可命中。例如："葬送的芙莉莲->dandan;葬送的芙莉莲/S01->bilibili1,animeko"' },
       'ANIME_TITLE_FILTER': { category: 'match', type: 'text', description: '剧名过滤规则' },
       'EPISODE_TITLE_FILTER': { category: 'match', type: 'text', description: '剧集标题过滤规则' },
       'ENABLE_ANIME_EPISODE_FILTER': { category: 'match', type: 'boolean', description: '控制手动搜索的时候是否根据ANIME_TITLE_FILTER进行剧名过滤以及根据EPISODE_TITLE_FILTER进行集标题过滤' },
@@ -590,6 +654,7 @@ export class Envs {
       mergeSourcePairs: this.resolveMergeSourcePairs(), // 源合并配置，用于将源合并获取
       realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 已废弃兼容项：保留旧配置读取，不再驱动 related 实时拉取逻辑
       platformOrderArr: this.resolvePlatformOrder(), // 自动匹配优选平台
+      matchPlatformRules: this.resolveMatchPlatformRules(), // 按剧名/季度配置的自动匹配平台优先级
       animeTitleFilter: this.resolveAnimeTitleFilter(), // 剧名正则过滤
       episodeTitleFilter: this.resolveEpisodeTitleFilter(), // 剧集标题正则过滤
       blockedWords: this.get('BLOCKED_WORDS', '', 'string'), // 屏蔽词列表

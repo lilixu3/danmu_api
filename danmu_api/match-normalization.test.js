@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { Globals } from './configs/globals.js';
 import {
+  createDynamicPlatformOrder,
   extractAnimeTitle,
   extractSeasonNumberFromAnimeTitle,
   extractYear,
@@ -83,4 +84,51 @@ test('runtime caches should normalize title keys across unicode whitespace varia
   storeAnimeIdsToMap([{ animeId: 123 }], '太平年\u3000');
   assert.equal(Globals.lastSelectMap.size, 1);
   assert.deepEqual(getPreferAnimeId('太平年', 1), [123, 'qiyi', null]);
+});
+
+test('MATCH_PLATFORM_RULES should apply title and season scoped platform preferences', () => {
+  Globals.init({
+    PLATFORM_ORDER: 'qq',
+    MATCH_PLATFORM_RULES: '葬送的芙莉莲->dandan;葬送的芙莉莲/S01->bilibili1,animeko'
+  });
+
+  assert.deepEqual(
+    createDynamicPlatformOrder('', '葬送的芙莉莲', 1),
+    ['bilibili1', 'animeko', 'qq', null]
+  );
+  assert.deepEqual(
+    createDynamicPlatformOrder('', '葬送的芙莉莲', 2),
+    ['dandan', 'qq', null]
+  );
+  assert.deepEqual(
+    createDynamicPlatformOrder('qiyi', '葬送的芙莉莲', 1),
+    ['qiyi', 'bilibili1', 'animeko', 'qq', null]
+  );
+  assert.deepEqual(
+    createDynamicPlatformOrder('bad', '葬送的芙莉莲', 1),
+    ['bilibili1', 'animeko', 'qq', null]
+  );
+});
+
+test('MATCH_PLATFORM_RULES should fall back to PLATFORM_ORDER when absent or unmatched', () => {
+  Globals.init({ PLATFORM_ORDER: 'qq,qiyi' });
+  assert.deepEqual(createDynamicPlatformOrder('', '任意标题', 1), ['qq', 'qiyi', null]);
+
+  Globals.init({
+    PLATFORM_ORDER: 'qq,qiyi',
+    MATCH_PLATFORM_RULES: '另一个标题->dandan'
+  });
+  assert.deepEqual(createDynamicPlatformOrder('', '任意标题', 1), ['qq', 'qiyi', null]);
+});
+
+test('MATCH_PLATFORM_RULES should match original and mapped title candidates', () => {
+  Globals.init({
+    PLATFORM_ORDER: 'qq',
+    MATCH_PLATFORM_RULES: "Frieren: Beyond Journey's End/S01->dandan"
+  });
+
+  assert.deepEqual(
+    createDynamicPlatformOrder('', ['葬送的芙莉莲', "Frieren: Beyond Journey's End"], 1),
+    ['dandan', 'qq', null]
+  );
 });
