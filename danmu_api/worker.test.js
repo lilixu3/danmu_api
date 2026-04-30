@@ -58,6 +58,27 @@ class MockRequest {
   }
 }
 
+function mockJsonResponse(data, url) {
+  return {
+    ok: true,
+    status: 200,
+    url,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    text: async () => JSON.stringify(data),
+  };
+}
+
+async function withMockFetch(mockFetch, run) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockFetch;
+  try {
+    return await run();
+  } finally {
+    if (originalFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = originalFetch;
+  }
+}
+
 // Helper to parse JSON response
 async function parseResponse(response) {
   const text = await response.text();
