@@ -525,6 +525,8 @@ API 支持返回 Bilibili 标准 XML 格式的弹幕数据，通过查询参数 
 
 说明：
 
+[喂饭教程5：非常详细的 danmu_api 图文教程](https://bks.indevs.in)
+
 - `DOCKER_CONTAINER_NAME` 不填时，会尝试通过当前容器 hostname 自动识别。
 - `DOCKER_IMAGE_NAME` 默认会使用 `lilixu3/danmu-api` 做版本检查。
 
