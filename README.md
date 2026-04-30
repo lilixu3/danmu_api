@@ -38,7 +38,53 @@ cp ./config/.env.example ./config/.env
 然后编辑 `./config/.env`，至少确认下面这些变量：
 
 ```env
-TOKEN=87654321
+TOKEN=***
+
+## 功能
+- **API 接口**：
+  - `GET /api/v2/search/anime?keyword=${queryTitle}`：根据关键字搜索动漫。
+  - `POST /api/v2/match`：根据关键字匹配动漫，用于自动匹配。（已支持在match接口中通过@语法动态指定平台优先级，如`赴山海 S01E28 @qiyi`；已支持从网盘资源命名，如`无忧渡.S01E01.2160p.WEB-DL.H265.DDP.5.1`中提取 title/season/episode）；已支持外语标题匹配，如`Blood.River.S01E05`，需配置环境变量`TITLE_TO_CHINESE`使用；已适配该格式`爱情公寓.ipartment.2009.S03E05.H.265.25fps.mkv`标题；已支持AI自动匹配，需配合AI相关环境变量使用
+  - `GET /api/v2/search/episodes`：根据关键词搜索所有匹配的剧集信息。
+  - `GET /api/v2/bangumi/:animeId`：获取指定动漫的详细信息。
+  - `GET /api/v2/comment/:commentId?format=json&duration=true`：获取指定弹幕评论；当 `duration=true` 且返回 JSON 时，会额外附带 `videoDuration` 字段，优先返回源站时长，拿不到时返回 `0`。
+  - `GET /api/v2/comment?url=${videoUrl}&format=json`：通过视频URL直接获取弹幕（兼容第三方弹幕服务器格式）。
+  - `POST /api/v2/segmentcomment?format=json`：通过comment接口返回体中的Segment类JSON数据获取单独一个分片的弹幕数据。
+  - `GET /api/logs`：获取最近的日志（最多 500 行，格式为 `[时间戳] 级别: 消息`）。
+- **弹幕格式输出**：支持 JSON 和 XML 两种格式输出，通过以下方式配置：
+  - 环境变量：`DANMU_OUTPUT_FORMAT=json|xml`（默认：json）
+  - 查询参数：`?format=xml` 或 `?format=json`（优先级最高）
+  - 优先级：查询参数 > 环境变量 > 默认值
+  - 示例：`GET /api/v2/comment/10001?format=xml` 返回 XML 格式弹幕
+  - **XML 格式说明**：完全遵循 Bilibili 标准格式，8字段标准弹幕属性
+- **日志记录**：捕获 `console.log`（info 级别）和 `console.error`（error 级别），JSON 内容格式化输出。
+- **智能缓存管理**：支持内存缓存搜索结果和弹幕数据，避免短期内重复的不必要API请求。包括：
+  - 搜索结果缓存（可通过 `SEARCH_CACHE_MINUTES` 配置，默认1分钟）
+  - 弹幕缓存（可通过 `COMMENT_CACHE_MINUTES` 配置，默认5分钟）
+  - 用户偏好记录（可通过 `MAX_LAST_SELECT_MAP` 配置，默认100条）
+  - Redis 分布式缓存支持，包括本地redis和upstash redis（可选）
+  - 本地和Docker部署支持实时保存缓存到文件（挂载.cache目录即可）
+- **部署支持**：支持本地运行、Docker 容器化、Vercel 一键部署、Netlify 一键部署、Edgeone 一键部署、Cloudflare 一键部署、Hugging Face Spaces、Claw部署和 Docker 一键启动。
+- **手动选择记忆**：支持记住之前搜索title时手动选择的anime，并在后续的match自动匹配时优选该anime，支持记住集episode，下次自动匹配时会对集进行偏移【实验性】。
+- **手动搜索支持输入播放链接获取弹幕**：支持手动搜索的播放器输入爱优腾芒哔咪狐乐西播放链接可获取弹幕，如`senplayer`。
+- **弹幕转换功能**：支持通过环境变量配置弹幕转换规则，包括：
+  - 将顶部和底部弹幕转换为浮动弹幕（`CONVERT_TOP_BOTTOM_TO_SCROLL`）
+  - 转换弹幕颜色为白色或彩色（`CONVERT_COLOR`），支持自定义颜色池（`COLOR_POOL`）
+  - 解决部分播放器不支持顶部/底部弹幕和彩色弹幕的问题
+  - 增加点赞数显示，先去重再拼接点赞标记，点赞数缩写显示，≥5 才显示，避免低赞干扰
+- **弹幕限制数量**：支持通过环境变量配置等间隔采样弹幕数量。
+- **弹幕时间偏移功能**：支持通过环境变量 `DANMU_OFFSET` 配置弹幕时间偏移，解决弹幕与视频不同步的问题。格式为 `剧名:秒`（全剧偏移）、`剧名/季:秒`（整季偏移）、`剧名/季/集:秒`（单集偏移），支持指定来源 `剧名@来源:秒`、`剧名/季@来源1&来源2:秒`（不指定来源则对所有来源生效），多条用逗号分隔。例如：`overlord/S01:90, re-zero/S02@bilibili:120, re-zero/S02/E03@dandan&bilibili:10`。正数表示弹幕延后（向右），负数表示弹幕提前（向左）。另外支持百分比模式：在来源或路径末尾增加 `%`，如 `东方/S03/E02@tencent%:11`，表示按公式 `原时间 * (视频时长 + 偏移秒数) / 视频时长` 缩放全部弹幕时间，更适合整集整体快慢不一致的场景。
+- **弹幕分片请求**：
+  - `/api/v2/comment` 请求时支持定义 `segmentflag=true` 参数，用于请求弹幕分片列表
+  - `/api/v2/comment/:commentId?format=json&duration=true` 可在 JSON 返回体中附带 `videoDuration`
+  - `/api/v2/segmentcomment` 通过comment接口返回体中的Segment类JSON数据获取单独一个分片的弹幕数据
+- **UI界面-后台配置管理系统**：支持通过UI执行一些操作（详细见 [UI 系统使用说明](https://github.com/huangxd-/danmu_api/tree/main/danmu_api/ui/README.md) ），包括：
+  - 配置预览
+  - 日志查看
+  - 接口调试/弹幕测试
+  - 推送弹幕
+  - 请求记录
+  - 系统管理
+>>>>>>> 049e412 (Hugging配备ui管理 (#288))
 
 # 管理员功能不是默认开启的，只有你自己显式设置后才可用
 ADMIN_TOKEN=your-admin-token
@@ -355,6 +401,20 @@ docker run -d \
 ~~创建一个worker，将`danmu_api/worker.js`里的代码直接拷贝到你创建的`worker.js`里，然后点击部署。~~
 
 > cf部署可能不稳定，推荐用vercel/netlify部署。
+
+## 部署到 Hugging Face Spaces
+
+### Docker 部署
+1. 在 Hugging Face 创建 Space，SDK 选择 **Docker**。
+2. 将仓库代码推送到 Space 仓库，或在 Space 中连接/同步你的 Git 仓库。
+3. 在 Space Settings > Variables and secrets 中至少添加 `TOKEN` 环境变量。
+4. 如果需要在 UI 中保存环境变量并触发重启，额外添加：
+   - `DEPLOY_PLATFROM_ACCOUNT`: Hugging Face 用户名或组织名
+   - `DEPLOY_PLATFROM_PROJECT`: Space 名称
+   - `DEPLOY_PLATFROM_TOKEN`: 具备目标 Space 写入权限的 User Access Token
+
+- 示例请求：`https://{account}-{space}.hf.space/87654321/api/v2/search/anime?keyword=子夜归`
+  > 注意：TOKEN为默认87654321的情况下，可不带{TOKEN}请求，如`https://{account}-{space}.hf.space/api/v2/search/anime?keyword=子夜归`
 
 ## API食用指南
 支持 forward/senplayer/hills/小幻/yamby/eplayerx/afusekt/uz影视/dscloud/lenna/danmaku-anywhere/omnibox/ChaiChaiEmbyTV/moontv/capyplayer/kerkerker/LinPlayer/peekpili 等支持弹幕API的播放器。

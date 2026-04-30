@@ -186,10 +186,46 @@
 
 这一节专门回答两个问题：
 
+| 平台 | DEPLOY_PLATFROM_ACCOUNT | DEPLOY_PLATFROM_PROJECT | DEPLOY_PLATFROM_TOKEN |
+|------|----------------------|----------------------|---------------------|
+| Vercel | ❌ | ✅ | ✅ |
+| Netlify | ✅ | ✅ | ✅ |
+| EdgeOne | ❌ | ✅ | ✅ |
+| Cloudflare | ✅ | ✅ | ✅ |
+| Hugging Face Spaces | ✅ | ✅ | ✅ |
+| Node.js | ❌ | ❌ | ❌ |
+| Docker | ❌ | ❌ | ❌ |
+
 - 哪些最小环境变量必须先手动配好，前端才能开始改配置
 - 各平台里的 `DEPLOY_PLATFROM_*` 到底分别该填什么
 
 先记住一条总规则：
+
+### 5. Hugging Face Spaces 平台
+
+#### 需要的变量
+- `DEPLOY_PLATFROM_ACCOUNT`: Hugging Face 用户名或组织名
+- `DEPLOY_PLATFROM_PROJECT`: Space 名称
+- `DEPLOY_PLATFROM_TOKEN`: User Access Token
+
+#### 获取步骤
+
+**获取 Account 与 Space 名称**
+
+1. 打开你的 Hugging Face Space 页面
+2. Space 地址格式为 `https://huggingface.co/spaces/{account}/{space}`
+3. `{account}` 填入 `DEPLOY_PLATFROM_ACCOUNT`，`{space}` 填入 `DEPLOY_PLATFROM_PROJECT`
+
+**获取 User Access Token (`DEPLOY_PLATFROM_TOKEN`)**
+
+1. 登录 [Hugging Face Access Tokens](https://huggingface.co/settings/tokens)
+2. 创建 Fine-grained token 或 Write token
+3. 如果使用 Fine-grained token，请授予目标 Space 的写入权限
+4. **立即复制并保存** Token(只显示一次)
+
+---
+
+### 各平台变量获取详细步骤
 
 - 第一次启用管理员 UI 时，必须先在云平台控制台里手动写入 `ADMIN_TOKEN`
 - 然后使用 `/{ADMIN_TOKEN}` 打开页面

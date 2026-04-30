@@ -46,6 +46,14 @@ const envExamplePath = path.join(configDir, '.env.example');
 let dotenvKeys = new Set();
 
 // =============== 配置文件自动生成 ===============
+
+function detectNodeDeployPlatform() {
+  if (process.env.SPACE_ID) {
+    return "huggingface";
+  }
+  return "node";
+}
+
 function checkAndCopyConfigFiles() {
   try {
     if (!fs.existsSync(configDir)) {
@@ -284,7 +292,8 @@ function createServer() {
         body: body && body.length ? body : undefined,
       });
 
-      const webResponse = await handleRequest(webRequest, process.env, 'node', clientIp);
+      // 调用核心处理函数，并标识当前部署平台
+      const webResponse = await handleRequest(webRequest, process.env, detectNodeDeployPlatform(), clientIp);
 
       res.statusCode = webResponse.status;
 
