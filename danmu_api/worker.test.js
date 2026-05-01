@@ -2988,6 +2988,80 @@ test('worker.js API endpoints', async (t) => {
     assert.deepEqual(matches.map(item => item.animeTitle), ['神探狄仁杰 第三部(2008)【电视剧】from iqiyi']);
   });
 
+  await t.test('findSecondaryMatches should tolerate spaces in numbered season markers', async () => {
+    const createAnime = (animeId, source, animeTitle) => ({
+      animeId,
+      source,
+      animeTitle,
+      type: 'tvseries',
+      typeDescription: '电视剧',
+      imageUrl: '',
+      startDate: '2006-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(713, 'youku', '神探狄仁杰 第 2 部(2006)【电视剧】from youku');
+    const secondaries = [
+      createAnime(714, 'iqiyi', '神探狄仁杰 第二部(2006)【电视剧】from iqiyi')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), ['神探狄仁杰 第二部(2006)【电视剧】from iqiyi']);
+  });
+
+  await t.test('findSecondaryMatches should compare primary aliases with secondary titles', async () => {
+    const createAnime = (animeId, source, animeTitle, aliases = []) => ({
+      animeId,
+      source,
+      animeTitle,
+      aliases,
+      type: 'tvseries',
+      typeDescription: 'TV动画',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(709, 'dandan', '猫猫奇遇记', ['Magic Cat Adventure']);
+    const secondaries = [
+      createAnime(710, 'animeko', 'Magic Cat Adventure')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), ['Magic Cat Adventure']);
+  });
+
+  await t.test('findSecondaryMatches should use aliases when checking season markers', async () => {
+    const createAnime = (animeId, source, animeTitle, aliases = []) => ({
+      animeId,
+      source,
+      animeTitle,
+      aliases,
+      type: 'tvseries',
+      typeDescription: 'TV动画',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: false,
+      links: [{ id: animeId * 100, url: `https://example.com/${animeId}`, title: '【mock】 第1集' }]
+    });
+
+    const primary = createAnime(711, 'dandan', 'Magic Cat Adventure', ['Magic Cat Adventure Season 2']);
+    const secondaries = [
+      createAnime(712, 'animeko', 'Magic Cat Adventure Season 2')
+    ];
+
+    const matches = findSecondaryMatches(primary, secondaries);
+    assert.deepEqual(matches.map(item => item.animeTitle), ['Magic Cat Adventure Season 2']);
+  });
+
   await t.test('applyMergeLogic should not merge 少年神探狄仁杰 into numbered 神探狄仁杰 parts when only core words overlap', async () => {
     Globals.init({ MERGE_SOURCE_PAIRS: 'tencent&iqiyi&youku' });
     Globals.MAX_ANIMES = 100;
