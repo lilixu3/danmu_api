@@ -2050,8 +2050,9 @@ export async function searchEpisodes(url) {
     );
   }
 
-  // 先搜索动漫
-  let searchUrl = new URL(`/search/anime?keyword=${anime}`, url.origin);
+  // 先搜索动漫。这里必须用 URLSearchParams 编码，避免剧名含 &/#/? 时被截断。
+  let searchUrl = new URL('/search/anime', url.origin);
+  searchUrl.searchParams.set('keyword', anime);
   const requestAnimeDetailsMap = new Map();
   const searchRes = await searchAnime(searchUrl, null, null, requestAnimeDetailsMap);
   const searchData = await searchRes.json();

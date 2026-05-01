@@ -515,7 +515,7 @@ export function xmlResponse(data, status = 200) {
   return new Response(data, {
     status,
     headers: { 
-      "Content-Type": "application/xml",
+      "Content-Type": "text/xml; charset=utf-8",
       "Access-Control-Allow-Origin": "*"
     }
   });

@@ -53,8 +53,28 @@ class MockRequest {
   constructor(url, options = {}) {
     this.url = url;
     this.method = options.method || 'GET';
-    this.headers = new Map(Object.entries(options.headers || {}));
-    this.json = options.body ? async () => options.body : undefined;  // 模拟 POST 请求的 body
+    this.headers = new Headers(options.headers || {});
+    this._body = options.body;
+    this.json = async () => {
+      if (typeof this._body === 'string') {
+        return JSON.parse(this._body);
+      }
+      return this._body;
+    };
+    this.text = async () => {
+      if (typeof this._body === 'string') {
+        return this._body;
+      }
+      if (this._body == null) {
+        return '';
+      }
+      return JSON.stringify(this._body);
+    };
+    this.clone = () => new MockRequest(this.url, {
+      method: this.method,
+      headers: Object.fromEntries(this.headers.entries()),
+      body: this._body
+    });
   }
 }
 
@@ -109,6 +129,44 @@ function createFetchResponse(body, overrides = {}) {
 
 const urlPrefix = "http://localhost:9321";
 const token = "87654321";
+
+function createSearchResult(anime) {
+  return {
+    animeId: anime.animeId,
+    bangumiId: anime.bangumiId,
+    animeTitle: anime.animeTitle,
+    type: anime.type,
+    typeDescription: anime.typeDescription,
+    imageUrl: anime.imageUrl,
+    startDate: anime.startDate,
+    episodeCount: anime.episodeCount,
+    rating: anime.rating,
+    isFavorited: anime.isFavorited,
+    source: anime.source
+  };
+}
+
+function resetFongmiState() {
+  Globals.init({});
+  Globals.animes = [];
+  Globals.episodeIds = [];
+  Globals.episodeNum = 10001;
+  Globals.searchCache = new Map();
+  Globals.commentCache = new Map();
+  Globals.requestHistory = new Map();
+  Globals.reqRecords = [];
+  Globals.todayReqNum = 0;
+  Globals.logBuffer = [];
+  Globals.envs.rateLimitMaxRequests = 0;
+}
+
+function cacheFongmiAnime(anime) {
+  Globals.searchCache.set(anime.animeTitle, {
+    results: [createSearchResult(anime)],
+    details: [anime],
+    timestamp: Date.now()
+  });
+}
 
 test('Aiyifan searchDrama tolerates fw-style responses without status/ret fields', async () => {
   const source = new AiyifanSource();
@@ -528,6 +586,546 @@ test('runtime update should still require admin token after public runtime read 
   assert.equal(res.status, 403);
   assert.equal(body.success, false);
   assert.equal(body.errorMessage, 'Admin token required');
+});
+
+test('Fongmi short entry should return XML comment URL with user token only', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910001,
+      bangumiId: '910001',
+      animeTitle: '短入口番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 41001, url: 'https://v.qq.com/x/cover/fongmi/ep1.html', title: '【qq】 第1集' },
+        { id: 41002, url: 'https://v.qq.com/x/cover/fongmi/ep2.html', title: '【qq】 第2集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'name=%E7%9F%AD%E5%85%A5%E5%8F%A3%E7%95%AA%E5%89%A7&episode=%E7%AC%AC1%E9%9B%86'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', ADMIN_TOKEN: 'admin123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '短入口番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/41001.xml`
+      }
+    ]);
+
+    const adminReq = new MockRequest(urlPrefix + '/admin123/api/v2/fongmi/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=1', {
+      method: 'GET'
+    });
+    const adminRes = await handleRequest(adminReq, { TOKEN: 'token123', ADMIN_TOKEN: 'admin123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const adminBody = await parseResponse(adminRes);
+
+    assert.equal(adminRes.status, 200);
+    assert.deepEqual(adminBody, []);
+    assert.equal(JSON.stringify(adminBody).includes('admin123'), false);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi standard entry should accept GET aliases and normalize episode number', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910002,
+      bangumiId: '910002',
+      animeTitle: 'GET别名番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 42001, url: 'https://v.qq.com/x/cover/fongmi-get/ep1.html', title: '【qq】 第1集' },
+        { id: 42002, url: 'https://v.qq.com/x/cover/fongmi-get/ep2.html', title: '【qq】 第2集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/api/v2/fongmi/danmaku?keyword=' + encodeURIComponent(anime.animeTitle) + '&ep=02话', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: 'GET别名番剧 【qq】 第2集',
+        url: `${urlPrefix}/token123/api/v2/comment/42002.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi danmaku alias should accept POST and keep XML suffix URLs', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910006,
+      bangumiId: '910006',
+      animeTitle: '别名入口番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 46001, url: 'https://v.qq.com/x/cover/fongmi-alias/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: anime.animeTitle, episode: '1' })
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '别名入口番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/46001.xml`
+      }
+    ]);
+    assert.equal(body[0].url.includes('?format='), false);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi POST should parse JSON body even when content-type is missing', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910011,
+      bangumiId: '910011',
+      animeTitle: '无类型头番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 51001, url: 'https://v.qq.com/x/cover/fongmi-no-content-type/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku', {
+      method: 'POST',
+      body: JSON.stringify({ name: anime.animeTitle, episode: '1' })
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '无类型头番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/51001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi nested danmaku path should collapse to alias handler', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910007,
+      bangumiId: '910007',
+      animeTitle: '嵌套入口番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 47001, url: 'https://v.qq.com/x/cover/fongmi-nested/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku/api/v2/fongmi/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=1', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '嵌套入口番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/47001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi title cleanup should retry noisy media names without losing exact special titles', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910008,
+      bangumiId: '910008',
+      animeTitle: '清洗番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 48001, url: 'https://v.qq.com/x/cover/fongmi-clean/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent('清洗番剧.2024.1080p.WEB-DL') + '&episode=1', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '清洗番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/48001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi episode scoring should prioritize noisy episode text like 02x', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910009,
+      bangumiId: '910009',
+      animeTitle: '集数评分番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 3,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 49001, url: 'https://v.qq.com/x/cover/fongmi-score/ep1.html', title: '【qq】 第1集' },
+        { id: 49002, url: 'https://v.qq.com/x/cover/fongmi-score/ep2.html', title: '【qq】 第2集' },
+        { id: 49003, url: 'https://v.qq.com/x/cover/fongmi-score/ep3.html', title: '【qq】 第3集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=02x', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body[0]?.name, '集数评分番剧 【qq】 第2集');
+    assert.equal(body[0]?.url, `${urlPrefix}/token123/api/v2/comment/49002.xml`);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi candidate list should be capped to 12 items', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910010,
+      bangumiId: '910010',
+      animeTitle: '候选限制番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 15,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: Array.from({ length: 15 }, (_, index) => ({
+        id: 50001 + index,
+        url: `https://v.qq.com/x/cover/fongmi-limit/ep${index + 1}.html`,
+        title: `【qq】 第${index + 1}集`
+      }))
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(anime.animeTitle), {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body.length, 12);
+    assert.equal(body[0].url, `${urlPrefix}/token123/api/v2/comment/50001.xml`);
+    assert.equal(body[11].url, `${urlPrefix}/token123/api/v2/comment/50012.xml`);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi standard entry should prefer configured public base URL for returned comment URLs', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910003,
+      bangumiId: '910003',
+      animeTitle: '公网配置番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 43001, url: 'https://v.qq.com/x/cover/fongmi-public/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/api/v2/fongmi/danmaku', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-host': 'spoofed.example',
+        'x-forwarded-proto': 'http'
+      },
+      body: JSON.stringify({ title: anime.animeTitle, ep: 'S01E01' })
+    });
+    const res = await handleRequest(req, {
+      TOKEN: 'token123',
+      RATE_LIMIT_MAX_REQUESTS: '0',
+      USE_BANGUMI_DATA: 'false',
+      FONGMI_PUBLIC_BASE_URL: 'https://danmu.example.com/base/'
+    }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '公网配置番剧 【qq】 第1集',
+        url: 'https://danmu.example.com/base/token123/api/v2/comment/43001.xml'
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi standard entry should preserve special characters in title search', async () => {
+  resetFongmiState();
+
+  try {
+    const correctAnime = {
+      animeId: 910004,
+      bangumiId: '910004',
+      animeTitle: 'A&B番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 44001, url: 'https://v.qq.com/x/cover/fongmi-special/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    const wrongAnime = {
+      ...correctAnime,
+      animeId: 910005,
+      bangumiId: '910005',
+      animeTitle: 'A',
+      links: [
+        { id: 45001, url: 'https://v.qq.com/x/cover/fongmi-wrong/ep1.html', title: '【qq】 错误结果' }
+      ]
+    };
+    cacheFongmiAnime(correctAnime);
+    cacheFongmiAnime(wrongAnime);
+
+    const req = new MockRequest(urlPrefix + '/token123/api/v2/fongmi/danmaku?name=' + encodeURIComponent(correctAnime.animeTitle) + '&episode=1', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: 'A&B番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/44001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('unauthorized Fongmi requests should not be stored in readable request records', async () => {
+  resetFongmiState();
+
+  try {
+    const env = { TOKEN: 'user-token', ADMIN_TOKEN: 'admin-token', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' };
+    const badReq = new MockRequest(urlPrefix + '/bad-token/api/v2/fongmi/danmaku', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: '不应记录', episode: '1' })
+    });
+
+    const badRes = await handleRequest(badReq, env, 'test', '127.0.0.1');
+    const badBody = await parseResponse(badRes);
+
+    assert.equal(badRes.status, 401);
+    assert.equal(badBody.errorMessage, 'Unauthorized');
+    assert.equal(Globals.reqRecords.length, 0);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi XML comment suffix should force XML while query format can override it', async () => {
+  resetFongmiState();
+
+  const originalTencentGetComments = TencentSource.prototype.getComments;
+  TencentSource.prototype.getComments = async function(url, plat, segmentFlag) {
+    assert.equal(url, 'https://v.qq.com/x/cover/fongmi-xml/ep1.html');
+    assert.equal(plat, 'qq');
+    assert.equal(segmentFlag, false);
+    return [
+      { p: '1.00,1,16777215,[qq]', m: 'XML弹幕' }
+    ];
+  };
+
+  try {
+    const episode = addEpisode('https://v.qq.com/x/cover/fongmi-xml/ep1.html', '【qq】 Fongmi XML测试');
+    const xmlReq = new MockRequest(`${urlPrefix}/token123/api/v2/comment/${episode.id}.xml`, { method: 'GET' });
+    const xmlRes = await handleRequest(xmlReq, { TOKEN: 'token123', DANMU_OUTPUT_FORMAT: 'json', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const xmlText = await xmlRes.text();
+
+    assert.equal(xmlRes.status, 200);
+    assert.match(xmlRes.headers.get('content-type'), /xml/i);
+    assert.match(xmlText, /^<\?xml/);
+    assert.match(xmlText, /<d p="1\.0,1,25,16777215,/);
+    assert.match(xmlText, />XML弹幕<\/d>/);
+
+    Globals.commentCache = new Map();
+    const jsonReq = new MockRequest(`${urlPrefix}/token123/api/v2/comment/${episode.id}.xml?format=json`, { method: 'GET' });
+    const jsonRes = await handleRequest(jsonReq, { TOKEN: 'token123', DANMU_OUTPUT_FORMAT: 'xml', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const jsonBody = await parseResponse(jsonRes);
+
+    assert.equal(jsonRes.status, 200);
+    assert.match(jsonRes.headers.get('content-type'), /json/i);
+    assert.equal(jsonBody.count, 1);
+    assert.equal(jsonBody.comments[0].m, 'XML弹幕');
+  } finally {
+    TencentSource.prototype.getComments = originalTencentGetComments;
+    resetFongmiState();
+  }
+});
+
+test('logs and request records should be readable by user token but mutation APIs remain admin-only', async () => {
+  resetFongmiState();
+  try {
+    Globals.logBuffer = [
+      { timestamp: '2026-05-01T03:30:32.000Z', level: 'Info', message: 'client ip: 192.168.5.183' }
+    ];
+    Globals.reqRecords = [
+      {
+        interface: '/api/v2/comment/10002.xml',
+        params: null,
+        timestamp: '2026-05-01T03:30:32.000Z',
+        method: 'GET',
+        clientIp: '192.168.5.183'
+      }
+    ];
+    Globals.todayReqNum = 1;
+
+    const env = { TOKEN: 'user-token', ADMIN_TOKEN: 'admin-token', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' };
+
+    const logsReq = new MockRequest(urlPrefix + '/user-token/api/logs', { method: 'GET' });
+    const logsRes = await handleRequest(logsReq, env, 'test', '127.0.0.1');
+    const logsText = await logsRes.text();
+    assert.equal(logsRes.status, 200);
+    assert.match(logsText, /client ip: \*\*\*\.\*\*\*\.\*\.\*\*\*/);
+    assert.doesNotMatch(logsText, /192\.168\.5\.183/);
+
+    const recordsReq = new MockRequest(urlPrefix + '/user-token/api/reqrecords', { method: 'GET' });
+    const recordsRes = await handleRequest(recordsReq, env, 'test', '127.0.0.1');
+    const recordsBody = await parseResponse(recordsRes);
+    assert.equal(recordsRes.status, 200);
+    assert.equal(recordsBody.records[0].clientIp, '***.***.*.***');
+
+    const clearReq = new MockRequest(urlPrefix + '/user-token/api/cache/clear', { method: 'POST' });
+    const clearRes = await handleRequest(clearReq, env, 'test', '127.0.0.1');
+    const clearBody = await parseResponse(clearRes);
+    assert.equal(clearRes.status, 403);
+    assert.equal(clearBody.errorMessage, 'Admin token required');
+  } finally {
+    resetFongmiState();
+  }
 });
 
 test('worker.js API endpoints', async (t) => {

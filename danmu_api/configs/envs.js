@@ -561,6 +561,7 @@ export class Envs {
       // API配置
       'TOKEN': { category: 'api', type: 'text', description: 'API访问令牌' },
       'ADMIN_TOKEN': { category: 'api', type: 'text', description: '系统管理访问令牌' },
+      'FONGMI_PUBLIC_BASE_URL': { category: 'api', type: 'text', description: 'Fongmi 返回弹幕 URL 时使用的公开基础地址，可填写 https://你的域名；留空则自动根据请求 Host/反代头推断' },
       'RATE_LIMIT_MAX_REQUESTS': { category: 'api', type: 'number', description: '限流配置：1分钟内最大请求次数，0表示不限流，默认3', min: 0, max: 50 },
 
       // 源配置
@@ -642,6 +643,7 @@ export class Envs {
       allowedPlatforms: this.ALLOWED_PLATFORMS,
       token: this.get('TOKEN', '87654321', 'string', true), // token，默认为87654321
       adminToken: this.get('ADMIN_TOKEN', '', 'string', true), // admin token，用于系统管理访问控制
+      fongmiPublicBaseUrl: this.get('FONGMI_PUBLIC_BASE_URL', '', 'string'), // Fongmi 返回弹幕 URL 时使用的公开基础地址
       sourceOrderArr: this.resolveSourceOrder(), // 源排序
       otherServer: this.get('OTHER_SERVER', 'https://api.danmu.icu', 'string'), // 第三方弹幕服务器
       customSourceApiUrl: this.get('CUSTOM_SOURCE_API_URL', '', 'string', true), // 自定义弹幕源API地址，默认为空，配置后还需在SOURCE_ORDER添加custom源
