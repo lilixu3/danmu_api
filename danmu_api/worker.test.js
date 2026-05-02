@@ -1086,6 +1086,184 @@ test('Fongmi XML comment suffix should force XML while query format can override
   }
 });
 
+
+test('Fongmi date-like episode should not be prefiltered as a huge numeric episode', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910012,
+      bangumiId: '910012',
+      animeTitle: '日期综艺',
+      type: 'tvseries',
+      typeDescription: '综艺',
+      imageUrl: '',
+      startDate: '2026-01-01T00:00:00.000Z',
+      episodeCount: 2,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 52001, url: 'https://v.qq.com/x/cover/fongmi-date/ep1.html', title: '【qq】 2026/4/30' },
+        { id: 52002, url: 'https://v.qq.com/x/cover/fongmi-date/ep2.html', title: '【qq】 2026/5/1' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=2026-05-01', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.equal(body[0]?.name, '日期综艺 【qq】 2026/5/1');
+    assert.equal(body[0]?.url, `${urlPrefix}/token123/api/v2/comment/52002.xml`);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi title cleanup should not let cleaned year title beat exact raw title', async () => {
+  resetFongmiState();
+
+  try {
+    const rawAnime = {
+      animeId: 910013,
+      bangumiId: '910013',
+      animeTitle: '1999番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 53001, url: 'https://v.qq.com/x/cover/fongmi-year/raw.html', title: '【qq】 正确结果' }
+      ]
+    };
+    const cleanedAnime = {
+      ...rawAnime,
+      animeId: 910014,
+      bangumiId: '910014',
+      animeTitle: '番剧',
+      links: [
+        { id: 53002, url: 'https://v.qq.com/x/cover/fongmi-year/cleaned.html', title: '【qq】 错误结果' }
+      ]
+    };
+    cacheFongmiAnime(cleanedAnime);
+    cacheFongmiAnime(rawAnime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(rawAnime.animeTitle) + '&episode=1', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '1999番剧 【qq】 正确结果',
+        url: `${urlPrefix}/token123/api/v2/comment/53001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi forwarded headers should be validated before building public comment URL', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910015,
+      bangumiId: '910015',
+      animeTitle: '反代校验番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 54001, url: 'https://v.qq.com/x/cover/fongmi-forwarded/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=1', {
+      method: 'GET',
+      headers: {
+        'x-forwarded-proto': 'javascript',
+        'x-forwarded-host': 'bad.example/path'
+      }
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '反代校验番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/54001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
+test('Fongmi candidate list should drop duplicate episode titles before limiting', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910016,
+      bangumiId: '910016',
+      animeTitle: '去重番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 3,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 55001, url: 'https://v.qq.com/x/cover/fongmi-dedupe/ep1-a.html', title: '【qq】 第1集' },
+        { id: 55002, url: 'https://v.qq.com/x/cover/fongmi-dedupe/ep1-b.html', title: '【qq】 第1集' },
+        { id: 55003, url: 'https://v.qq.com/x/cover/fongmi-dedupe/ep2.html', title: '【qq】 第2集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/token123/danmaku?name=' + encodeURIComponent(anime.animeTitle), {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: 'token123', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '去重番剧 【qq】 第1集',
+        url: `${urlPrefix}/token123/api/v2/comment/55001.xml`
+      },
+      {
+        name: '去重番剧 【qq】 第2集',
+        url: `${urlPrefix}/token123/api/v2/comment/55003.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
 test('logs and request records should be readable by user token but mutation APIs remain admin-only', async () => {
   resetFongmiState();
   try {

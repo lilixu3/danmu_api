@@ -17,7 +17,7 @@ const FONGMI_EPISODE_CLEAN_RULES = [
   [/\b(?:2160p|1080p|720p|4k|web-?dl|web-?rip|blu-?ray|hdr|dv|x265|x264|h\.?265|h\.?264|60fps|aac|flac|dts)\b/gi, ' '],
   [/[_~.-]+/g, ' ']
 ];
-const FONGMI_TITLE_NOISE_PATTERN = /[\(\[（【]\s*(?:19|20)\d{2}\s*[\)\]）】]|\b(?:19|20)\d{2}\b|\b(?:2160p|1080p|720p|4k|web-?dl|web-?rip|blu-?ray|hdr|dv|x265|x264|h\.?265|h\.?264|60fps)\b/i;
+const FONGMI_MEDIA_NOISE_PATTERN = /\b(?:2160p|1080p|720p|4k|web-?dl|web-?rip|blu-?ray|hdr|dv|x265|x264|h\.?265|h\.?264|60fps)\b/i;
 
 function getHeader(headers, name) {
   if (!headers) return '';
@@ -40,19 +40,42 @@ function isLocalHostname(hostname) {
 
 function getSchemeFromHeaders(req, url) {
   const forwardedProto = firstHeaderValue(getHeader(req.headers, 'x-forwarded-proto'));
-  if (forwardedProto) return forwardedProto;
+  if (forwardedProto && /^(https?)$/i.test(forwardedProto)) {
+    return forwardedProto.toLowerCase();
+  }
 
   const cfVisitor = getHeader(req.headers, 'cf-visitor');
   if (cfVisitor) {
     try {
       const visitor = JSON.parse(cfVisitor);
-      if (visitor?.scheme) return visitor.scheme;
+      if (visitor?.scheme && /^(https?)$/i.test(visitor.scheme)) {
+        return visitor.scheme.toLowerCase();
+      }
     } catch (_) {
       // ignore malformed cf-visitor
     }
   }
 
   return url.protocol.replace(':', '') || 'https';
+}
+
+function isValidForwardedHost(host) {
+  const value = String(host || '').trim();
+  if (!value || /[\s\x00-\x1F\x7F]|:\/\/|[/\\]/.test(value) || value.endsWith(':')) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(`http://${value}`);
+    return Boolean(parsed.hostname) &&
+      !parsed.username &&
+      !parsed.password &&
+      parsed.pathname === '/' &&
+      !parsed.search &&
+      !parsed.hash;
+  } catch (_) {
+    return false;
+  }
 }
 
 function getConfiguredPublicBaseUrl() {
@@ -82,7 +105,7 @@ function getPublicOrigin(url, req) {
     firstHeaderValue(getHeader(req.headers, 'x-original-host')) ||
     firstHeaderValue(getHeader(req.headers, 'host'));
 
-  if (forwardedHost) {
+  if (isValidForwardedHost(forwardedHost)) {
     const scheme = getSchemeFromHeaders(req, url);
     return `${scheme}://${forwardedHost}`;
   }
@@ -157,15 +180,16 @@ function buildFongmiSearchKeywords(name) {
   const cleanedName = normalizeFongmiTitleByRegex(rawName);
   const bracketBaseName = collapseSearchWhitespace(rawName.replace(/[\(\[（【].*$/, ''));
   const cleanedChanged = cleanedName && normalizeComparableText(cleanedName) !== normalizeComparableText(rawName);
-  const hasKnownNoise = FONGMI_TITLE_NOISE_PATTERN.test(rawName);
+  const hasMediaNoise = FONGMI_MEDIA_NOISE_PATTERN.test(rawName);
 
-  // 对明显带年份/清晰度/编码后缀的媒体文件名，优先用清洗后的标题，避免先触发一轮无效全源搜索。
+  // 对明显带清晰度/编码后缀的媒体文件名，优先用清洗后的标题，避免先触发一轮无效全源搜索。
+  // 只包含年份时仍先搜原始标题，避免把“1999番剧”误清洗成“番剧”并提前命中错误结果。
   // 其它只是包含点号/横线的标题仍保留原始标题优先，降低误清洗风险。
-  if (cleanedChanged && hasKnownNoise) {
+  if (cleanedChanged && hasMediaNoise) {
     pushKeyword(cleanedName);
   }
   pushKeyword(rawName);
-  if (cleanedChanged && !hasKnownNoise) {
+  if (cleanedChanged && !hasMediaNoise) {
     pushKeyword(cleanedName);
   }
   if (bracketBaseName && normalizeComparableText(bracketBaseName) !== normalizeComparableText(rawName)) {
@@ -227,13 +251,29 @@ function parseChineseEpisodeNumber(text) {
 }
 
 function extractDateDigits(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  return digits.length >= 8 ? digits.slice(0, 8) : '';
+  const text = String(value || '');
+  const dateMatch = text.match(/((?:19|20)\d{2})(?:\s*[-./年]\s*|\s+)(\d{1,2})(?:\s*[-./月]\s*|\s+)(\d{1,2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    return `${year}${month.padStart(2, '0')}${day.padStart(2, '0')}`;
+  }
+
+  const trimmed = text.trim();
+  if (/^(?:19|20)\d{6}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return '';
+}
+
+function isDateLikeEpisode(value) {
+  return Boolean(extractDateDigits(value));
 }
 
 function extractFongmiEpisodeNumber(episode) {
   const normalizedEpisode = normalizeFongmiEpisodeByRegex(episode);
   if (!normalizedEpisode) return null;
+  if (isDateLikeEpisode(normalizedEpisode)) return null;
 
   const patterns = [
     /[Ss]\d{1,2}\s*[Ee]0*(\d{1,4})/,
@@ -261,6 +301,10 @@ function normalizeEpisode(episode) {
 
   if (/^(movie|剧场版|劇場版|电影|電影)$/i.test(text)) {
     return 'movie';
+  }
+
+  if (isDateLikeEpisode(text)) {
+    return '';
   }
 
   const episodeNumber = extractFongmiEpisodeNumber(text);

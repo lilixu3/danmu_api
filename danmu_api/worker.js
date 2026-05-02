@@ -349,7 +349,7 @@ async function handleRequest(req, env, deployPlatform, clientIp, ctx) {
 
   // 兼容部分 Fongmi/壳客户端把短入口再次拼上完整接口路径：
   // /TOKEN/danmaku/api/v2/fongmi/danmaku -> /danmaku
-  if (path.endsWith("/danmaku/api/v2/fongmi/danmaku")) {
+  if (path === "/danmaku/api/v2/fongmi/danmaku") {
     log("info", `[Path Fix] Collapsed nested danmaku path: "${path}" -> "/danmaku"`);
     path = "/danmaku";
   }
