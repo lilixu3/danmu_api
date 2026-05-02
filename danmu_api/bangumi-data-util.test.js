@@ -80,6 +80,33 @@ test('bangumi-data util remains safe for neutral bundles while buggy node-only i
   }
 });
 
+
+test('forward widget bundle stubs bangumi-data util instead of embedding node cache code', () => {
+  const build = spawnSync(process.execPath, ['build-forward-widget.js'], {
+    encoding: 'utf8',
+    cwd: repoRoot,
+  });
+
+  assert.equal(
+    build.status,
+    0,
+    `forward widget build failed
+STDOUT:
+${build.stdout || '(empty)'}
+STDERR:
+${build.stderr || '(empty)'}`
+  );
+
+  const bundlePath = path.join(repoRoot, 'dist', 'logvar-danmu.js');
+  const bundle = fs.readFileSync(bundlePath, 'utf8');
+
+  assert.doesNotMatch(bundle, /bangumi-data-util\.js/);
+  assert.doesNotMatch(bundle, /node:(?:fs|path|stream\/promises)/);
+  assert.doesNotMatch(bundle, /downloadAndCache/);
+  assert.doesNotMatch(bundle, /localCachePath/);
+  assert.match(bundle, /function searchBangumiData\w*\(\) \{\n  return \[\];\n\}/);
+});
+
 test('bangumi-data util should persist node cache to disk and reload it without refetching', () => {
   const tempDir = makeTempDir('bangumi-node-cache-');
   const childScriptPath = path.join(tempDir, 'run-bangumi-cache-test.mjs');

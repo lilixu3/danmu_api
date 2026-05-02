@@ -158,6 +158,7 @@ function resetFongmiState() {
   Globals.todayReqNum = 0;
   Globals.logBuffer = [];
   Globals.envs.rateLimitMaxRequests = 0;
+  Globals.envs.useBangumiData = false;
 }
 
 function cacheFongmiAnime(anime) {

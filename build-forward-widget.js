@@ -31,6 +31,7 @@ const uiModules = [
   './ui/js/requestrecords.js',
   './ui/js/systemsettings.js',
   './utils/local-redis-util.js',
+  './utils/bangumi-data-util.js',
   'danmu_api/ui/template.js',
   'danmu_api/ui/css/tokens.css.js',
   'danmu_api/ui/css/foundation.css.js',
@@ -50,7 +51,8 @@ const uiModules = [
   'danmu_api/ui/js/pushdanmu.js',
   'danmu_api/ui/js/requestrecords.js',
   'danmu_api/ui/js/systemsettings.js',
-  'danmu_api/utils/local-redis-util.js'
+  'danmu_api/utils/local-redis-util.js',
+  'danmu_api/utils/bangumi-data-util.js'
 ];
 
 const entryPath = path.resolve(__dirname, 'forward/forward-widget.js');
@@ -69,17 +71,38 @@ try {
     target: 'es2020',
     outfile: distPath,
     format: 'esm',
-    external: ['redis', 'node-fetch', 'pako'],
+    external: ['redis', 'node-fetch', 'pako', 'fs', 'path', 'stream/promises', 'node:fs', 'node:path', 'node:stream/promises'],
     plugins: [
       // 插件：排除UI相关模块
       {
         name: 'exclude-ui-modules',
         setup(build) {
-          build.onResolve({ filter: /.*ui.*\.(css|js)$|.*template\.js$|.*local-redis-util\.js$/ }, (args) => {
+          build.onResolve({ filter: /.*ui.*\.(css|js)$|.*template\.js$|.*local-redis-util\.js$|.*bangumi-data-util\.js$/ }, (args) => {
+            if (args.path.includes('bangumi-data-util.js')) {
+              return {
+                path: args.path,
+                namespace: 'bangumi-data-forward-stub',
+              };
+            }
+            if (args.path.includes('local-redis-util.js')) {
+              return { path: args.path, external: true };
+            }
             if (uiModules.some(uiModule => args.path.includes(uiModule.replace('./', '').replace('../', '')))) {
               return { path: args.path, external: true };
             }
           });
+
+          build.onLoad({ filter: /.*/, namespace: 'bangumi-data-forward-stub' }, () => ({
+            contents: [
+              'export function searchBangumiData() { return []; }',
+              'export async function initBangumiData() { return false; }',
+              'export function clearBangumiDataCache() {}',
+              'export function getBangumiDataStats() { return { initialized: false, items: 0, sources: [], dataUrl: null, updatedAt: 0, error: null }; }',
+              'export function getBangumiDataConfig() { return { dataUrl: null, localCachePath: null, staleMs: 0, timeoutMs: 0 }; }',
+              ''
+            ].join('\n'),
+            loader: 'js'
+          }));
         }
       },
       // 插件：移除导出语句（仅对输出文件进行处理）
@@ -104,6 +127,9 @@ try {
               outputContent = outputContent.replace(/^import\s*\{[^}]*\}\s*from\s*["'][^"']*local-redis-util\.js["'];?\s*$/gm, '');
               outputContent = outputContent.replace(/^\s*await\s+updateLocalRedisCaches\w*\(\);\s*$/gm, '');
               outputContent = outputContent.replace(/^\s*setLocalRedisKey\w*\([^;\n]*\);\s*$/gm, '');
+
+              // Forward 插件运行时不加载 Bangumi Data 本地缓存工具，避免引入 Node 专用能力。
+              outputContent = outputContent.replace(/.*bangumi-data-forward-stub.*\n?/g, '');
 
               fs.writeFileSync(distPath, outputContent);
             }

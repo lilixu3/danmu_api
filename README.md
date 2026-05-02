@@ -371,7 +371,7 @@ docker run -d \
   > 注意：TOKEN为默认87654321的情况下，可不带{TOKEN}请求，如`https://{account}-{space}.hf.space/api/v2/search/anime?keyword=子夜归`
 
 ## API食用指南
-支持 forward/senplayer/hills/小幻/yamby/eplayerx/afusekt/uz影视/dscloud/lenna/danmaku-anywhere/omnibox/ChaiChaiEmbyTV/moontv/capyplayer/kerkerker/LinPlayer/peekpili 等支持弹幕API的播放器。
+支持 forward/senplayer/hills/小幻/yamby/eplayerx/afusekt/uz影视/dscloud/lenna/danmaku-anywhere/omnibox/ChaiChaiEmbyTV/moontv/capyplayer/kerkerker/LinPlayer/peekpili/Fongmi(FengMi影视) 等支持弹幕API的播放器。
 
 配合 dd-danmaku 扩展新增对 Emby Web 端弹幕的支持，具体使用方法参考 [PR #98](https://github.com/huangxd-/danmu_api/pull/98) 。
 
@@ -531,6 +531,10 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
   获取该剧集的时长信息，便于播放器校准时间轴。
 - `POST /api/v2/segmentcomment?format=json`
   按分片信息拉取单个分片弹幕，适合需要分片加载的客户端。
+- `GET|POST /api/v2/fongmi/danmaku?name={name}&episode={episode}`
+  Fongmi / FengMi影视原生弹幕候选接口，返回可直接加载的 XML 弹幕地址。
+- `GET|POST /danmaku?name={name}&episode={episode}`
+  Fongmi 别名短路径；推荐播放器直接填写 `https://你的域名/TOKEN`，更多说明见 [Fongmi 弹幕适配说明](./docs/fongmi-danmaku-adapter.md)。
 
 ### UI / 系统接口
 
@@ -579,6 +583,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `RATE_LIMIT_MAX_REQUESTS` | 同一 IP 每分钟最大请求数，`0` 表示不限流 |
 | `IP_BLACKLIST` | IP 黑名单，支持精确值、CIDR、正则 |
 | `LOG_LEVEL` | 日志级别：`error` / `warn` / `info` / `debug`，默认 `info` |
+| `FONGMI_PUBLIC_BASE_URL` | Fongmi 返回弹幕 URL 时使用的公开基础地址，留空自动按请求 Host / 反代头推断 |
 
 ### 源、代理与平台接入
 
