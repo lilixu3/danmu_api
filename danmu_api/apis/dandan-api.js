@@ -39,6 +39,7 @@ import MaiduiduiSource from "../sources/maiduidui.js";
 import AcfunSource from "../sources/acfun.js";
 import AiyifanSource from "../sources/aiyifan.js";
 import AnimekoSource from "../sources/animeko.js";
+import EzdmwSource from "../sources/ezdmw.js";
 import OtherSource from "../sources/other.js";
 import { Anime, AnimeMatch, Episodes, Bangumi } from "../models/dandan-model.js";
 
@@ -66,6 +67,7 @@ const maiduiduiSource = new MaiduiduiSource();
 const acfunSource = new AcfunSource();
 const aiyifanSource = new AiyifanSource();
 const animekoSource = new AnimekoSource();
+const ezdmwSource = new EzdmwSource();
 const otherSource = new OtherSource();
 const doubanSource = new DoubanSource(tencentSource, iqiyiSource, youkuSource, bilibiliSource, miguSource);
 const tmdbSource = new TmdbSource(doubanSource);
@@ -252,6 +254,7 @@ function resolveSourceInstance(sourceName) {
   if (sourceName === 'acfun') return acfunSource;
   if (sourceName === 'aiyifan') return aiyifanSource;
   if (sourceName === 'animeko') return animekoSource;
+  if (sourceName === 'ezdmw') return ezdmwSource;
   if (sourceName === 'custom') return customSource;
   if (sourceName === 'other_server') return otherSource;
   return null;
@@ -756,6 +759,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       if (source === "acfun") return acfunSource.search(queryTitle);
       if (source === "aiyifan") return aiyifanSource.search(queryTitle);
       if (source === "animeko") return animekoSource.search(queryTitle);
+      if (source === "ezdmw") return ezdmwSource.search(queryTitle);
     });
 
     // 执行所有请求并等待结果（单源失败不影响其它源）
@@ -782,7 +786,7 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
       hanjutv: animesHanjutv, bahamut: animesBahamut, dandan: animesDandan, custom: animesCustom,
       tencent: animesTencent, youku: animesYouku, iqiyi: animesIqiyi, imgo: animesImgo, bilibili: animesBilibili,
       migu: animesMigu, acfun: animesAcfun, sohu: animesSohu, leshi: animesLeshi, xigua: animesXigua, maiduidui: animesMaiduidui,
-      aiyifan: animesAiyifan, animeko: animesAnimeko
+      aiyifan: animesAiyifan, animeko: animesAnimeko, ezdmw: animesEzdmw
     } = resultData;
 
     // 按顺序处理每个来源的结果（单源处理失败不影响其它源）
@@ -860,6 +864,9 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
         } else if (key === 'animeko') {
           // 等待处理Animeko来源
           await animekoSource.handleAnimes(animesAnimeko, queryTitle, curAnimes, requestAnimeDetailsMap);
+        } else if (key === 'ezdmw') {
+          // 等待E站弹幕网来源
+          await ezdmwSource.handleAnimes(animesEzdmw, queryTitle, curAnimes, requestAnimeDetailsMap);
         }
       } catch (sourceError) {
         const reason = sourceError?.message || String(sourceError || "unknown error");
@@ -2373,6 +2380,8 @@ export async function getComment(path, queryFormat, segmentFlag, clientIp = null
           fetchedDanmus = await acfunSource.getComments(url, plat, segmentFlag);
         } else if (plat === "animeko") {
           fetchedDanmus = await animekoSource.getComments(url, plat, segmentFlag);
+        } else if (plat === "ezdmw") {
+          fetchedDanmus = await ezdmwSource.getComments(url, plat, segmentFlag);
         }
       }
 
@@ -2700,6 +2709,8 @@ export async function getSegmentComment(segment, queryFormat) {
       danmus = await dandanSource.getSegmentComments(segment);
 	  } else if (platform === "animeko") {
       danmus = await animekoSource.getSegmentComments(segment);
+    } else if (platform === "ezdmw") {
+      danmus = await ezdmwSource.getSegmentComments(segment);
     } else if (platform === "custom") {
       danmus = await customSource.getSegmentComments(segment);
     } else if (platform === "other_server") {

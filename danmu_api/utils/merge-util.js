@@ -26,7 +26,7 @@ const ENABLE_VERBOSE_MERGE_LOG = false;
 const KNOWN_MERGE_SOURCE_PREFIXES = new Set([
     '360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'bilibili1',
     'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui',
-    'aiyifan', 'animeko', 'custom', 'other_server'
+    'aiyifan', 'animeko', 'ezdmw', 'custom', 'other_server'
 ]);
 
 /**
