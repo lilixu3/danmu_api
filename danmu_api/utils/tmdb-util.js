@@ -214,7 +214,7 @@ export async function getTmdbJaOriginalTitle(title, signal = null, sourceLabel =
 
   // 优先尝试使用本地 Bangumi Data 获取原名与翻译，零延迟且无需 API Key
   if (globals.useBangumiData) {
-    const localMatches = searchBangumiData(cleanTitle, ['tmdb', 'bangumi', 'anidb']);
+    const localMatches = await searchBangumiData(cleanTitle, ['tmdb', 'bangumi', 'anidb']);
     if (localMatches && localMatches.length > 0) {
       const m = localMatches[0]; // 取第一个最佳匹配
       const displayTitle = m.titles.find(t => t && t.includes(cleanTitle)) || m.titles[1] || m.title;
@@ -591,7 +591,7 @@ export async function getTMDBChineseTitle(title, season = null, episode = null) 
 // 优先尝试本地 Bangumi Data 转换
   if (globals.useBangumiData) {
     const cleanTitle = cleanSearchQuery(title);
-    const localMatches = searchBangumiData(cleanTitle, ['tmdb', 'bangumi', 'anidb']);
+    const localMatches = await searchBangumiData(cleanTitle, ['tmdb', 'bangumi', 'anidb']);
     if (localMatches && localMatches.length > 0) {
       const m = localMatches[0];
       // 找一个不全是外文的翻译作为中文名
@@ -684,7 +684,19 @@ export function cleanSearchQuery(title) {
 export function smartTitleReplace(animes, cnAlias) {
   if (!animes || animes.length === 0 || !cnAlias) return;
 
-  log("info", `[TMDB] 启动智能替换，目标别名: "${cnAlias}"，待处理条目: ${animes.length}`);
+  let validCount = 0;
+  // 遍历列表执行属性兜底赋值，并统计实际需要执行标题替换的有效条目数
+  for (const anime of animes) {
+    anime._displayTitle = anime._displayTitle || anime.title || "";
+    if (!(anime.isLocalPriority || anime._displayTitle.includes(cnAlias))) {
+      validCount++;
+    }
+  }
+
+  // 若有效替换条目数为0，说明均已处理或无需处理，直接静默退出
+  if (validCount === 0) return;
+
+  log("info", `[TMDB] 启动智能替换，目标别名: "${cnAlias}"，待处理条目: ${validCount}`);
 
   // 计算所有标题主体部分的 LCP (最长公共前缀)
   const baseTitles = animes.map(a => {
@@ -708,11 +720,8 @@ export function smartTitleReplace(animes, cnAlias) {
   for (const anime of animes) {
     const originalTitle = anime.title || "";
 
-    // 防止本地 Bangumi Data 标题被替换与防止重复标题
-    if (anime.isLocalPriority || originalTitle.includes(cnAlias)) {
-      anime._displayTitle = anime._displayTitle || originalTitle;
-      continue;
-    }
+    // 过滤已被本地数据处理或已含目标别名的条目
+    if (anime.isLocalPriority || originalTitle.includes(cnAlias)) continue;
 
     // 策略 A: LCP 模式
     if (lcp && lcp.length > 1 && originalTitle.startsWith(lcp)) {
