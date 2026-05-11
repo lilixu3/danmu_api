@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Globals } from './configs/globals.js';
 import { searchAnime, getBangumi } from './apis/dandan-api.js';
 import { handleClearCache } from './apis/system-api.js';
+import { handleRequest } from './worker.js';
 
 function resetRuntime() {
   Globals.init({
@@ -118,6 +119,77 @@ async function prepareLazyVodDescriptor(vodId = 940002) {
     vodMock.restore();
   }
 }
+
+test('plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters', async () => {
+  resetRuntime();
+  const vodMock = mockVodFetch([
+    {
+      vod_id: 940010,
+      vod_name: '普通接口懒搜索番剧',
+      vod_year: '2026',
+      type_name: 'TV动画',
+      vod_pic: '',
+      vod_play_from: 'qq',
+      vod_play_url: '第1集$https://vod.example/plain/ep1#第2集$https://vod.example/plain/ep2',
+    },
+  ]);
+
+  try {
+    const response = await handleRequest(
+      new Request('https://example.test/api/v2/search/anime?keyword=%E6%99%AE%E9%80%9A%E6%8E%A5%E5%8F%A3%E6%87%92%E6%90%9C%E7%B4%A2%E7%95%AA%E5%89%A7'),
+      {
+        LOG_LEVEL: 'error',
+        SOURCE_ORDER: 'vod',
+        VOD_SERVERS: 'MockVod@https://mock-vod.example',
+        VOD_RETURN_MODE: 'all',
+        VOD_REQUEST_TIMEOUT: '1000',
+        MERGE_SOURCE_PAIRS: '',
+        MAX_ANIMES: '1000',
+        SEARCH_CACHE_MINUTES: '30',
+        RATE_LIMIT_MAX_REQUESTS: '0',
+        USE_BANGUMI_DATA: 'false',
+      },
+      'test',
+      '127.0.0.1'
+    );
+    const body = await response.json();
+
+    assert.equal(body.success, true);
+    assert.equal(body.animes.length, 1);
+    assert.equal(body.animes[0].bangumiId, '940010');
+    assert.equal(body.animes[0].episodeCount, 2);
+    assert.equal('links' in body.animes[0], false);
+    assert.equal(Globals.animes.length, 0, 'plain public search route must not eagerly add full VOD anime');
+    assert.equal(Globals.episodeIds.length, 0, 'plain public search route must not allocate comment ids during search');
+    assert.equal(Globals.searchCache.has('lazy:普通接口懒搜索番剧'), true, 'plain public search route should populate the lazy search cache');
+    assert.equal(Globals.searchCache.has('普通接口懒搜索番剧'), false, 'plain public search route should not populate the eager search cache');
+
+    const bangumiResponse = await handleRequest(
+      new Request('https://example.test/api/v2/bangumi/940010'),
+      {
+        LOG_LEVEL: 'error',
+        SOURCE_ORDER: 'vod',
+        VOD_SERVERS: 'MockVod@https://mock-vod.example',
+        VOD_RETURN_MODE: 'all',
+        VOD_REQUEST_TIMEOUT: '1000',
+        MERGE_SOURCE_PAIRS: '',
+        MAX_ANIMES: '1000',
+        SEARCH_CACHE_MINUTES: '30',
+        RATE_LIMIT_MAX_REQUESTS: '0',
+        USE_BANGUMI_DATA: 'false',
+      },
+      'test',
+      '127.0.0.1'
+    );
+    const bangumiBody = await bangumiResponse.json();
+    assert.equal(bangumiBody.success, true);
+    assert.equal(bangumiBody.bangumi.episodes.length, 2);
+    assert.equal(bangumiBody.bangumi.episodes[0].episodeTitle, '【qq】 第1集');
+    assert.equal(Globals.episodeIds.length, 2, 'bangumi lookup through the existing endpoint should materialize comment ids');
+  } finally {
+    vodMock.restore();
+  }
+});
 
 test('lazy VOD descriptor should expire with search cache window before materialization', async () => {
   resetRuntime();

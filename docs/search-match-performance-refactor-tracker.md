@@ -294,8 +294,9 @@
   - 测试文件：`danmu_api/lazy-search-materialize.test.js`。
   - TDD 记录：先运行 `node --test danmu_api/lazy-search-materialize.test.js`，因 lazy 模式仍 eager 写入 `Globals.animes` 失败；实现后通过。
 
-- [x] **4.3 新增手动搜索 feature flag**
-  - 默认关闭；只有显式 `{ lazySearch: true }` 或 HTTP `/api/v2/search/anime?lazy=1` 启用。
+- [x] **4.3 新增内部手动搜索模式控制**
+  - HTTP 公共接口仍保持原始 `/api/v2/search/anime?keyword=...`，不要求调用方增加 `lazy` 参数，也不增加环境变量。
+  - worker 对公开手动搜索默认启用 lazy 摘要路径；`searchAnime(..., { lazySearch })` 仅作为内部调用/测试控制。
   - `/match` 与 `/search/episodes` 未传 lazy flag，继续 eager。
 
 - [x] **4.4 将普通 search 分成 summary 和 materialize 两阶段**
@@ -309,7 +310,7 @@
   - materialize 后复用 `addAnime()` 与 `buildBangumiData()`，因此 `/comment/:id` 继续拿真实 URL。
 
 - [x] **4.6 `/match` 暂不默认 lazy，继续 eager 保障正确性**
-  - worker 路由只在 `/search/anime?lazy=1` 启用 lazy；`matchAnime` 内部 search 未传 lazy flag。
+  - worker 路由仅对公开 `/api/v2/search/anime?keyword=...` 默认启用 lazy；`matchAnime` 内部 search 未传 lazy flag。
 
 - [x] **4.7 benchmark 对比多结果手动搜索**
   - 扩展 `scripts/search-match-performance-baseline.mjs`，增加 `manual-search:vod-eager` 与 `manual-search:vod-lazy` 对比项。
@@ -326,8 +327,8 @@
   - 验证：`node --test danmu_api/lazy-search-materialize.test.js danmu_api/worker.test.js` 通过 87/87；worker 路由未给 `/match` 传 lazy flag。
 - [x] `/comment/:id` 不丢真实 URL。
   - 验证：lazy materialize 后 `Globals.episodeIds.length === 2`，说明通过 `addAnime()` 分配真实 episode/comment id。
-- [x] 可通过 flag 回滚。
-  - 验证：默认不启用；仅 `{ lazySearch: true }` 或 `/search/anime?lazy=1` 启用。
+- [x] 无需新增公开接口或环境变量。
+  - 验证：`plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters` 覆盖原 URL；同一测试继续通过原 `/api/v2/bangumi/:id` materialize 出完整 episodes/comment ids。
 - [x] `npm test` 通过。
   - 验证：`npm test` 通过 140/140，0 失败，耗时约 22.7s。
 
@@ -505,6 +506,8 @@
 - [x] TMDB 顺序修复目标回归：`node --test danmu_api/source-options.test.js danmu_api/concurrency-util.test.js` 通过 14/14，0 失败；`git diff --check` 通过。
 - [x] 审查修复后全量回归：`npm test` 通过 157/157，0 失败，耗时约 21.0s。
 - [x] 审查修复后 benchmark：`node scripts/search-match-performance-baseline.mjs` 通过；500 candidates × 12 links 下 lazy search 约 28.117ms、eager search 约 294.414ms、cache-write 约 194.954ms；25 pairs merge 约 541.123ms。
+- [x] 用户反馈后修正公开接口路径：`/api/v2/search/anime?keyword=...` 保持原接口不加参数，worker 默认走 lazy 摘要；新增原 URL 路由回归，覆盖 search 后通过原 `/api/v2/bangumi/:id` materialize。
+- [x] 新鲜验证：`node --test ./danmu_api/lazy-search-materialize.test.js` 通过 4/4；`npm test` 通过 158/158，0 失败；`node scripts/search-match-performance-baseline.mjs --sizes=150,500 --links=72 --skip-merge` 中 500×72 eager 约 1043.344ms、lazy 约 78.581ms。
 
 ---
 
