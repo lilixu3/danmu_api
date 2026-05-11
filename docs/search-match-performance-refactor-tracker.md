@@ -300,14 +300,16 @@
   - `/match` 与 `/search/episodes` 未传 lazy flag，继续 eager。
 
 - [x] **4.4 将普通 search 分成 summary 和 materialize 两阶段**
-  - 当前先落地 VOD 手动搜索 lazy：search 阶段只由原始候选构造摘要与 descriptor，不调用 `addAnime()`，不分配 episode/comment id。
+  - 已落地 VOD 手动搜索 lazy：search 阶段只由原始候选构造摘要与 descriptor，不调用 `addAnime()`，不分配 episode/comment id。
+  - 2026-05-11 追加修正 Dandan 手动搜索 lazy：公共 `/search/anime` 不再对 Dandan 搜索结果逐个调用 `/v2/bangumi/:id`，避免宽关键词（如“爱情”）在搜索阶段触发详情 fanout、重复日志与 429。
   - lazy/eager search cache key 隔离：`lazy:<baseKey>` 与原 eager key 分开，且不启用无 season 旧 cache 回退。
   - 非 lazy 搜索继续沿用原 `handleAnimes()` eager 流程。
 
 - [x] **4.5 `getBangumi` 支持通过 descriptor materialize**
   - `getBangumi(path, detailStore, source)` 在 full anime 未命中时尝试 source-scoped lazy descriptor。
-  - `/api/v2/bangumi/:id?source=vod` 路由透传 source，避免跨源 id 歧义。
+  - `/api/v2/bangumi/:id?source=vod` 路由透传 source，避免跨源 id 歧义；未显式 source 时也能从已注册的 VOD/Dandan descriptor 中按 id 找到候选，兼容旧客户端。
   - materialize 后复用 `addAnime()` 与 `buildBangumiData()`，因此 `/comment/:id` 继续拿真实 URL。
+  - Dandan materialize 仅在用户选中某个 bangumi 后调用一次 `/v2/bangumi/:id`，并用 pending map 合并同 id 并发物化。
 
 - [x] **4.6 `/match` 暂不默认 lazy，继续 eager 保障正确性**
   - worker 路由仅对公开 `/api/v2/search/anime?keyword=...` 默认启用 lazy；`matchAnime` 内部 search 未传 lazy flag。
@@ -322,15 +324,15 @@
 - [x] 手动 search 多候选耗时下降。
   - 验证：25 个 VOD candidates × 12 links，`manual-search:vod-eager` 约 326.961ms，`manual-search:vod-lazy` 约 2.99ms。
 - [x] `/bangumi/:id` 仍返回完整 episodes。
-  - 验证：`lazy-search-materialize.test.js` 中 VOD lazy search 后 `getBangumi('/api/v2/bangumi/940001', null, 'vod')` 返回 2 集完整 episodes。
+  - 验证：`lazy-search-materialize.test.js` 中 VOD lazy search 后 `getBangumi('/api/v2/bangumi/940001', null, 'vod')` 返回 2 集完整 episodes；Dandan lazy search 后 plain `/api/v2/bangumi/950001` 只物化被选中的 1 个条目并返回 2 集。
 - [x] `/match` 结果不变。
-  - 验证：`node --test danmu_api/lazy-search-materialize.test.js danmu_api/worker.test.js` 通过 87/87；worker 路由未给 `/match` 传 lazy flag。
+  - 验证：`node --test ./danmu_api/worker.test.js ./danmu_api/lazy-search-materialize.test.js` 通过 91/91；worker 路由未给 `/match` 传 lazy flag。
 - [x] `/comment/:id` 不丢真实 URL。
-  - 验证：lazy materialize 后 `Globals.episodeIds.length === 2`，说明通过 `addAnime()` 分配真实 episode/comment id。
+  - 验证：lazy materialize 后 VOD/Dandan 均通过 `addAnime()` 分配真实 episode/comment id。
 - [x] 无需新增公开接口或环境变量。
-  - 验证：`plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters` 覆盖原 URL；同一测试继续通过原 `/api/v2/bangumi/:id` materialize 出完整 episodes/comment ids。
+  - 验证：`plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters` 覆盖原 URL；`lazy public Dandan search should not fan out bangumi detail requests until selected` 覆盖同一个公开 URL 下 Dandan 详情请求数为 0、选中后详情请求数为 1。
 - [x] `npm test` 通过。
-  - 验证：`npm test` 通过 140/140，0 失败，耗时约 22.7s。
+  - 验证：`npm test` 通过 159/159，0 失败，耗时约 22.0s。
 
 ---
 

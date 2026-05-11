@@ -219,3 +219,159 @@ test('clear cache should drop lazy VOD descriptors as well as normal runtime cac
   const bangumiResponse = await getBangumi('/api/v2/bangumi/940003', null, 'vod');
   assert.equal(bangumiResponse.status, 404);
 });
+
+function mockDandanFetch() {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const textUrl = String(url);
+    calls.push(textUrl);
+    const parsed = new URL(textUrl);
+    const path = parsed.searchParams.get('path') || '';
+
+    if (path.startsWith('/v2/search/anime')) {
+      return new Response(JSON.stringify({
+        animes: [
+          {
+            animeId: 950001,
+            bangumiId: '950001',
+            animeTitle: '爱情懒搜索测试',
+            type: 'tvseries',
+            typeDescription: 'TV动画',
+            imageUrl: 'https://img.example/dandan-1.jpg',
+            startDate: '2026-01-01T00:00:00',
+            episodeCount: 2,
+            rating: 0,
+          },
+          {
+            animeId: 950002,
+            bangumiId: '950002',
+            animeTitle: '爱情懒搜索测试 第二季',
+            type: 'tvseries',
+            typeDescription: 'TV动画',
+            imageUrl: 'https://img.example/dandan-2.jpg',
+            startDate: '2027-01-01T00:00:00',
+            episodeCount: 1,
+            rating: 0,
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    const bangumiMatch = path.match(/^\/v2\/bangumi\/(\d+)/);
+    if (bangumiMatch) {
+      const id = bangumiMatch[1];
+      return new Response(JSON.stringify({
+        bangumi: {
+          animeId: Number(id),
+          animeTitle: id === '950001' ? '爱情懒搜索测试' : '爱情懒搜索测试 第二季',
+          imageUrl: `https://img.example/dandan-${id}.jpg`,
+          type: 'tvseries',
+          typeDescription: 'TV动画',
+          startDate: id === '950001' ? '2026-01-01T00:00:00' : '2027-01-01T00:00:00',
+          rating: 0,
+          titles: [
+            { language: '主标题', title: id === '950001' ? '爱情懒搜索测试' : '爱情懒搜索测试 第二季' },
+          ],
+          relateds: [],
+          episodes: id === '950001'
+            ? [
+                { episodeId: 951001, episodeTitle: '第1集', episodeNumber: 1, airDate: '2026-01-01T00:00:00' },
+                { episodeId: 951002, episodeTitle: '第2集', episodeNumber: 2, airDate: '2026-01-08T00:00:00' },
+              ]
+            : [
+                { episodeId: 952001, episodeTitle: '第1集', episodeNumber: 1, airDate: '2027-01-01T00:00:00' },
+              ],
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({}), {
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  return {
+    calls,
+    detailCalls() {
+      return calls.filter(call => {
+        const parsed = new URL(call);
+        return (parsed.searchParams.get('path') || '').startsWith('/v2/bangumi/');
+      });
+    },
+    restore() {
+      globalThis.fetch = originalFetch;
+    },
+  };
+}
+
+function resetDandanRuntime() {
+  resetRuntime();
+  Globals.sourceOrderArr = ['dandan'];
+  Globals.useBangumiData = false;
+}
+
+test('lazy public Dandan search should not fan out bangumi detail requests until selected', async () => {
+  resetDandanRuntime();
+  const dandanMock = mockDandanFetch();
+
+  try {
+    const response = await handleRequest(
+      new Request('https://example.test/api/v2/search/anime?keyword=%E7%88%B1%E6%83%85'),
+      {
+        LOG_LEVEL: 'error',
+        SOURCE_ORDER: 'dandan',
+        MERGE_SOURCE_PAIRS: '',
+        MAX_ANIMES: '1000',
+        SEARCH_CACHE_MINUTES: '30',
+        RATE_LIMIT_MAX_REQUESTS: '0',
+        USE_BANGUMI_DATA: 'false',
+      },
+      'test',
+      '127.0.0.1'
+    );
+    const body = await response.json();
+
+    assert.equal(body.success, true);
+    assert.equal(body.animes.length, 2);
+    const targetSummary = body.animes.find(anime => String(anime.bangumiId) === '950001');
+    assert.ok(targetSummary, 'search results should include the target Dandan summary');
+    assert.equal(targetSummary.source, 'dandan');
+    assert.equal(targetSummary.episodeCount, 2);
+    assert.equal('links' in targetSummary, false);
+    assert.equal(Globals.animes.length, 0, 'lazy Dandan search must not add full anime into global runtime cache');
+    assert.equal(Globals.episodeIds.length, 0, 'lazy Dandan search must not allocate comment ids during search');
+    assert.equal(dandanMock.detailCalls().length, 0, 'lazy Dandan search must not call /v2/bangumi for every search result');
+
+    const bangumiResponse = await handleRequest(
+      new Request('https://example.test/api/v2/bangumi/950001'),
+      {
+        LOG_LEVEL: 'error',
+        SOURCE_ORDER: 'dandan',
+        MERGE_SOURCE_PAIRS: '',
+        MAX_ANIMES: '1000',
+        SEARCH_CACHE_MINUTES: '30',
+        RATE_LIMIT_MAX_REQUESTS: '0',
+        USE_BANGUMI_DATA: 'false',
+      },
+      'test',
+      '127.0.0.1'
+    );
+    const bangumiBody = await bangumiResponse.json();
+
+    assert.equal(bangumiBody.success, true);
+    assert.equal(bangumiBody.bangumi.bangumiId, '950001');
+    assert.equal(bangumiBody.bangumi.episodes.length, 2);
+    assert.equal(dandanMock.detailCalls().length, 1, 'only the selected Dandan bangumi should be materialized');
+    assert.equal(Globals.episodeIds.length, 2, 'materialized Dandan bangumi should allocate real comment ids');
+  } finally {
+    dandanMock.restore();
+  }
+});

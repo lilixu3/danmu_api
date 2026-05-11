@@ -77,6 +77,8 @@ const tmdbSource = new TmdbSource(doubanSource);
 const PENDING_DANMAKU_REQUESTS = new Map();
 // 用于弹幕请求(按集ID/URL)的去重Map
 const PENDING_COMMENT_REQUESTS = new Map();
+// 用于懒详情物化的去重Map，避免同一条目被并发 /bangumi 请求重复打源
+const PENDING_LAZY_DETAIL_MATERIALIZATIONS = new Map();
 let nodeDnsLookup = null;
 
 function normalizeDurationValue(rawValue) {
@@ -348,6 +350,93 @@ function buildVodAnimeFromLazyDescriptor(descriptor, includeLinks = false) {
   return includeLinks ? { ...anime, links } : anime;
 }
 
+function getRawCandidateId(rawCandidate) {
+  const id = rawCandidate?.animeId ?? rawCandidate?.bangumiId ?? rawCandidate?.id;
+  if (id === undefined || id === null || id === '') return null;
+  return String(id);
+}
+
+function buildDandanLinksFromEpisodes(episodes) {
+  if (!Array.isArray(episodes)) return [];
+
+  return episodes
+    .filter(ep => ep?.episodeId !== undefined && ep?.episodeId !== null)
+    .map((ep) => {
+      const epTitle = ep.episodeTitle && String(ep.episodeTitle).trim() !== "" ? `${ep.episodeTitle}` : `第${ep.episodeNumber}集`;
+      return {
+        name: epTitle,
+        url: ep.episodeId.toString(),
+        title: `【dandan】 ${epTitle}`,
+      };
+    });
+}
+
+function resolveDandanYear(rawCandidate, details, links) {
+  const rawDate = rawCandidate?.startDate || (Array.isArray(details?.episodes) && details.episodes[0]?.airDate) || '';
+  if (rawDate) {
+    const year = new Date(rawDate).getFullYear();
+    if (Number.isFinite(year)) return String(year);
+  }
+
+  const titleYear = extractYear(rawCandidate?.animeTitle || rawCandidate?.title || '');
+  return titleYear || '未知';
+}
+
+function buildDandanAnimeFromLazyDescriptor(descriptor, details = null, includeLinks = false) {
+  const rawCandidate = descriptor?.rawCandidate || {};
+  const rawId = getRawCandidateId(rawCandidate);
+  if (!rawId) return null;
+
+  const episodes = Array.isArray(details?.episodes) ? details.episodes : [];
+  const links = includeLinks ? buildDandanLinksFromEpisodes(episodes) : [];
+  if (includeLinks && links.length === 0) return null;
+
+  const displayTitle = rawCandidate._displayTitle || rawCandidate.animeTitle || rawCandidate.title || rawId;
+  const resolvedType = details?.type || rawCandidate.type || 'tvseries';
+  const resolvedTypeDescription = details?.typeDescription || rawCandidate.typeDescription || 'TV动画';
+  const resolvedStartDate = rawCandidate.startDate || (episodes.length > 0 ? episodes[0].airDate : null);
+  const yearStr = resolveDandanYear(rawCandidate, details, links);
+  const aliases = [...new Set([
+    ...(Array.isArray(details?.titles) ? details.titles : []),
+    ...(Array.isArray(rawCandidate.aliases) ? rawCandidate.aliases : []),
+  ].filter(Boolean))];
+  if (rawCandidate.animeTitle && rawCandidate.animeTitle !== displayTitle && !aliases.includes(rawCandidate.animeTitle)) {
+    aliases.push(rawCandidate.animeTitle);
+  }
+
+  const episodeCount = includeLinks
+    ? links.length
+    : Number(rawCandidate.episodeCount || (Array.isArray(rawCandidate.episodes) ? rawCandidate.episodes.length : 0) || 0);
+
+  const anime = {
+    animeId: Number(rawId),
+    bangumiId: rawId,
+    animeTitle: `${displayTitle}(${yearStr})【${resolvedTypeDescription}】from dandan`,
+    aliases,
+    type: resolvedType,
+    typeDescription: resolvedTypeDescription,
+    imageUrl: details?.imageUrl || rawCandidate.imageUrl || '',
+    startDate: resolvedStartDate,
+    episodeCount,
+    rating: rawCandidate.rating || 0,
+    isFavorited: rawCandidate.isFavorited ?? true,
+    source: 'dandan',
+  };
+
+  return includeLinks ? { ...anime, links } : anime;
+}
+
+function registerLazyDescriptor(descriptor, summary) {
+  if (!summary) return null;
+
+  const store = getLazyDetailDescriptorStore();
+  const animeKey = buildLazyDescriptorKey(descriptor.source, summary.animeId);
+  const bangumiKey = buildLazyDescriptorKey(descriptor.source, summary.bangumiId);
+  if (animeKey) store.set(animeKey, descriptor);
+  if (bangumiKey) store.set(bangumiKey, descriptor);
+  return summary;
+}
+
 function registerLazyVodDescriptor(rawCandidate, queryTitle, querySeason, vodName) {
   const descriptor = {
     kind: 'lazy-detail',
@@ -359,14 +448,20 @@ function registerLazyVodDescriptor(rawCandidate, queryTitle, querySeason, vodNam
     createdAt: Date.now(),
   };
   const summary = buildVodAnimeFromLazyDescriptor(descriptor, false);
-  if (!summary) return null;
+  return registerLazyDescriptor(descriptor, summary);
+}
 
-  const store = getLazyDetailDescriptorStore();
-  const animeKey = buildLazyDescriptorKey('vod', summary.animeId);
-  const bangumiKey = buildLazyDescriptorKey('vod', summary.bangumiId);
-  if (animeKey) store.set(animeKey, descriptor);
-  if (bangumiKey) store.set(bangumiKey, descriptor);
-  return summary;
+function registerLazyDandanDescriptor(rawCandidate, queryTitle, querySeason) {
+  const descriptor = {
+    kind: 'lazy-detail',
+    source: 'dandan',
+    rawCandidate: { ...rawCandidate },
+    queryTitle,
+    querySeason,
+    createdAt: Date.now(),
+  };
+  const summary = buildDandanAnimeFromLazyDescriptor(descriptor, null, false);
+  return registerLazyDescriptor(descriptor, summary);
 }
 
 function buildLazyVodSearchSummaries(vodCandidates, queryTitle, querySeason, vodName) {
@@ -379,21 +474,91 @@ function buildLazyVodSearchSummaries(vodCandidates, queryTitle, querySeason, vod
     .filter(Boolean);
 }
 
+function buildLazyDandanSearchSummaries(dandanCandidates, queryTitle, querySeason) {
+  if (!Array.isArray(dandanCandidates)) return [];
+
+  const seasonPreferredAnimes = preferSeasonCandidatesIfPresent(dandanCandidates, querySeason, anime => anime?._displayTitle || anime?.animeTitle || anime?.title || '');
+  return seasonPreferredAnimes
+    .filter(anime => titleMatches(anime?._displayTitle || anime?.animeTitle || anime?.title || '', queryTitle))
+    .map(anime => registerLazyDandanDescriptor(anime, queryTitle, querySeason))
+    .filter(Boolean);
+}
+
+function descriptorCandidateIds(descriptor) {
+  const rawCandidate = descriptor?.rawCandidate || {};
+  if (descriptor?.source === 'vod') {
+    return [rawCandidate.vod_id].filter(value => value !== undefined && value !== null && value !== '').map(String);
+  }
+  if (descriptor?.source === 'dandan') {
+    return [rawCandidate.animeId, rawCandidate.bangumiId, rawCandidate.id].filter(value => value !== undefined && value !== null && value !== '').map(String);
+  }
+  return [];
+}
+
+function findLazyDetailDescriptor(idParam, source = null) {
+  const store = getLazyDetailDescriptorStore();
+  if (source) {
+    const descriptorKey = buildLazyDescriptorKey(source, idParam);
+    return descriptorKey ? store.get(descriptorKey) || null : null;
+  }
+
+  const normalizedId = String(idParam ?? '').trim();
+  if (!normalizedId) return null;
+
+  const seen = new Set();
+  for (const descriptor of store.values()) {
+    if (!descriptor || seen.has(descriptor)) continue;
+    seen.add(descriptor);
+    if (descriptorCandidateIds(descriptor).includes(normalizedId)) {
+      return descriptor;
+    }
+  }
+  return null;
+}
+
+async function buildFullAnimeFromLazyDescriptor(descriptor) {
+  if (descriptor?.source === 'vod') {
+    return buildVodAnimeFromLazyDescriptor(descriptor, true);
+  }
+
+  if (descriptor?.source === 'dandan') {
+    const id = getRawCandidateId(descriptor.rawCandidate);
+    if (!id) return null;
+    const details = await dandanSource.getEpisodes(id);
+    return buildDandanAnimeFromLazyDescriptor(descriptor, details, true);
+  }
+
+  return null;
+}
+
 async function materializeLazyDetailDescriptor(idParam, detailStore = null, source = null) {
-  const descriptorKey = buildLazyDescriptorKey(source || 'vod', idParam);
-  const descriptor = descriptorKey ? getLazyDetailDescriptorStore().get(descriptorKey) : null;
-  if (!descriptor || descriptor.source !== 'vod') return null;
+  const descriptor = findLazyDetailDescriptor(idParam, source);
+  if (!descriptor) return null;
   if (isLazyDetailDescriptorExpired(descriptor)) {
     removeLazyDetailDescriptor(descriptor);
     return null;
   }
 
-  const fullAnime = buildVodAnimeFromLazyDescriptor(descriptor, true);
-  if (!fullAnime) return null;
+  const pendingKey = `${descriptor.source}:${getRawCandidateId(descriptor.rawCandidate) || idParam}`;
+  if (PENDING_LAZY_DETAIL_MATERIALIZATIONS.has(pendingKey)) {
+    return await PENDING_LAZY_DETAIL_MATERIALIZATIONS.get(pendingKey);
+  }
 
-  addAnime(fullAnime, { detailStore: detailStore instanceof Map ? detailStore : null });
-  if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
-  return resolveAnimeById(idParam, detailStore, descriptor.source) || fullAnime;
+  const materializeTask = (async () => {
+    const fullAnime = await buildFullAnimeFromLazyDescriptor(descriptor);
+    if (!fullAnime) return null;
+
+    addAnime(fullAnime, { detailStore: detailStore instanceof Map ? detailStore : null });
+    if (globals.animes.length > globals.MAX_ANIMES) removeEarliestAnime();
+    return resolveAnimeById(idParam, detailStore, descriptor.source) || fullAnime;
+  })();
+
+  PENDING_LAZY_DETAIL_MATERIALIZATIONS.set(pendingKey, materializeTask);
+  try {
+    return await materializeTask;
+  } finally {
+    PENDING_LAZY_DETAIL_MATERIALIZATIONS.delete(pendingKey);
+  }
 }
 
 async function applyDanmuOffsetByRule(danmus, offsetRule, targetUrl, logPrefix = '[Offset]') {
@@ -1007,8 +1172,12 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
           // 等待处理Bahamut来源
           await bahamutSource.handleAnimes(animesBahamut, queryTitle, curAnimes, sourceHandleOptions);
         } else if (key === 'dandan') {
-          // 等待处理弹弹play来源
-          await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes, sourceHandleOptions);
+          // 等待处理弹弹play来源。公共懒搜索只返回摘要，不在搜索阶段 fanout /bangumi 详情。
+          if (lazySearch) {
+            curAnimes.push(...buildLazyDandanSearchSummaries(animesDandan, queryTitle, querySeason));
+          } else {
+            await dandanSource.handleAnimes(animesDandan, queryTitle, curAnimes, sourceHandleOptions);
+          }
         } else if (key === 'custom') {
           // 等待处理自定义弹幕源来源
           await customSource.handleAnimes(animesCustom, queryTitle, curAnimes, sourceHandleOptions);
