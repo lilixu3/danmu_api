@@ -302,14 +302,16 @@
 - [x] **4.4 将普通 search 分成 summary 和 materialize 两阶段**
   - 已落地 VOD 手动搜索 lazy：search 阶段只由原始候选构造摘要与 descriptor，不调用 `addAnime()`，不分配 episode/comment id。
   - 2026-05-11 追加修正 Dandan 手动搜索 lazy：公共 `/search/anime` 不再对 Dandan 搜索结果逐个调用 `/v2/bangumi/:id`，避免宽关键词（如“爱情”）在搜索阶段触发详情 fanout、重复日志与 429。
+  - 2026-05-11 追加扩展官方源 lazy：公共 `/search/anime` 在 lazy 模式下对 `tencent/youku/iqiyi/imgo/bilibili/migu/sohu/leshi/xigua/maiduidui/acfun/aiyifan/animeko/ezdmw` 等普通官方源只注册轻量 descriptor，不调用各源 `handleAnimes()`；用户选中单个 `/bangumi/:id` 后再用原源 `handleAnimes([rawCandidate], ...)` 物化该候选。
   - lazy/eager search cache key 隔离：`lazy:<baseKey>` 与原 eager key 分开，且不启用无 season 旧 cache 回退。
   - 非 lazy 搜索继续沿用原 `handleAnimes()` eager 流程。
 
 - [x] **4.5 `getBangumi` 支持通过 descriptor materialize**
   - `getBangumi(path, detailStore, source)` 在 full anime 未命中时尝试 source-scoped lazy descriptor。
-  - `/api/v2/bangumi/:id?source=vod` 路由透传 source，避免跨源 id 歧义；未显式 source 时也能从已注册的 VOD/Dandan descriptor 中按 id 找到候选，兼容旧客户端。
+  - `/api/v2/bangumi/:id?source=vod` 路由透传 source，避免跨源 id 歧义；未显式 source 时也能从已注册的 VOD/Dandan/普通官方源 descriptor 中按 id 找到候选，兼容旧客户端。
   - materialize 后复用 `addAnime()` 与 `buildBangumiData()`，因此 `/comment/:id` 继续拿真实 URL。
   - Dandan materialize 仅在用户选中某个 bangumi 后调用一次 `/v2/bangumi/:id`，并用 pending map 合并同 id 并发物化。
+  - 普通官方源 materialize 只对选中的 raw candidate 调用一次对应源 `handleAnimes([rawCandidate], ...)`，不会连带物化其它官方源或同源其它候选。
 
 - [x] **4.6 `/match` 暂不默认 lazy，继续 eager 保障正确性**
   - worker 路由仅对公开 `/api/v2/search/anime?keyword=...` 默认启用 lazy；`matchAnime` 内部 search 未传 lazy flag。
@@ -324,15 +326,15 @@
 - [x] 手动 search 多候选耗时下降。
   - 验证：25 个 VOD candidates × 12 links，`manual-search:vod-eager` 约 326.961ms，`manual-search:vod-lazy` 约 2.99ms。
 - [x] `/bangumi/:id` 仍返回完整 episodes。
-  - 验证：`lazy-search-materialize.test.js` 中 VOD lazy search 后 `getBangumi('/api/v2/bangumi/940001', null, 'vod')` 返回 2 集完整 episodes；Dandan lazy search 后 plain `/api/v2/bangumi/950001` 只物化被选中的 1 个条目并返回 2 集。
+  - 验证：`lazy-search-materialize.test.js` 中 VOD lazy search 后 `getBangumi('/api/v2/bangumi/940001', null, 'vod')` 返回 2 集完整 episodes；Dandan lazy search 后 plain `/api/v2/bangumi/950001` 只物化被选中的 1 个条目并返回 2 集；全官方源矩阵 lazy search 后 plain `/api/v2/bangumi/:id` 只调用选中源一次并返回完整 episodes。
 - [x] `/match` 结果不变。
   - 验证：`node --test ./danmu_api/worker.test.js ./danmu_api/lazy-search-materialize.test.js` 通过 91/91；worker 路由未给 `/match` 传 lazy flag。
 - [x] `/comment/:id` 不丢真实 URL。
   - 验证：lazy materialize 后 VOD/Dandan 均通过 `addAnime()` 分配真实 episode/comment id。
 - [x] 无需新增公开接口或环境变量。
-  - 验证：`plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters` 覆盖原 URL；`lazy public Dandan search should not fan out bangumi detail requests until selected` 覆盖同一个公开 URL 下 Dandan 详情请求数为 0、选中后详情请求数为 1。
+  - 验证：`plain /api/v2/search/anime route should use lazy VOD summaries without adding query parameters` 覆盖原 URL；`lazy public Dandan search should not fan out bangumi detail requests until selected` 覆盖同一个公开 URL 下 Dandan 详情请求数为 0、选中后详情请求数为 1；`lazy public search with all official sources should not call source handleAnimes until a result is selected` 覆盖 14 个官方源全开时 search 阶段 handleAnimes 调用数为 0、选中 1 个结果后总调用数为 1。
 - [x] `npm test` 通过。
-  - 验证：`npm test` 通过 159/159，0 失败，耗时约 22.0s。
+  - 验证：`npm test` 通过 160/160，0 失败，耗时约 22.7s。
 
 ---
 
@@ -510,6 +512,8 @@
 - [x] 审查修复后 benchmark：`node scripts/search-match-performance-baseline.mjs` 通过；500 candidates × 12 links 下 lazy search 约 28.117ms、eager search 约 294.414ms、cache-write 约 194.954ms；25 pairs merge 约 541.123ms。
 - [x] 用户反馈后修正公开接口路径：`/api/v2/search/anime?keyword=...` 保持原接口不加参数，worker 默认走 lazy 摘要；新增原 URL 路由回归，覆盖 search 后通过原 `/api/v2/bangumi/:id` materialize。
 - [x] 新鲜验证：`node --test ./danmu_api/lazy-search-materialize.test.js` 通过 4/4；`npm test` 通过 158/158，0 失败；`node scripts/search-match-performance-baseline.mjs --sizes=150,500 --links=72 --skip-merge` 中 500×72 eager 约 1043.344ms、lazy 约 78.581ms。
+- [x] 用户反馈后补全官方源覆盖：公共 lazy search 对 14 个普通官方源全开时不再调用各源 `handleAnimes()`；新增全官方源矩阵回归，先验证旧行为 search 阶段调用 14 次失败，再实现后通过。
+- [x] 官方源 lazy 修正后全量回归：`node --test ./danmu_api/worker.test.js ./danmu_api/source-options.test.js ./danmu_api/lazy-search-materialize.test.js` 通过 101/101；`npm test` 通过 160/160，0 失败，耗时约 22.7s。
 
 ---
 

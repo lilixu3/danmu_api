@@ -4,6 +4,22 @@ import { Globals } from './configs/globals.js';
 import { searchAnime, getBangumi } from './apis/dandan-api.js';
 import { handleClearCache } from './apis/system-api.js';
 import { handleRequest } from './worker.js';
+import { addAnime } from './utils/cache-util.js';
+import { convertToAsciiSum } from './utils/codec-util.js';
+import TencentSource from './sources/tencent.js';
+import YoukuSource from './sources/youku.js';
+import IqiyiSource from './sources/iqiyi.js';
+import MangoSource from './sources/mango.js';
+import BilibiliSource from './sources/bilibili.js';
+import MiguSource from './sources/migu.js';
+import SohuSource from './sources/sohu.js';
+import LeshiSource from './sources/leshi.js';
+import XiguaSource from './sources/xigua.js';
+import MaiduiduiSource from './sources/maiduidui.js';
+import AcfunSource from './sources/acfun.js';
+import AiyifanSource from './sources/aiyifan.js';
+import AnimekoSource from './sources/animeko.js';
+import EzdmwSource from './sources/ezdmw.js';
 
 function resetRuntime() {
   Globals.init({
@@ -373,5 +389,144 @@ test('lazy public Dandan search should not fan out bangumi detail requests until
     assert.equal(Globals.episodeIds.length, 2, 'materialized Dandan bangumi should allocate real comment ids');
   } finally {
     dandanMock.restore();
+  }
+});
+
+const OFFICIAL_SOURCE_MATRIX = [
+  ['tencent', TencentSource],
+  ['youku', YoukuSource],
+  ['iqiyi', IqiyiSource],
+  ['imgo', MangoSource],
+  ['bilibili', BilibiliSource],
+  ['migu', MiguSource],
+  ['sohu', SohuSource],
+  ['leshi', LeshiSource],
+  ['xigua', XiguaSource],
+  ['maiduidui', MaiduiduiSource],
+  ['acfun', AcfunSource],
+  ['aiyifan', AiyifanSource],
+  ['animeko', AnimekoSource],
+  ['ezdmw', EzdmwSource],
+];
+
+function installOfficialSourcePrototypeStubs() {
+  const handleCalls = new Map(OFFICIAL_SOURCE_MATRIX.map(([source]) => [source, 0]));
+  const originals = [];
+
+  for (const [source, SourceClass] of OFFICIAL_SOURCE_MATRIX) {
+    const originalSearch = SourceClass.prototype.search;
+    const originalHandleAnimes = SourceClass.prototype.handleAnimes;
+    originals.push(() => {
+      SourceClass.prototype.search = originalSearch;
+      SourceClass.prototype.handleAnimes = originalHandleAnimes;
+    });
+
+    SourceClass.prototype.search = async () => [{
+      provider: source,
+      mediaId: `${source}-media-1`,
+      title: `全源懒搜索测试 ${source}`,
+      type: '动漫',
+      year: 2026,
+      imageUrl: `https://img.example/${source}.jpg`,
+      episodeCount: 1,
+      aliases: [`全源懒搜索测试${source}`],
+    }];
+
+    SourceClass.prototype.handleAnimes = async function(sourceAnimes, queryTitle, curAnimes, detailStore = null) {
+      handleCalls.set(source, handleCalls.get(source) + 1);
+      for (const anime of sourceAnimes || []) {
+        const mediaId = anime.mediaId || `${source}-media-1`;
+        const numericAnimeId = convertToAsciiSum(mediaId);
+        const summary = {
+          animeId: numericAnimeId,
+          bangumiId: mediaId,
+          animeTitle: `${anime.title}(${anime.year})【${anime.type}】from ${source}`,
+          type: anime.type,
+          typeDescription: anime.type,
+          imageUrl: anime.imageUrl,
+          startDate: `${anime.year}-01-01T00:00:00`,
+          episodeCount: 1,
+          rating: 0,
+          isFavorited: true,
+          source,
+          aliases: anime.aliases || [],
+        };
+        curAnimes.push(summary);
+        addAnime({
+          ...summary,
+          links: [{
+            name: '1',
+            url: `https://video.example/${source}/${mediaId}/1`,
+            title: `【${source}】 第1集`,
+          }],
+        }, detailStore);
+      }
+      return curAnimes;
+    };
+  }
+
+  return {
+    handleCalls,
+    totalHandleCalls() {
+      return Array.from(handleCalls.values()).reduce((sum, value) => sum + value, 0);
+    },
+    restore() {
+      originals.reverse().forEach(restore => restore());
+    },
+  };
+}
+
+function fullOfficialSourceEnv() {
+  return {
+    LOG_LEVEL: 'error',
+    SOURCE_ORDER: OFFICIAL_SOURCE_MATRIX.map(([source]) => source).join(','),
+    MERGE_SOURCE_PAIRS: '',
+    MAX_ANIMES: '1000',
+    SEARCH_CACHE_MINUTES: '30',
+    RATE_LIMIT_MAX_REQUESTS: '0',
+    USE_BANGUMI_DATA: 'false',
+  };
+}
+
+test('lazy public search with all official sources should not call source handleAnimes until a result is selected', async () => {
+  resetRuntime();
+  const officialStub = installOfficialSourcePrototypeStubs();
+  const env = fullOfficialSourceEnv();
+
+  try {
+    const response = await handleRequest(
+      new Request('https://example.test/api/v2/search/anime?keyword=%E5%85%A8%E6%BA%90%E6%87%92%E6%90%9C%E7%B4%A2%E6%B5%8B%E8%AF%95'),
+      env,
+      'test',
+      '127.0.0.1'
+    );
+    const body = await response.json();
+
+    assert.equal(body.success, true);
+    assert.equal(body.animes.length, OFFICIAL_SOURCE_MATRIX.length);
+    assert.equal(officialStub.totalHandleCalls(), 0, 'public lazy search must not fan out official-source detail/materialization handlers');
+    assert.equal(Globals.animes.length, 0, 'lazy official search must not add full anime into global runtime cache');
+    assert.equal(Globals.episodeIds.length, 0, 'lazy official search must not allocate comment ids during search');
+    assert.ok(body.animes.every(anime => !('links' in anime)), 'lazy official summaries must not expose full episode links');
+
+    const selected = body.animes.find(anime => anime.source === 'tencent');
+    assert.ok(selected, 'search results should include a Tencent lazy summary');
+
+    const bangumiResponse = await handleRequest(
+      new Request(`https://example.test/api/v2/bangumi/${encodeURIComponent(selected.bangumiId)}`),
+      env,
+      'test',
+      '127.0.0.1'
+    );
+    const bangumiBody = await bangumiResponse.json();
+
+    assert.equal(bangumiBody.success, true);
+    assert.equal(bangumiBody.bangumi.bangumiId, selected.bangumiId);
+    assert.equal(bangumiBody.bangumi.episodes.length, 1);
+    assert.equal(officialStub.handleCalls.get('tencent'), 1, 'selected source should materialize exactly once');
+    assert.equal(officialStub.totalHandleCalls(), 1, 'selecting one result must not materialize other official sources');
+    assert.equal(Globals.episodeIds.length, 1, 'selected official source should allocate comment ids only after materialization');
+  } finally {
+    officialStub.restore();
   }
 });
