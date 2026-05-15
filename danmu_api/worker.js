@@ -57,6 +57,20 @@ function buildAuthContext(currentToken) {
   };
 }
 
+function buildFongmiAuthContext(authContext) {
+  // FongMi 播放入口优先按普通 TOKEN 处理。
+  // 当 TOKEN 与 ADMIN_TOKEN 设置为相同值时，请求首段无法区分两者；
+  // 播放器填写的是 /TOKEN/danmaku，应避免被误判为管理入口而返回空数组。
+  if (authContext?.currentToken && authContext.currentToken === globals?.token) {
+    return {
+      ...authContext,
+      isAdmin: false,
+    };
+  }
+
+  return authContext;
+}
+
 function getAdminGuardResponse(path, method, authContext) {
   const routeKey = `${method} ${path}`;
   if (!ADMIN_MUTATION_ROUTES.has(routeKey)) {
@@ -361,12 +375,12 @@ async function handleRequest(req, env, deployPlatform, clientIp, ctx) {
 
   // POST /TOKEN - Fongmi 短入口；GET /TOKEN 继续走 UI，不与管理页面冲突
   if (path === "/" && method === "POST" && isFongmiShortEntry) {
-    return handleFongmiDanmaku(url, req, clientIp, authContext);
+    return handleFongmiDanmaku(url, req, clientIp, buildFongmiAuthContext(authContext));
   }
 
   // GET|POST /TOKEN/danmaku - 兼容 PR #296 和部分客户端推荐的短别名入口
   if (path === "/danmaku" && (method === "GET" || method === "POST")) {
-    return handleFongmiDanmaku(url, req, clientIp, authContext);
+    return handleFongmiDanmaku(url, req, clientIp, buildFongmiAuthContext(authContext));
   }
 
   // GET /api/reqrecords - 获取请求记录 (需要 token)
@@ -468,7 +482,7 @@ async function handleRequest(req, env, deployPlatform, clientIp, ctx) {
 
   // GET/POST /api/v2/fongmi/danmaku - Fongmi 弹幕搜索适配入口
   if (path === "/api/v2/fongmi/danmaku" && (method === "GET" || method === "POST")) {
-    return handleFongmiDanmaku(url, req, clientIp, authContext);
+    return handleFongmiDanmaku(url, req, clientIp, buildFongmiAuthContext(authContext));
   }
 
   // GET /api/v2/match

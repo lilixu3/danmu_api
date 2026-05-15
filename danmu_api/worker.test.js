@@ -642,6 +642,46 @@ test('Fongmi short entry should return XML comment URL with user token only', as
   }
 });
 
+test('Fongmi danmaku alias should keep working when user token equals admin token', async () => {
+  resetFongmiState();
+
+  try {
+    const anime = {
+      animeId: 910012,
+      bangumiId: '910012',
+      animeTitle: '同令牌番剧',
+      type: 'tvseries',
+      typeDescription: 'TV',
+      imageUrl: '',
+      startDate: '2024-01-01T00:00:00.000Z',
+      episodeCount: 1,
+      rating: 0,
+      isFavorited: true,
+      source: 'tencent',
+      links: [
+        { id: 52001, url: 'https://v.qq.com/x/cover/fongmi-same-token/ep1.html', title: '【qq】 第1集' }
+      ]
+    };
+    cacheFongmiAnime(anime);
+
+    const req = new MockRequest(urlPrefix + '/87654321/danmaku?name=' + encodeURIComponent(anime.animeTitle) + '&episode=1', {
+      method: 'GET'
+    });
+    const res = await handleRequest(req, { TOKEN: '87654321', ADMIN_TOKEN: '87654321', RATE_LIMIT_MAX_REQUESTS: '0', USE_BANGUMI_DATA: 'false' }, 'test', '127.0.0.1');
+    const body = await parseResponse(res);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, [
+      {
+        name: '同令牌番剧 【qq】 第1集',
+        url: `${urlPrefix}/87654321/api/v2/comment/52001.xml`
+      }
+    ]);
+  } finally {
+    resetFongmiState();
+  }
+});
+
 test('Fongmi standard entry should accept GET aliases and normalize episode number', async () => {
   resetFongmiState();
 
