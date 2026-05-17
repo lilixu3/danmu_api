@@ -303,6 +303,48 @@ function isPositiveSearchCacheWindow() {
   return Number.isFinite(minutes) && minutes > 0;
 }
 
+function clonePlainAnime(anime) {
+  if (!anime || typeof anime !== 'object') return null;
+  return {
+    ...anime,
+    aliases: Array.isArray(anime.aliases) ? [...anime.aliases] : [],
+    links: Array.isArray(anime.links) ? anime.links.map(link => ({ ...link })) : [],
+  };
+}
+
+function buildMergeSourcePairsFingerprint() {
+  return JSON.stringify(globals.mergeSourcePairs || []);
+}
+
+function buildSourceOrderFingerprint() {
+  return JSON.stringify(globals.sourceOrderArr || []);
+}
+
+function isDescriptorConfigCompatible(descriptor) {
+  if (!descriptor) return false;
+  if (descriptor.kind !== 'lazy-merge-detail') return true;
+  return descriptor.mergeSourcePairsFingerprint === buildMergeSourcePairsFingerprint()
+    && descriptor.sourceOrderFingerprint === buildSourceOrderFingerprint();
+}
+
+function getConfiguredMergeSources() {
+  const sources = new Set();
+  for (const group of globals.mergeSourcePairs || []) {
+    if (group?.primary) sources.add(group.primary);
+    for (const secondary of group?.secondaries || []) {
+      if (secondary) sources.add(secondary);
+    }
+  }
+  return sources;
+}
+
+function shouldRunLazyMergeBridge(lazySearch) {
+  return lazySearch === true
+    && Array.isArray(globals.mergeSourcePairs)
+    && globals.mergeSourcePairs.length > 0
+    && isPositiveSearchCacheWindow();
+}
+
 function cloneLazyDescriptor(descriptor) {
   if (!descriptor) return null;
   return {
@@ -311,6 +353,10 @@ function cloneLazyDescriptor(descriptor) {
       ? { ...descriptor.rawCandidate }
       : descriptor.rawCandidate,
     identityIds: Array.isArray(descriptor.identityIds) ? [...descriptor.identityIds] : [],
+    fullAnime: clonePlainAnime(descriptor.fullAnime),
+    componentDescriptors: Array.isArray(descriptor.componentDescriptors)
+      ? descriptor.componentDescriptors.map(item => cloneLazyDescriptor(item)).filter(Boolean)
+      : [],
   };
 }
 
@@ -370,6 +416,11 @@ function rehydrateLazyDescriptorsFromSearchCache(cacheKey) {
   if (descriptors.length === 0) return;
   for (const descriptor of descriptors) {
     const cloned = cloneLazyDescriptor(descriptor);
+    if (!isDescriptorConfigCompatible(cloned)) continue;
+    if (cloned?.kind === 'lazy-merge-detail') {
+      registerLazyDescriptor(cloned, clonePlainAnime(cloned.fullAnime));
+      continue;
+    }
     const summary = descriptor?.source === 'vod'
       ? buildVodAnimeFromLazyDescriptor(cloned, false)
       : descriptor?.source === 'dandan'
@@ -543,6 +594,29 @@ function registerLazyDescriptor(descriptor, summary) {
   if (animeKey) store.set(animeKey, descriptor);
   if (bangumiKey) store.set(bangumiKey, descriptor);
   return summary;
+}
+
+function registerLazyMergedDescriptor(mergedAnime, componentDescriptors = []) {
+  const fullAnime = clonePlainAnime(mergedAnime);
+  if (!fullAnime || !Array.isArray(fullAnime.links) || fullAnime.links.length === 0) return null;
+
+  const descriptor = {
+    kind: 'lazy-merge-detail',
+    source: fullAnime.source,
+    rawCandidate: {
+      animeId: fullAnime.animeId,
+      bangumiId: fullAnime.bangumiId,
+      animeTitle: fullAnime.animeTitle,
+    },
+    fullAnime,
+    componentDescriptors: componentDescriptors.map(cloneLazyDescriptor).filter(Boolean),
+    mergeSourcePairsFingerprint: buildMergeSourcePairsFingerprint(),
+    sourceOrderFingerprint: buildSourceOrderFingerprint(),
+    identityIds: [fullAnime.animeId, fullAnime.bangumiId],
+    createdAt: Date.now(),
+  };
+
+  return registerLazyDescriptor(descriptor, fullAnime);
 }
 
 function registerLazyVodDescriptor(rawCandidate, queryTitle, querySeason, vodName, forceSourceAwareId = false) {
@@ -881,6 +955,58 @@ function findLazyDetailDescriptor(idParam, source = null) {
   return null;
 }
 
+function findLazyDescriptorForSummary(summary) {
+  if (!summary?.source) return null;
+  return findLazyDetailDescriptor(summary.bangumiId, summary.source)
+    || findLazyDetailDescriptor(summary.animeId, summary.source);
+}
+
+function isMergedLazySummary(result) {
+  return typeof result?.animeTitle === 'string' && /from\s+[^\s]+&[^\s]+\s*$/.test(result.animeTitle);
+}
+
+function areLazyResultsMaterializable(results) {
+  if (!Array.isArray(results)) return true;
+  return results.every(result => {
+    if (!result?.source) return true;
+    const descriptor = findLazyDescriptorForSummary(result);
+    const descriptorUsable = descriptor && isDescriptorConfigCompatible(descriptor) && !isLazyDetailDescriptorExpired(descriptor);
+    if (isMergedLazySummary(result)) return Boolean(descriptorUsable);
+    if (descriptorUsable) return true;
+    return Boolean(resolveAnimeById(result.bangumiId, null, result.source)
+      || resolveAnimeById(result.animeId, null, result.source));
+  });
+}
+
+async function materializeLazyMergeCandidates(curAnimes, detailStore) {
+  const mergeSources = getConfiguredMergeSources();
+  if (mergeSources.size === 0 || !Array.isArray(curAnimes) || curAnimes.length === 0) return [];
+
+  const materialized = [];
+  const seen = new Set();
+
+  for (const summary of curAnimes) {
+    if (!summary || !mergeSources.has(summary.source)) continue;
+    const descriptor = findLazyDescriptorForSummary(summary);
+    if (!descriptor || !isDescriptorConfigCompatible(descriptor) || isLazyDetailDescriptorExpired(descriptor)) continue;
+
+    const identity = `${summary.source}:${summary.bangumiId || summary.animeId}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+
+    try {
+      const fullAnime = await materializeLazyDetailDescriptor(summary.bangumiId || summary.animeId, detailStore, summary.source);
+      if (fullAnime && Array.isArray(fullAnime.links) && fullAnime.links.length > 0) {
+        materialized.push({ summary, descriptor: cloneLazyDescriptor(descriptor), fullAnime });
+      }
+    } catch (error) {
+      log('warn', `[LazyMerge] 物化 ${identity} 失败，跳过该候选: ${error?.message || error}`);
+    }
+  }
+
+  return materialized;
+}
+
 function resolveFullAnimeFromDetailStoreOrRuntime(idParam, descriptor, detailStore = null) {
   const ids = [idParam, ...descriptorCandidateIds(descriptor)];
   for (const id of ids) {
@@ -892,6 +1018,13 @@ function resolveFullAnimeFromDetailStoreOrRuntime(idParam, descriptor, detailSto
 }
 
 async function buildFullAnimeFromLazyDescriptor(descriptor, detailStore = null) {
+  if (descriptor?.kind === 'lazy-merge-detail') {
+    if (!isDescriptorConfigCompatible(descriptor)) return null;
+    const fullAnime = clonePlainAnime(descriptor.fullAnime);
+    if (!fullAnime || !Array.isArray(fullAnime.links) || fullAnime.links.length === 0) return null;
+    return fullAnime;
+  }
+
   if (descriptor?.source === 'vod') {
     return buildVodAnimeFromLazyDescriptor(descriptor, true);
   }
@@ -928,6 +1061,7 @@ async function buildFullAnimeFromLazyDescriptor(descriptor, detailStore = null) 
 async function materializeLazyDetailDescriptor(idParam, detailStore = null, source = null) {
   const descriptor = findLazyDetailDescriptor(idParam, source);
   if (!descriptor) return null;
+  if (!isDescriptorConfigCompatible(descriptor)) return null;
   if (isLazyDetailDescriptorExpired(descriptor)) {
     removeLazyDetailDescriptor(descriptor);
     return null;
@@ -1399,14 +1533,21 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
   if (cachedResults !== null) {
     if (lazySearch) {
       rehydrateLazyDescriptorsFromSearchCache(cacheKeyUsed);
+      if (!areLazyResultsMaterializable(cachedResults)) {
+        log("warn", `[searchAnime] 懒搜索缓存 ${cacheKeyUsed} 缺少可物化 descriptor，忽略缓存并重新搜索`);
+        cachedResults = null;
+        cacheHit = false;
+      }
     }
-    resultCount = cachedResults.length;
-    return jsonResponse({
-      errorCode: 0,
-      success: true,
-      errorMessage: "",
-      animes: cachedResults,
-    });
+    if (cachedResults !== null) {
+      resultCount = cachedResults.length;
+      return jsonResponse({
+        errorCode: 0,
+        success: true,
+        errorMessage: "",
+        animes: cachedResults,
+      });
+    }
   }
 
   const curAnimes = [];
@@ -1579,7 +1720,13 @@ export async function searchAnime(url, preferAnimeId = null, preferSource = null
   }
 
   // 执行源合并逻辑
-  if (!lazySearch && globals.mergeSourcePairs.length > 0) {
+  if (shouldRunLazyMergeBridge(lazySearch)) {
+    const materializedCandidates = await materializeLazyMergeCandidates(curAnimes, requestAnimeDetailsMap);
+    const componentDescriptors = materializedCandidates.map(item => item.descriptor).filter(Boolean);
+    await applyMergeLogic(curAnimes, requestAnimeDetailsMap, {
+      onMergedAnime: (mergedAnime) => registerLazyMergedDescriptor(mergedAnime, componentDescriptors),
+    });
+  } else if (!lazySearch && globals.mergeSourcePairs.length > 0) {
     await applyMergeLogic(curAnimes, requestAnimeDetailsMap);
   }
 

@@ -2678,12 +2678,13 @@ function detectCollectionCandidates(curAnimes) {
  * @param {Array<Anime>} curAnimes - 待处理的番剧列表（将被原地修改）
  * @returns {Promise<void>}
  */
-export async function applyMergeLogic(curAnimes, detailStore = null) {
+export async function applyMergeLogic(curAnimes, detailStore = null, options = {}) {
   if (!curAnimes || curAnimes.length < 2) {
     return;
   }
-  const groups = globals.mergeSourcePairs; 
+  const groups = globals.mergeSourcePairs;
   if (!groups || groups.length === 0) return;
+  const onMergedAnime = typeof options?.onMergedAnime === 'function' ? options.onMergedAnime : null;
 
   log("info", `[Merge] 启动源合并策略，配置: ${JSON.stringify(groups)}`);
 
@@ -2910,7 +2911,10 @@ export async function applyMergeLogic(curAnimes, detailStore = null) {
 
   // 将所有合法衍生出来的合并对象推入主列表
   if (newMergedAnimes.length > 0) {
-     for (const anime of newMergedAnimes) addAnime(anime, detailStore);
+     for (const anime of newMergedAnimes) {
+       addAnime(anime, detailStore);
+       if (onMergedAnime) onMergedAnime(anime);
+     }
      curAnimes.unshift(...newMergedAnimes);
   }
 
