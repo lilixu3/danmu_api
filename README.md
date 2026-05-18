@@ -608,9 +608,10 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 
 常用字段速查：
 
-- `SOURCE_ORDER` 可选值：`360`、`vod`、`tmdb`、`douban`、`tencent`、`youku`、`iqiyi`、`imgo`、`bilibili`、`migu`、`renren`、`hanjutv`、`bahamut`、`dandan`、`sohu`、`leshi`、`xigua`、`maiduidui`、`acfun`、`aiyifan`、`animeko`、`custom`。
+- `SOURCE_ORDER` 可选值：`360`、`vod`、`tmdb`、`douban`、`tencent`、`youku`、`iqiyi`、`imgo`、`bilibili`、`migu`、`renren`、`hanjutv`、`bahamut`、`dandan`、`sohu`、`leshi`、`xigua`、`maiduidui`、`acfun`、`aiyifan`、`animeko`、`ezdmw`、`custom`。
 - `PLATFORM_ORDER` / `MATCH_PLATFORM_RULES` 常用平台名：`qiyi`、`bilibili1`、`imgo`、`youku`、`qq`、`migu`、`acfun`、`sohu`、`leshi`、`xigua`、`maiduidui`、`aiyifan`、`renren`、`hanjutv`、`bahamut`、`dandan`、`animeko`、`custom`。
 - `MERGE_SOURCE_PAIRS` 使用源字段，用 `&` 组合多源、`,` 分隔多组，例如 `imgo&iqiyi,dandan&bahamut&animeko`。
+- `CUSTOM_MERGE_RULES` 用于指定合并映射或阻断规则，格式：`副源剧名/S01@来源 -> 主源剧名/S03@来源 | E25~E35>E1~E11`，或 `副源剧名@来源 × 主源剧名@来源`，多条规则用分号隔开。
 
 ### 匹配与标题处理
 
@@ -619,6 +620,7 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
 | `PLATFORM_ORDER` | 自动匹配优选平台 |
 | `MATCH_PLATFORM_RULES` | 按剧名 / 季度配置自动匹配平台优先级，平台名沿用 `PLATFORM_ORDER`；只调整匹配偏好，不裁剪搜索源；文件名显式 `@平台` 优先；配合标题映射时原始标题和映射后标题都可命中，如 `葬送的芙莉莲->dandan;葬送的芙莉莲/S01->bilibili1,animeko` |
 | `MERGE_SOURCE_PAIRS` | 多源合并规则 |
+| `CUSTOM_MERGE_RULES` | 自定义源合并映射 / 阻断规则，支持按剧名、季度和集数路由精确干预 |
 | `ENABLE_ANIME_EPISODE_FILTER` | 是否启用剧名 / 集标题过滤 |
 | `ANIME_TITLE_FILTER` | 剧名过滤规则 |
 | `EPISODE_TITLE_FILTER` | 集标题过滤规则 |

@@ -20,7 +20,12 @@ test('buildMatchSearchUrl should append valid season context only when present',
   assert.equal(withSeason.searchParams.get('keyword'), '葬送的芙莉莲');
   assert.equal(withSeason.searchParams.get('season'), '2');
 
+  const withSeasonAndEpisode = buildMatchSearchUrl(matchUrl, '葬送的芙莉莲', 2, 13);
+  assert.equal(withSeasonAndEpisode.searchParams.get('season'), '2');
+  assert.equal(withSeasonAndEpisode.searchParams.get('episode'), '13');
+
   const withoutSeason = buildMatchSearchUrl(matchUrl, '葬送的芙莉莲', null);
   assert.equal(withoutSeason.searchParams.get('keyword'), '葬送的芙莉莲');
   assert.equal(withoutSeason.searchParams.has('season'), false);
+  assert.equal(withoutSeason.searchParams.has('episode'), false);
 });

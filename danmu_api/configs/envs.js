@@ -250,6 +250,87 @@ export class Envs {
       .filter(Boolean);
   }
 
+
+
+  /**
+   * 解析合并映射表
+   * 支持强制合并、阻断合并与显式集数路由：
+   *   副源剧名/S01@bilibili -> 主源剧名/S03@dandan | E25~E35>E1~E11
+   *   副源剧名@bilibili × 主源剧名@dandan
+   * 多条规则用分号分隔。
+   */
+  static resolveCustomMergeRules() {
+    const raw = this.get('CUSTOM_MERGE_RULES', '', 'string').trim();
+    if (!raw) {
+      this.accessedEnvVars.set('CUSTOM_MERGE_RULES', '');
+      return [];
+    }
+
+    const parseEntity = (value) => {
+      const match = String(value || '').trim().match(/^(.+?)(?:\/S(\d+))?@([a-zA-Z0-9_&]+)$/i);
+      if (!match) return null;
+      const source = match[3].toLowerCase();
+      const sourceParts = source.split('&').map(item => item.trim()).filter(Boolean);
+      if (sourceParts.length === 0 || !sourceParts.every(item => this.MERGE_ALLOWED_SOURCES.includes(item))) return null;
+      return {
+        title: match[1].trim(),
+        season: match[2] ? parseInt(match[2], 10) : null,
+        source,
+      };
+    };
+
+    const parseRange = (value) => {
+      const match = String(value || '').trim().match(/^E(\d+)(?:~E(\d+))?$/i);
+      if (!match) return null;
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : start;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) return null;
+      return { start, end };
+    };
+
+    const rules = [];
+    for (const entry of raw.split(/[;\n]+/)) {
+      const ruleText = entry.trim();
+      if (!ruleText) continue;
+      try {
+        const [entityPart, routePart = ''] = ruleText.split('|').map(item => item.trim());
+        let secondaryText;
+        let primaryText;
+        let action = 'merge';
+        if (entityPart.includes('->')) {
+          [secondaryText, primaryText] = entityPart.split('->').map(item => item.trim());
+        } else if (entityPart.includes('×')) {
+          [secondaryText, primaryText] = entityPart.split('×').map(item => item.trim());
+          action = 'block';
+        } else {
+          continue;
+        }
+
+        const secondary = parseEntity(secondaryText);
+        const primary = parseEntity(primaryText);
+        if (!secondary || !primary) continue;
+
+        const routes = [];
+        if (action === 'merge' && routePart) {
+          for (const routeText of routePart.split(',')) {
+            const [secPart, primPart] = routeText.split('>').map(item => item && item.trim());
+            const sec = parseRange(secPart);
+            const prim = parseRange(primPart);
+            if (!sec || !prim) continue;
+            routes.push({ sec, prim });
+          }
+        }
+
+        rules.push({ action, secondary, primary, routes, hasRoutes: routes.length > 0 });
+      } catch (error) {
+        console.warn(`[Envs] 解析 CUSTOM_MERGE_RULES 失败: ${ruleText}`, error);
+      }
+    }
+
+    this.accessedEnvVars.set('CUSTOM_MERGE_RULES', raw);
+    return rules;
+  }
+
   static resolveDanmuLikePreset() {
     const allowedPresets = ['default', 'pink_under_1k', 'outline_under_1k', 'pink_only', 'outline_only', 'off'];
     const rawPreset = this.get('DANMU_LIKE_PRESET', 'default', 'string').trim().toLowerCase();
@@ -622,6 +703,7 @@ export class Envs {
       'SOURCE_DETAIL_CONCURRENCY': { category: 'source', type: 'number', description: '源内详情/候选处理默认并发，默认4，范围 1-16；用于控制单个源在处理搜索候选详情时的同时并发数', min: 1, max: 16 },
       'SOURCE_DETAIL_CONCURRENCY_BY_SOURCE': { category: 'source', type: 'text', description: '按源覆盖源内详情/候选处理并发，格式：源名:并发,源名:并发；示例：tencent:2,vod:3,iqiyi:4，值会被限制在 1-16 范围内' },
       'MERGE_SOURCE_PAIRS': { category: 'source', type: 'multi-select', options: this.MERGE_ALLOWED_SOURCES, description: '源合并配置，配置后将对应源合并同时一起获取弹幕返回，允许多组，允许多源，允许填单源表示保留原结果，一组中第一个为主源其余为副源，副源往主源合并，主源如果没有结果会轮替下一个作为主源。\n格式：源1&源2&源3 ，多组用逗号分隔。\n示例：dandan&animeko&bahamut,bilibili&animeko,dandan' },
+      'CUSTOM_MERGE_RULES': { category: 'source', type: 'text', options: this.MERGE_ALLOWED_SOURCES, description: '合并映射表，用于自定义源合并行为。格式1(合并)：副源剧名/S季数@来源 -> 主源剧名/S季数@来源 | E副源集数>E主源集数；格式2(阻断)：副源剧名/S季数@来源 × 主源剧名/S季数@来源。[/S季数] 与 [|路由规则] 可选，多个规则用分号隔开，多段路由用逗号分隔。' },
       'REAL_TIME_PULL_DANDAN': { category: 'source', type: 'boolean', description: '已废弃兼容项：弹弹 related 接口已下线，当前版本保留该变量仅为兼容旧配置，不再生效' },
       // 匹配配置
       'PLATFORM_ORDER': { category: 'match', type: 'multi-select', options: this.ALLOWED_PLATFORMS, description: '平台排序配置，可以配置自动匹配时的优选平台。\n当配置合并平台的时候，可以指定期望的合并源，\n示例：一个结果返回了“dandan&bilibili1&animeko”和“youku”时，\n当配置“youku”时返回“youku” \n当配置“dandan&animeko”时返回“dandan&bilibili1&animeko”' },
@@ -703,6 +785,7 @@ export class Envs {
       sourceDetailConcurrencyBySource: this.resolveSourceDetailConcurrencyBySource(), // 单源详情/候选处理并发覆盖，格式：tencent:2,vod:3
       youkuConcurrency: Math.min(this.get('YOUKU_CONCURRENCY', 8, 'number'), 16), // 优酷并发配置
       mergeSourcePairs: this.resolveMergeSourcePairs(), // 源合并配置，用于将源合并获取
+      customMergeRules: this.resolveCustomMergeRules(), // 合并映射表，用于自定义源合并行为
       realTimePullDandan: this.get('REAL_TIME_PULL_DANDAN', false, 'boolean'), // 已废弃兼容项：保留旧配置读取，不再驱动 related 实时拉取逻辑
       platformOrderArr: this.resolvePlatformOrder(), // 自动匹配优选平台
       matchPlatformRules: this.resolveMatchPlatformRules(), // 按剧名/季度配置的自动匹配平台优先级

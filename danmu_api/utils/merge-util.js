@@ -26,7 +26,7 @@ const ENABLE_VERBOSE_MERGE_LOG = false;
 const KNOWN_MERGE_SOURCE_PREFIXES = new Set([
     '360', 'vod', 'tmdb', 'douban', 'tencent', 'youku', 'iqiyi', 'imgo', 'bilibili', 'bilibili1',
     'migu', 'renren', 'hanjutv', 'bahamut', 'dandan', 'sohu', 'leshi', 'xigua', 'maiduidui',
-    'aiyifan', 'animeko', 'ezdmw', 'custom', 'other_server'
+    'acfun', 'aiyifan', 'animeko', 'ezdmw', 'custom', 'other_server'
 ]);
 
 /**
@@ -1083,6 +1083,55 @@ function probeContentMatch(primaryAnime, candidateAnime) {
 // 6. 核心匹配逻辑 (Search & Match)
 // ==========================================
 
+function normalizeCustomRuleTitle(value, ruleTitle) {
+    let cleanAnime = simplized(String(value || '')).toLowerCase().replace(RegexStore.Clean.FROM_SUFFIX, '');
+    const cleanRule = simplized(String(ruleTitle || '')).toLowerCase();
+    const hasYearInRule = /[\(（\[]?\d{4}[\)）\]]?/.test(cleanRule);
+    const hasTagsInRule = /【.*?】|\[.*?\]/.test(cleanRule);
+    if (!hasYearInRule) cleanAnime = cleanAnime.replace(/[\(（\[]\d{4}[\)）\]]/g, '');
+    if (!hasTagsInRule) {
+        const startBracketMatch = cleanAnime.match(/^(?:【|\[)(.+?)(?:】|\])/);
+        if (startBracketMatch) {
+            const content = startBracketMatch[1];
+            const typeKeywords = /^(TV|剧场版|劇場版|movie|film|anime|动漫|动画|电影|电视剧|连续剧|综艺|真人秀|纪录片|日剧|韩剧|美剧|英剧|泰剧|国产剧|港剧|台剧|短剧|微短剧|特摄|OVA|OAD|SP)$/i;
+            if (!typeKeywords.test(content)) cleanAnime = cleanAnime.replace(startBracketMatch[0], `${content} `);
+        }
+        cleanAnime = cleanAnime.replace(RegexStore.Clean.SOURCE_TAG, '').replace(/\[.*?\]/g, '');
+    }
+    if (!cleanRule.includes('季') && !cleanRule.includes('season')) cleanAnime = cleanAnime.replace(RegexStore.Season.INFO_STRONG, '');
+    cleanAnime = cleanAnime.replace(RegexStore.Clean.MOVIE_KEYWORDS, '');
+    const normalize = (text) => String(text || '').replace(/[\s\u3000·・,，.。:：!！?？\-—_~～()（）\[\]【】]/g, '').trim();
+    return { target: normalize(cleanAnime), rule: normalize(cleanRule) };
+}
+
+function splitCustomRuleSource(value) {
+    return String(value || '').split(DISPLAY_CONNECTOR).flatMap(part => part.split('&')).map(item => item.trim()).filter(Boolean);
+}
+
+function getMatchingCustomRule(pAnime, sAnime) {
+    const rules = globals.customMergeRules || [];
+    if (!Array.isArray(rules) || rules.length === 0 || !pAnime || !sAnime) return null;
+    const pSources = splitCustomRuleSource(pAnime.source);
+    const sSources = splitCustomRuleSource(sAnime.source);
+    const pSeason = getSeasonNumber(pAnime.animeTitle, pAnime.typeDescription, pAnime.aliases) || 1;
+    const sSeason = getSeasonNumber(sAnime.animeTitle, sAnime.typeDescription, sAnime.aliases) || 1;
+
+    for (const rule of rules) {
+        const rulePrimarySources = splitCustomRuleSource(rule?.primary?.source);
+        const ruleSecondarySources = splitCustomRuleSource(rule?.secondary?.source);
+        if (!rulePrimarySources.some(src => pSources.includes(src))) continue;
+        if (!ruleSecondarySources.some(src => sSources.includes(src))) continue;
+
+        const pComp = normalizeCustomRuleTitle(pAnime.animeTitle, rule.primary.title);
+        const sComp = normalizeCustomRuleTitle(sAnime.animeTitle, rule.secondary.title);
+        if (pComp.target !== pComp.rule || sComp.target !== sComp.rule) continue;
+        if (rule.primary.season !== null && pSeason !== rule.primary.season) continue;
+        if (rule.secondary.season !== null && sSeason !== rule.secondary.season) continue;
+        return rule;
+    }
+    return null;
+}
+
 /**
  * 在副源列表中寻找最佳匹配的动画对象列表
  * 包含：上下文感知、集内容探测、中配优先、Tier筛选
@@ -1127,6 +1176,23 @@ export function findSecondaryMatches(primaryAnime, secondaryList, collectionAnim
 
   for (const secAnime of secondaryList) {
     const rawSecTitle = secAnime.animeTitle || '';
+    const customRule = getMatchingCustomRule(primaryAnime, secAnime);
+    if (customRule) {
+        if (customRule.action === 'block') {
+            logReason(rawSecTitle, `被 CUSTOM_MERGE_RULES 明确阻断`);
+            continue;
+        }
+        validCandidates.push({
+            anime: secAnime,
+            score: 1.0,
+            lang: getLanguageType(rawSecTitle),
+            debugTitle: rawSecTitle,
+            isCustomMapped: true,
+        });
+        maxScore = Math.max(maxScore, 1.0);
+        log("info", `[Merge-Check] CUSTOM_MERGE_RULES 特权放行: [${primaryAnime.source}] ${rawPrimaryTitle} <-> [${secAnime.source}] ${rawSecTitle}`);
+        continue;
+    }
     const isSecCollection = collectionAnimeIds.has(secAnime.animeId);
     const isAnyCollection = isPrimaryCollection || isSecCollection;
     const isSecIgnoredYear = secAnime.source === 'hanjutv';
@@ -2069,6 +2135,12 @@ async function processMergeTask(params) {
     for (const secSource of availableSecondaries) {
         const indexedItems = getIndexedSourceItems(mergeIndexes, secSource, limitSecondaryLang || null);
         let secondaryItems = (indexedItems || curAnimes.filter(a => a.source === secSource)).filter(a => {
+            const rule = getMatchingCustomRule(pAnime, a);
+            if (rule?.action === 'block') {
+                log("info", `${logPrefix} 拦截: 副源 [${a.source}] ${a.animeTitle} 被 CUSTOM_MERGE_RULES 阻断`);
+                return false;
+            }
+            if (rule?.action === 'merge') return true;
             // 合集主源特权：当主源为合集时，允许无视当前组的消耗状态，复用已被消耗的副源以拼凑完整季度
             if (isPrimaryCollection) return true;
 
@@ -2113,12 +2185,17 @@ async function processMergeTask(params) {
         }
 
         for (const match of allMatches) {
-            const secSource = match.source; 
+            const secSource = match.source;
+            const customRule = getMatchingCustomRule(pAnime, match);
+            if (customRule?.action === 'block') {
+                log("info", `${logPrefix} [安全网拦截] [${currentPrimarySource}] ${pAnime.animeTitle} <-> [${secSource}] ${match.animeTitle} 被 CUSTOM_MERGE_RULES 阻断`);
+                continue;
+            }
 
             // 合集主源特权：如果是合集主源，直接跳过此处的二次消耗校验
             if (!isPrimaryCollection) {
                 const isReuse = allowReuseIds && allowReuseIds.has(match.animeId);
-                if (!isReuse && groupConsumedIds.has(match.animeId)) continue;
+                if (!isReuse && !customRule && groupConsumedIds.has(match.animeId)) continue;
             }
 
             const globalCachedMatch = getIndexedAnimeById(mergeIndexes, match.animeId) || globals.animes.find(a => String(a.animeId) === String(match.animeId));
@@ -2235,6 +2312,21 @@ async function processMergeTask(params) {
             derivedAnime.bangumiId = String(derivedAnime.animeId);
 
             let mergedCount = 0;
+            const customRouteMap = new Map();
+            if (customRule?.hasRoutes) {
+                for (const route of customRule.routes || []) {
+                    const secLen = route.sec.end - route.sec.start + 1;
+                    const primLen = route.prim.end - route.prim.start + 1;
+                    if (secLen !== primLen) {
+                        log("warn", `[CUSTOM_MERGE_RULES] 路由区间跨度不一致，跳过: E${route.sec.start}~E${route.sec.end}>E${route.prim.start}~E${route.prim.end}`);
+                        continue;
+                    }
+                    for (let i = 0; i < secLen; i++) {
+                        customRouteMap.set(route.sec.start + i, route.prim.start + i);
+                    }
+                }
+                log("info", `${logPrefix} 启用 CUSTOM_MERGE_RULES 精确路由: ${customRouteMap.size} 条`);
+            }
 
             // 智能对齐策略：共识差计算与番外制导
             const isBroadSpecial = (info) => info.isSpecial || info.isStrictSpecial || (info.num !== null && info.num % 1 !== 0);
@@ -2288,7 +2380,20 @@ async function processMergeTask(params) {
               const orphanItem = { link: sourceLink, originalIndex: sourceLinkItem.originalIndex, relativeIndex: pIndex, info: infoS };
               const broadSpecialS = isBroadSpecial(infoS);
 
-              if (consensusShift !== null && infoS.num !== null && !broadSpecialS) {
+              if (customRouteMap.size > 0 && infoS.num !== null && customRouteMap.has(infoS.num)) {
+                  const targetNum = customRouteMap.get(infoS.num);
+                  const routedIndex = filteredPLinksWithIndex.findIndex((pItem, pIdx) => {
+                      const { info: infoP } = getEpisodeInfoWithLogicalNum(pItem, pIdx, currentPrimarySource, redundantP, logicalNumsP);
+                      return infoP.num === targetNum;
+                  });
+                  if (routedIndex !== -1) {
+                      pIndex = routedIndex;
+                      orphanItem.relativeIndex = routedIndex;
+                  } else {
+                      orphanItem.relativeIndex = filteredPLinksWithIndex.length + (k * 0.001);
+                      pIndex = -1;
+                  }
+              } else if (consensusShift !== null && infoS.num !== null && !broadSpecialS) {
                   // [正片制导] 精确数值匹配
                   const targetNum = infoS.num + consensusShift;
                   pIndex = filteredPLinksWithIndex.findIndex(pItem => {
@@ -2402,7 +2507,7 @@ async function processMergeTask(params) {
 
             if (mergedCount > 0) {
               const isAnyCollection = collectionAnimeIds.has(pAnime.animeId) || collectionAnimeIds.has(match.animeId);
-              if (isMergeRatioValid(mergedCount, filteredPLinksWithIndex.length, filteredMLinksWithIndex.length, currentPrimarySource, secSource, isAnyCollection)) {
+              if (customRule || isMergeRatioValid(mergedCount, filteredPLinksWithIndex.length, filteredMLinksWithIndex.length, currentPrimarySource, secSource, isAnyCollection)) {
                   for (const mutation of pendingMutations) {
                       const link = derivedAnime.links[mutation.linkIndex];
                       link.url = mutation.newUrl;
@@ -2456,7 +2561,9 @@ async function processMergeTask(params) {
                       }
                   }
 
+                  const skipCustomRouteStitch = customRule?.hasRoutes && customRule?.primary?.season !== customRule?.secondary?.season;
                   if (collectionAnimeIds.has(match.animeId)) log("info", `${logPrefix} [智能补全] 跳过: 副源 [${secSource}] 为合集，为避免混入其他季度集数，不执行补全。`);
+                  else if (skipCustomRouteStitch) log("info", `${logPrefix} [智能补全] 跳过: CUSTOM_MERGE_RULES 跨季路由避免混入其他季度集数。`);
                   else stitchUnmatchedEpisodes(derivedAnime, orphanedEpisodes, secSource);
 
                   const normals = [], sinkers = [];
@@ -2682,11 +2789,30 @@ export async function applyMergeLogic(curAnimes, detailStore = null, options = {
   if (!curAnimes || curAnimes.length < 2) {
     return;
   }
-  const groups = globals.mergeSourcePairs;
+  const baseGroups = Array.isArray(globals.mergeSourcePairs) ? globals.mergeSourcePairs : [];
+  const dynamicGroupMap = new Map();
+  for (const rule of globals.customMergeRules || []) {
+    if (rule?.action !== 'merge') continue;
+    const primary = String(rule.primary?.source || '').split(DISPLAY_CONNECTOR)[0].split('&')[0];
+    const secondary = String(rule.secondary?.source || '').split(DISPLAY_CONNECTOR)[0].split('&')[0];
+    if (!primary || !secondary || primary === secondary) continue;
+    if (!dynamicGroupMap.has(primary)) dynamicGroupMap.set(primary, new Set());
+    dynamicGroupMap.get(primary).add(secondary);
+  }
+  const customGroups = Array.from(dynamicGroupMap.entries()).map(([primary, secondaries]) => ({ primary, secondaries: Array.from(secondaries) }));
+  const groupMap = new Map();
+  for (const group of [...baseGroups, ...customGroups]) {
+    if (!group?.primary) continue;
+    if (!groupMap.has(group.primary)) groupMap.set(group.primary, new Set());
+    for (const secondary of group.secondaries || []) {
+      if (secondary && secondary !== group.primary) groupMap.get(group.primary).add(secondary);
+    }
+  }
+  const groups = Array.from(groupMap.entries()).map(([primary, secondaries]) => ({ primary, secondaries: Array.from(secondaries) }));
   if (!groups || groups.length === 0) return;
   const onMergedAnime = typeof options?.onMergedAnime === 'function' ? options.onMergedAnime : null;
 
-  log("info", `[Merge] 启动源合并策略，配置: ${JSON.stringify(groups)}`);
+  log("info", `[Merge] 启动源合并策略，配置: ${JSON.stringify(groups)}, customRules=${(globals.customMergeRules || []).length}`);
 
   let epFilter = globals.episodeTitleFilter;
   if (epFilter && typeof epFilter === 'string') {

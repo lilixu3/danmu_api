@@ -136,3 +136,40 @@ test('applyMergeLogic should keep aliases from merged secondary sources', async 
   assert.ok(mergedAnime.aliases.includes('副源别名'));
   assert.ok(mergedAnime.aliases.includes('Alt Merge Guardian'));
 });
+
+test('CUSTOM_MERGE_RULES should derive merge groups and force mapped dissimilar titles', async () => {
+  resetRuntime({
+    MERGE_SOURCE_PAIRS: '',
+    CUSTOM_MERGE_RULES: '副源映射名@iqiyi -> 主源映射名@tencent | E1~E2>E1~E2'
+  });
+
+  addAnime(createAnime({ animeId: 9401, source: 'tencent', title: '主源映射名' }));
+  addAnime(createAnime({ animeId: 9402, source: 'iqiyi', title: '副源映射名' }));
+
+  const curAnimes = snapshotCurAnimes();
+  await applyMergeLogic(curAnimes);
+
+  const mergedAnime = curAnimes.find(item => item.source === 'tencent');
+  assert.ok(mergedAnime, 'expected custom mapped primary anime');
+  assert.match(mergedAnime.animeTitle, /from tencent&iqiyi$/);
+  assert.equal(
+    mergedAnime.links[0].url,
+    `tencent:https://example.com/tencent/9401/1${MERGE_DELIMITER}iqiyi:https://example.com/iqiyi/9402/1`
+  );
+});
+
+test('CUSTOM_MERGE_RULES block rule should override configured merge pair', async () => {
+  resetRuntime({
+    MERGE_SOURCE_PAIRS: 'tencent&iqiyi',
+    CUSTOM_MERGE_RULES: '索引守护者@iqiyi × 索引守护者@tencent'
+  });
+
+  addAnime(createAnime({ animeId: 9501, source: 'tencent', title: '索引守护者' }));
+  addAnime(createAnime({ animeId: 9502, source: 'iqiyi', title: '索引守护者' }));
+
+  const curAnimes = snapshotCurAnimes();
+  await applyMergeLogic(curAnimes);
+
+  assert.equal(curAnimes.length, 2);
+  assert.ok(curAnimes.every(item => !item.animeTitle.includes('tencent&iqiyi')));
+});

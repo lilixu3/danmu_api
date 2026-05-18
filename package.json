@@ -1,6 +1,6 @@
 {
   "name": "danmu-api-server",
-  "version": "1.19.5",
+  "version": "1.19.6",
   "description": "A danmu Node.js Express API server",
   "main": "danmu_api/server.js",
   "type": "module",

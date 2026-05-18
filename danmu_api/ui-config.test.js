@@ -57,6 +57,37 @@ test('cache minutes UI config should allow 0 as disabled', () => {
   assert.equal(config.envVarConfig.COMMENT_CACHE_MINUTES.min, 0);
 });
 
+test('CUSTOM_MERGE_RULES config should parse merge, route and block rules', () => {
+  const config = Globals.init({
+    CUSTOM_MERGE_RULES: '天气之子@bilibili -> 天气之子@dandan; 我推的孩子/S01@bahamut -> 我推的孩子/S03@dandan | E25~E35>E1~E11; A@iqiyi × B@tencent; bad@unknown -> B@tencent'
+  });
+
+  assert.equal(config.envVarConfig.CUSTOM_MERGE_RULES.type, 'text');
+  assert.deepEqual(config.customMergeRules, [
+    {
+      action: 'merge',
+      secondary: { title: '天气之子', season: null, source: 'bilibili' },
+      primary: { title: '天气之子', season: null, source: 'dandan' },
+      routes: [],
+      hasRoutes: false
+    },
+    {
+      action: 'merge',
+      secondary: { title: '我推的孩子', season: 1, source: 'bahamut' },
+      primary: { title: '我推的孩子', season: 3, source: 'dandan' },
+      routes: [{ sec: { start: 25, end: 35 }, prim: { start: 1, end: 11 } }],
+      hasRoutes: true
+    },
+    {
+      action: 'block',
+      secondary: { title: 'A', season: null, source: 'iqiyi' },
+      primary: { title: 'B', season: null, source: 'tencent' },
+      routes: [],
+      hasRoutes: false
+    }
+  ]);
+});
+
 test('API test UI should expose a debug toggle for matchAnime', () => {
   assert.match(
     apitestJsContent,
