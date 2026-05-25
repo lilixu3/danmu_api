@@ -531,11 +531,13 @@ export const apiFeatureCssContent = /* css */ `/* ==============================
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 0.5rem;
+    word-break: normal;
+    overflow-wrap: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
     line-height: 1.4;
 }
 

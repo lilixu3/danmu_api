@@ -5,6 +5,7 @@ import { Globals } from './configs/globals.js';
 import { Envs } from './configs/envs.js';
 import { apitestJsContent } from './ui/js/apitest.js';
 import { systemSettingsJsContent } from './ui/js/systemsettings.js';
+import { HTML_TEMPLATE } from './ui/template.js';
 import { convertToDanmakuJson } from './utils/danmu-util.js';
 
 test('DANMU_OFFSET UI config should expose quick timeline-offset editor metadata', () => {
@@ -98,6 +99,39 @@ test('CUSTOM_MERGE_RULES system settings should expose a visual custom merge rul
   assert.match(systemSettingsJsContent, /副源剧名/);
   assert.match(systemSettingsJsContent, /主源剧名/);
   assert.match(systemSettingsJsContent, /集数路由/);
+  assert.match(HTML_TEMPLATE, /<option value="custom-merge-rules">自定义合并规则<\/option>/);
+});
+
+test('system settings embedded script content should be valid JavaScript', () => {
+  assert.doesNotThrow(() => new Function(systemSettingsJsContent));
+});
+
+function loadRecentDataHelper(helperName) {
+  const start = systemSettingsJsContent.indexOf('function toJsStringLiteral');
+  const end = systemSettingsJsContent.indexOf('function renderAnimeCachePanel');
+  assert.ok(start >= 0 && end > start, 'recent data helper block should exist');
+  const helperSource = systemSettingsJsContent.slice(start, end);
+  return new Function(`${helperSource}; return ${helperName};`)();
+}
+
+function decodeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+test('recent anime cache action buttons should build safe inline handlers for quoted titles', () => {
+  const buildAnimeCacheButtons = loadRecentDataHelper('buildAnimeCacheButtons');
+  const html = buildAnimeCacheButtons(`A'B "<>&`, `qiyi'source`, 'CUSTOM_MERGE_RULES');
+  const handlerAttrs = [...html.matchAll(/onclick="([^"]+)"/g)].map(match => decodeHtmlAttr(match[1]));
+
+  assert.equal(handlerAttrs.length, 2);
+  for (const handler of handlerAttrs) {
+    assert.doesNotThrow(() => new Function('fillMergeEntity', handler));
+  }
+  assert.match(handlerAttrs[0], /fillMergeEntity\("sec", "A'B \\"<>&", "qiyi'source"\)/);
 });
 
 test('upstream COLOR_POOL env should stay available as a rich color-list compatibility variable', () => {
@@ -134,6 +168,16 @@ test('API test UI should send matchAnime debug as query string instead of JSON b
     apitestJsContent,
     /config\.method === 'POST' && apiKey === 'matchAnime'[\s\S]*queryParams\.debug = params\.debug[\s\S]*delete params\.debug/,
   );
+});
+
+test('system settings should expose recent anime cache panel for merge and offset helpers', () => {
+  assert.match(systemSettingsJsContent, /fetchAndShowRecentData/);
+  assert.match(systemSettingsJsContent, /\/api\/cache\/animes/);
+  assert.match(systemSettingsJsContent, /recent-data-panel/);
+  assert.match(systemSettingsJsContent, /renderAnimeCachePanel/);
+  assert.match(systemSettingsJsContent, /fillMergeEntity/);
+  assert.match(systemSettingsJsContent, /fillOffsetEntity/);
+  assert.match(systemSettingsJsContent, /MERGE_SOURCE_PAIRS[\s\S]*?查看最近数据/);
 });
 
 test('AI API Key connection test should send current AI_BASE_URL and AI_MODEL values from the UI', () => {

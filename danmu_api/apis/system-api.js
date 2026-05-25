@@ -339,3 +339,51 @@ export function handleReqRecords(auth = {}) {
   
   return jsonResponse({ records, todayReqNum }, 200);
 }
+
+/**
+ * 处理获取最近 animes 缓存列表的请求
+ * @returns {Response} 包含格式化后番剧、剧集与合并子源映射的 JSON 响应
+ */
+export function handleCacheAnimes() {
+  try {
+    const localAnimes = [...(globals.animes || [])].reverse();
+    const fullAnimeMap = new Map();
+
+    localAnimes.forEach(anime => {
+      if (anime?.source && anime?.animeId !== undefined && anime?.animeId !== null) {
+        fullAnimeMap.set(`${anime.source}_${anime.animeId}`, anime);
+      }
+    });
+
+    const formattedData = localAnimes
+      .filter(anime => !anime?.isHiddenChild)
+      .map(anime => {
+        const animeJson = typeof anime?.toJson === 'function' ? anime.toJson() : { ...anime };
+        const { links = [], mergedChildren = [], ...rest } = animeJson;
+
+        return {
+          ...rest,
+          episodes: rest.episodeCount || rest.episodes || 1,
+          links,
+          mergedChildren: (Array.isArray(mergedChildren) ? mergedChildren : []).map(child => {
+            const fullChild = fullAnimeMap.get(`${child.source}_${child.animeId}`);
+            const fullChildJson = typeof fullChild?.toJson === 'function' ? fullChild.toJson() : fullChild;
+            const fullLinks = Array.isArray(fullChildJson?.links) && fullChildJson.links.length > 0
+              ? fullChildJson.links
+              : (Array.isArray(child.links) ? child.links : []);
+
+            return {
+              ...child,
+              episodes: child.episodeCount || child.episodes || 1,
+              links: fullLinks
+            };
+          })
+        };
+      });
+
+    return jsonResponse({ success: true, data: formattedData }, 200);
+  } catch (error) {
+    log("error", `[server] Fetch cache animes failed: ${error.message}`);
+    return jsonResponse({ success: false, message: `获取缓存失败: ${error.message}` }, 500);
+  }
+}

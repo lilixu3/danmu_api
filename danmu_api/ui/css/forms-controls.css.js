@@ -952,6 +952,226 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     border-style: dashed;
 }
 
+.timeline-offset-actions,
+.custom-merge-rules-actions,
+.recent-data-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.recent-data-panel {
+    display: none;
+    max-height: min(420px, 48vh);
+    overflow-y: auto;
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.recent-data-help {
+    margin: 0 0 0.75rem 0;
+}
+
+.recent-data-loading,
+.recent-data-empty,
+.recent-data-error {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.recent-data-error {
+    color: var(--danger-color);
+}
+
+.anime-cache-list,
+.merged-children-container,
+.episodes-list-container,
+.child-mapping-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.anime-cache-card,
+.anime-cache-child-item,
+.anime-cache-episode-item {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.anime-cache-card {
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+}
+
+.anime-cache-card-body,
+.anime-cache-child-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.anime-cache-card-body {
+    padding: 0.75rem;
+}
+
+.anime-cache-cover,
+.anime-cache-child-cover {
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--border-color);
+}
+
+.anime-cache-cover {
+    width: 44px;
+    height: 60px;
+}
+
+.anime-cache-child-cover {
+    width: 32px;
+    height: 44px;
+}
+
+.anime-cache-info,
+.anime-cache-child-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.anime-cache-title,
+.anime-cache-child-title,
+.anime-cache-episode-item {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.anime-cache-title {
+    font-weight: 650;
+    line-height: 1.35;
+}
+
+.anime-cache-child-title {
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.anime-cache-meta {
+    margin-top: 0.2rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.anime-cache-actions,
+.anime-cache-child-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.btn-xs {
+    padding: 0.2rem 0.45rem;
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+.anime-cache-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0.65rem 0.75rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.cache-badge {
+    border: 1px solid rgba(var(--primary-rgb), 0.22);
+    border-radius: 999px;
+    background: rgba(var(--primary-rgb), 0.08);
+    color: var(--primary-color);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.65rem;
+}
+
+.cache-badge.active {
+    background: rgba(var(--primary-rgb), 0.16);
+}
+
+.merged-children-container,
+.episodes-list-container {
+    display: none;
+    padding: 0.65rem 0.75rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.episodes-list-container,
+.child-mapping-container {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.anime-cache-child-item,
+.anime-cache-episode-item {
+    padding: 0.55rem;
+}
+
+.child-mapping-toggle {
+    margin-top: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.child-mapping-toggle:hover,
+.child-mapping-toggle.active {
+    color: var(--primary-color);
+    border-color: rgba(var(--primary-rgb), 0.35);
+}
+
+.child-mapping-container {
+    display: none;
+    margin-top: 0.5rem;
+}
+
+.mapping-row {
+    display: flex;
+    gap: 0.45rem;
+    align-items: flex-start;
+    padding: 0.35rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    font-size: 0.75rem;
+}
+
+.mapping-status.success {
+    color: var(--success-color, #22c55e);
+    flex-shrink: 0;
+}
+
+.mapping-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 [data-theme="dark"] .custom-merge-rule-item,
 [data-theme="dark"] .custom-merge-rules-empty {
     background: rgba(17, 24, 39, 0.6);

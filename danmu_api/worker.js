@@ -9,7 +9,7 @@ import AIClient from './utils/ai-util.js';
 import { initBangumiData } from "./utils/bangumi-data-util.js";
 import { getBangumi, getComment, getCommentByUrl, getCommentDuration, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
 import { handleFongmiDanmaku } from "./apis/fongmi-api.js";
-import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleRuntimeInfo, handleRuntimeCheckUpdate, handleRuntimeUpdate } from "./apis/system-api.js";
+import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleRuntimeInfo, handleRuntimeCheckUpdate, handleRuntimeUpdate, handleCacheAnimes } from "./apis/system-api.js";
 import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
 import { Segment } from "./models/dandan-model.js";
 import {
@@ -386,6 +386,11 @@ async function handleRequest(req, env, deployPlatform, clientIp, ctx) {
   // GET /api/reqrecords - 获取请求记录 (需要 token)
   if (path === "/api/reqrecords" && method === "GET") {
     return handleReqRecords(authContext);
+  }
+
+  // GET /api/cache/animes - 获取最近 animes 缓存，供合并/偏移配置面板辅助填写
+  if (path === "/api/cache/animes" && method === "GET") {
+    return handleCacheAnimes();
   }
 
   // GET /api/runtime/info - 获取运行时信息 (需要 token)

@@ -2513,13 +2513,28 @@ async function processMergeTask(params) {
                       link.url = mutation.newUrl;
                       link.title = mutation.newTitle;
                   }
+                  derivedAnime.mergedChildren = Array.isArray(derivedAnime.mergedChildren) ? derivedAnime.mergedChildren : [];
+                  if (!derivedAnime.mergedChildren.some(child => String(child.animeId) === String(match.animeId) && child.source === match.source)) {
+                      derivedAnime.mergedChildren.push({
+                          animeId: match.animeId,
+                          bangumiId: String(match.animeId),
+                          animeTitle: derivedMatch.animeTitle,
+                          type: derivedMatch.type || '',
+                          typeDescription: derivedMatch.typeDescription || '',
+                          imageUrl: derivedMatch.imageUrl || '',
+                          source: match.source,
+                          episodeCount: derivedMatch.episodeCount || (Array.isArray(derivedMatch.links) ? derivedMatch.links.length : 1),
+                          links: Array.isArray(derivedMatch.links) ? derivedMatch.links : []
+                      });
+                  }
+                  if (globalCachedMatch) globalCachedMatch.isHiddenChild = true;
                   log("info", `${logPrefix} 关联成功: [${currentPrimarySource}] ${logTitleA} <-> [${secSource}] ${logTitleB} (本次合并 ${mergedCount} 集)`);
                   if (mappingEntries.length > 0) {
                       mappingEntries.sort((a, b) => a.idx - b.idx);
                       log("info", `${logPrefix} [${secSource}] 映射详情:\n${mappingEntries.map(e => e.text).join('\n')}`);
                   }
 
-                  // 支持双向进度写入：主源为合集与副源为合集的情况都被覆盖，为链式关联铺路
+
                   if (collectionProgress && (isSecondaryCollection || isPrimaryCollection)) {
                       let maxUsedIndex = -1;
 
@@ -2598,6 +2613,8 @@ async function processMergeTask(params) {
              return null;
         }
         generatedSignatures.add(signature);
+        const cachedPrimary = getIndexedAnimeById(mergeIndexes, pAnime.animeId) || globals.animes.find(a => String(a.animeId) === String(pAnime.animeId) && a.source === pAnime.source);
+        if (cachedPrimary) cachedPrimary.isHiddenChild = true;
 
         for (let i = 1; i < contentSignatureParts.length; i++) {
             const secId = contentSignatureParts[i];

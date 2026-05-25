@@ -542,6 +542,8 @@ Node / Docker 挂载 `config/.env` 后，大部分业务配置会自动热加载
   获取当前配置预览、环境变量分类信息和 UI 初始化所需数据。
 - `GET /api/logs`
   读取最近日志。
+- `GET /api/cache/animes`
+  获取最近的 animes 运行时缓存，供系统设置里的合并源、合并规则和时间轴偏移辅助查看/填入。
 - `GET /api/reqrecords`
   读取最近请求记录和今日请求总数。
 - `POST /api/logs/clear`

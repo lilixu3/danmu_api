@@ -1110,6 +1110,7 @@ export const HTML_TEMPLATE = /* html */ `
                             <option value="multi-select">多选 (可排序)</option>
                             <option value="map">映射表</option>
                             <option value="timeline-offset">时间轴偏移</option>
+                            <option value="custom-merge-rules">自定义合并规则</option>
                         </select>
                     </div>
                     <div class="form-group" id="value-input-container"></div>
