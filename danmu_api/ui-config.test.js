@@ -209,6 +209,10 @@ test('system settings env modal should keep mobile controls full-width in a real
       </div>
     `;
 
+    const episodeRows = Array.from({ length: 30 }, (_, index) => `
+      <div class="anime-cache-episode-item">第${String(index + 1).padStart(2, '0')}集 - 很长很长的剧集标题用于测试展开后不要被压扁</div>
+    `).join('');
+
     const recentDataMarkup = `
       <div class="recent-data-panel" style="display:block">
         <div class="recent-data-help">点击缓存卡片中的按钮快速填入。</div>
@@ -219,13 +223,17 @@ test('system settings env modal should keep mobile controls full-width in a real
                 <div class="anime-cache-cover"></div>
                 <div class="anime-cache-info">
                   <div class="anime-cache-title">很长很长的番剧标题用于测试移动端是否仍然紧凑</div>
-                  <div class="anime-cache-meta">[bilibili] (12集)</div>
+                  <div class="anime-cache-meta">[bilibili] (30集)</div>
                 </div>
                 <div class="anime-cache-actions">
                   <button type="button" class="btn btn-sm btn-xs">设为副</button>
                   <button type="button" class="btn btn-primary btn-sm btn-xs">设为主</button>
                 </div>
               </div>
+              <div class="anime-cache-footer">
+                <button type="button" class="cache-badge badge-episodes active">📺 收起剧集</button>
+              </div>
+              <div class="episodes-list-container" style="display:flex">${episodeRows}</div>
             </div>
           </div>
         </div>
@@ -304,7 +312,9 @@ test('system settings env modal should keep mobile controls full-width in a real
         panel: get('.recent-data-panel'),
         card: get('.anime-cache-card-body'),
         title: get('.anime-cache-title'),
-        actions: get('.anime-cache-actions')
+        actions: get('.anime-cache-actions'),
+        episodes: get('.episodes-list-container'),
+        episode: get('.anime-cache-episode-item')
       };
     });
     assert.equal(recent.card.display, 'grid');
@@ -313,6 +323,9 @@ test('system settings env modal should keep mobile controls full-width in a real
     assert.equal(recent.title.whiteSpace, 'nowrap');
     assert.equal(recent.title.textOverflow, 'ellipsis');
     assert.ok(recent.actions.width <= 118, `recent action buttons should not occupy a full row, got ${recent.actions.width}`);
+    assert.equal(recent.episodes.display, 'flex');
+    assert.ok(recent.episodes.height <= 222, `expanded episode list should remain scroll-contained, got ${recent.episodes.height}`);
+    assert.ok(recent.episode.height >= 28, `episode rows must not be vertically squeezed, got ${recent.episode.height}`);
   } finally {
     await browser.close();
   }

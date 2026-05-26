@@ -1130,6 +1130,12 @@ export const formsControlsCssContent = /* css */ `/* ===========================
     padding: 0.55rem;
 }
 
+.anime-cache-child-item,
+.anime-cache-episode-item,
+.mapping-row {
+    flex: 0 0 auto;
+}
+
 .child-mapping-toggle {
     margin-top: 0.5rem;
     padding: 0.35rem 0.5rem;
