@@ -198,7 +198,7 @@ export class Envs {
    * @returns {Array} 源排序数组
    */
   static resolveSourceOrder() {
-    let sourceOrder = this.get('SOURCE_ORDER', '360,vod,renren,hanjutv', 'string');
+    let sourceOrder = this.get('SOURCE_ORDER', 'douban,360,renren,hanjutv', 'string');
 
     const orderArr = sourceOrder
       .split(',')
@@ -207,7 +207,7 @@ export class Envs {
 
     this.accessedEnvVars.set('SOURCE_ORDER', orderArr);
 
-    return orderArr.length > 0 ? orderArr : ['360', 'vod', 'renren', 'hanjutv'];
+    return orderArr.length > 0 ? orderArr : ['douban', '360', 'renren', 'hanjutv'];
   }
   /**
    * 解析源合并配置
@@ -691,7 +691,7 @@ export class Envs {
       'RATE_LIMIT_MAX_REQUESTS': { category: 'api', type: 'number', description: '限流配置：1分钟内最大请求次数，0表示不限流，默认3', min: 0, max: 50 },
 
       // 源配置
-      'SOURCE_ORDER': { category: 'source', type: 'multi-select', options: this.ALLOWED_SOURCES, description: '源排序配置，默认360,vod,renren,hanjutv' },
+      'SOURCE_ORDER': { category: 'source', type: 'multi-select', options: this.ALLOWED_SOURCES, description: '源排序配置，默认douban,360,renren,hanjutv' },
       'OTHER_SERVER': { category: 'source', type: 'text', description: '第三方弹幕服务器，默认https://api.danmu.icu' },
       'CUSTOM_SOURCE_API_URL': { category: 'source', type: 'text', description: '自定义弹幕源API地址，默认为空，配置后还需在SOURCE_ORDER添加custom源' },
       'VOD_SERVERS': { category: 'source', type: 'text', description: 'VOD站点配置，格式：名称@URL,名称@URL，默认金蝉@https://zy.jinchancaiji.com,789@https://www.caiji.cyou,听风@https://gctf.tfdh.top' },
