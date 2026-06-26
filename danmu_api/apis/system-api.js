@@ -6,7 +6,7 @@ import { HandlerFactory } from "../configs/handlers/handler-factory.js";
 import { clearBangumiDataCache, initBangumiData } from "../utils/bangumi-data-util.js";
 
 export function handleUI() {
-  return new Response(HTML_TEMPLATE.replace("globals.currentToken", globals.currentToken), {
+  return new Response(HTML_TEMPLATE.replace(/__DANMU_API_TOKEN_VALUE__/g, globals.currentToken), {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Access-Control-Allow-Origin': '*'

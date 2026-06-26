@@ -1,21 +1,35 @@
-# 使用官方 Node.js 22 轻量版镜像作为基础镜像
-FROM node:22-alpine
-
-# 设置工作目录为项目根目录
+# 阶段一：构建前端 UI
+FROM node:22-alpine AS builder
 WORKDIR /app
 
-# 复制 package.json 和 package-lock.json（如果存在）
-COPY package*.json ./
+# 安装 pnpm 并禁用运行前依赖校验
+RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN pnpm config set verify-deps-before-run false
 
-# 安装项目依赖
+# 复制依赖描述文件
+COPY package.json ./
+COPY frontend/package.json ./frontend/
+
+# 安装后端依赖和前端依赖
 RUN npm install
+RUN cd frontend && pnpm install
 
-# 复制所有源代码
-COPY danmu_api/ ./danmu_api/
-COPY config/ ./config_example/
+# 复制全部源码
+COPY . .
 
-# 暴露端口
+# 构建 UI 并嵌入后端模板
+ENV CI=true
+RUN npm run build:ui
+
+# 阶段二：运行镜像
+FROM node:22-alpine
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --omit=dev
+
+COPY --from=builder /app/danmu_api ./danmu_api
+COPY --from=builder /app/config ./config_example
+
 EXPOSE 9321
-
-# 启动命令
 CMD ["node", "danmu_api/server.js"]
