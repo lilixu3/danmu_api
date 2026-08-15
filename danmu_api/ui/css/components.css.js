@@ -2309,6 +2309,89 @@ body[data-theme] input[type="checkbox"].app-checkbox:focus-visible {
     white-space: nowrap;
 }
 
+/* 合并源来源地址（每源一行） */
+.danmu-source-url-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.danmu-source-url-group .danmu-source-url {
+    margin-bottom: 0;
+}
+
+/* 弹幕列表上方来源数量汇总 */
+.danmu-source-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.danmu-source-summary-label {
+    color: var(--theme-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.danmu-source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--theme-border);
+    border-radius: 999px;
+    background: var(--theme-panel-strong);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.danmu-source-chip-name {
+    color: var(--theme-text);
+    font-weight: 500;
+}
+
+.danmu-source-chip-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 14px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: rgba(var(--app-primary-rgb), 0.14);
+    color: var(--theme-accent);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.danmu-source-chip-unknown .danmu-source-chip-count {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--theme-muted);
+}
+
+.danmu-source-summary-total {
+    margin-left: auto;
+    color: var(--theme-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* 单条弹幕的来源标签 */
+.danmu-source-tag {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(var(--app-primary-rgb), 0.10);
+    color: var(--theme-accent);
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 @media (max-width: 768px) {
     .danmu-list-tools {
         flex-wrap: wrap;
@@ -2346,6 +2429,16 @@ body[data-theme] input[type="checkbox"].app-checkbox:focus-visible {
     .danmu-result-toolbar .btn-back {
         flex: 0 0 auto;
         white-space: nowrap;
+    }
+
+    .danmu-source-summary-total {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .danmu-source-tag {
+        padding: 1px 5px;
+        font-size: 9px;
     }
 }
 

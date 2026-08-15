@@ -599,8 +599,88 @@ function getDanmuSourceUrl(value) {
     }
 }
 
+// 解析合并源链接（后端按 MERGE_DELIMITER='$$$' 拼接的 youku:url$$$iqiyi:url 格式）
+function parseMergedSourceUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw || raw.indexOf('$$$') === -1) return null;
+    const parts = raw.split('$$$').map(part => {
+        const idx = part.indexOf(':');
+        if (idx <= 0) return null;
+        const label = part.slice(0, idx).trim();
+        const url = part.slice(idx + 1).trim();
+        if (!label || !url) return null;
+        return { label: label, url: url };
+    }).filter(Boolean);
+    return parts.length >= 2 ? parts : null;
+}
+
+// 从弹幕 p 字段提取来源标签（p 末尾的 [标签]，多源以 & 或 ＆ 连接）
+// 注意：本文件整体位于外层模板字符串内，正则中的反斜杠必须双写（\\）才能在浏览器中还原为单反斜杠
+function getDanmuSources(comment) {
+    if (!comment || !comment.p) return [];
+    const match = String(comment.p).match(/\\[([^\\]]*)\\]$/);
+    if (!match || !match[1]) return [];
+    return match[1].split(/[&＆]/).map(s => s.trim()).filter(Boolean);
+}
+
+// 统计各来源弹幕数（合并去重后的弹幕可能带多源标签，按各源分别计入）
+function getDanmuSourceStats(comments) {
+    const stats = {};
+    let untagged = 0;
+    (comments || []).forEach(c => {
+        const sources = getDanmuSources(c);
+        if (!sources.length) { untagged++; return; }
+        sources.forEach(name => { stats[name] = (stats[name] || 0) + 1; });
+    });
+    return { stats: stats, untagged: untagged };
+}
+
+// 弹幕列表上方的来源数量汇总
+function renderDanmuSourceSummary(comments) {
+    const summary = getDanmuSourceStats(comments);
+    const names = Object.keys(summary.stats);
+    if (!names.length) return '';
+    let html = '<div class="danmu-source-summary">' +
+        '<span class="danmu-source-summary-label">来源</span>';
+    names.forEach(name => {
+        html += '<span class="danmu-source-chip" title="' + escapeHtml(name) + ' 弹幕 ' + summary.stats[name] + ' 条">' +
+            '<span class="danmu-source-chip-name">' + escapeHtml(name) + '</span>' +
+            '<span class="danmu-source-chip-count">' + summary.stats[name] + '</span>' +
+        '</span>';
+    });
+    if (summary.untagged > 0) {
+        html += '<span class="danmu-source-chip danmu-source-chip-unknown" title="未标注来源的弹幕">' +
+            '<span class="danmu-source-chip-name">未知</span>' +
+            '<span class="danmu-source-chip-count">' + summary.untagged + '</span>' +
+        '</span>';
+    }
+    html += '<span class="danmu-source-summary-total" title="同一句弹幕可能同时来自多个源，各源计数之和可能大于总数">共 ' + comments.length + ' 条</span>' +
+        '</div>';
+    return html;
+}
+
 function renderDanmuSourceUrl() {
-    const sourceUrl = getDanmuSourceUrl(danmuTestState.currentSourceUrl);
+    const raw = String(danmuTestState.currentSourceUrl || '').trim();
+    const merged = parseMergedSourceUrl(raw);
+    if (merged) {
+        let html = '<div class="danmu-source-url-group">';
+        merged.forEach((item, index) => {
+            const escapedUrl = escapeHtml(item.url);
+            const isHttpUrl = !!getDanmuSourceUrl(item.url);
+            html += '<div class="danmu-source-url">' +
+                '<span class="danmu-source-url-label">' + escapeHtml(item.label) + '</span>' +
+                '<span class="danmu-source-url-value" title="' + escapedUrl + '">' + escapedUrl + '</span>' +
+                '<div class="danmu-source-url-actions">' +
+                    '<button type="button" class="btn btn-sm btn-primary" onclick="copyDanmuSourceUrl(this, ' + index + ')">复制</button>' +
+                    (isHttpUrl ? '<a class="btn btn-sm btn-success" href="' + escapedUrl + '" target="_blank" rel="noopener noreferrer">打开</a>' : '') +
+                '</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    const sourceUrl = getDanmuSourceUrl(raw);
     if (!sourceUrl) return '';
     const escapedUrl = escapeHtml(sourceUrl);
     return '<div class="danmu-source-url">' +
@@ -613,8 +693,16 @@ function renderDanmuSourceUrl() {
     '</div>';
 }
 
-function copyDanmuSourceUrl(button) {
-    const sourceUrl = getDanmuSourceUrl(danmuTestState.currentSourceUrl);
+function copyDanmuSourceUrl(button, index) {
+    const raw = String(danmuTestState.currentSourceUrl || '').trim();
+    const merged = parseMergedSourceUrl(raw);
+    let sourceUrl;
+    if (merged) {
+        const item = merged[Number(index) || 0];
+        sourceUrl = item ? item.url : '';
+    } else {
+        sourceUrl = getDanmuSourceUrl(raw);
+    }
     if (!sourceUrl) return;
 
     const done = function() {
@@ -1430,7 +1518,8 @@ async function fetchDanmuForTest(episodeId, title, source, traceBase, sourceUrl)
     danmuTestState.currentEpisodeId = episodeId;
     danmuTestState.currentTitle = title;
     danmuTestState.currentDuration = 0;
-    danmuTestState.currentSourceUrl = getDanmuSourceUrl(sourceUrl);
+    // 合并源链接(youku:url$$$iqiyi:url)不能按普通 URL 整体校验，保留原始值，渲染时再逐段解析
+    danmuTestState.currentSourceUrl = String(sourceUrl || '').trim();
     danmuTestState.currentSearchQuery = '';
 
     // 隐藏上级面板
@@ -1522,6 +1611,7 @@ async function fetchDanmuForTest(episodeId, title, source, traceBase, sourceUrl)
             renderDanmuCallTrace(requestTrace) +
             '<div class="danmu-heatmap-container"><h3 class="danmu-section-title">弹幕热力图</h3><div class="danmu-heatmap" id="danmu-heatmap"></div></div>' +
             '<div class="danmu-list-area"><h3 class="danmu-section-title">弹幕列表</h3>' +
+                renderDanmuSourceSummary(data.comments) +
                 '<div class="danmu-list-tools">' +
                     '<div class="preview-search danmu-search">' +
                         '<input type="search" id="danmu-search-input" placeholder="搜索弹幕内容" aria-label="搜索弹幕内容" autocomplete="off" oninput="handleDanmuSearch(event)">' +
@@ -1870,10 +1960,16 @@ function renderDanmuList() {
         const hexColor = decColorToHex(color);
         const modeLabel = getModeLabel(mode);
 
+        let sourceTags = '';
+        getDanmuSources(c).forEach(name => {
+            sourceTags += '<span class="danmu-source-tag" title="来源: ' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+        });
+
         html += '<div class="danmu-item">' +
             '<span class="danmu-time">' + formatDuration(time) + '</span>' +
             '<span class="danmu-color-dot" style="--danmu-color-dot:' + hexColor + ';" title="' + hexColor + '"></span>' +
             '<span class="danmu-mode-tag danmu-mode-' + (mode === 5 ? 'top' : mode === 4 ? 'bottom' : 'scroll') + '">' + modeLabel + '</span>' +
+            sourceTags +
             '<span class="danmu-text">' + escapeHtml(c.m) + '</span>' +
             '</div>';
     }
