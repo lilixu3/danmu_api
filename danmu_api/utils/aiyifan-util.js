@@ -1,16 +1,253 @@
 import { globals } from '../configs/globals.js';
 import { log } from "./log-util.js";
 import { md5 } from "./codec-util.js";
-import { httpGet, updateQueryString } from "./http-util.js";
+import { httpGet, httpPost } from "./http-util.js";
+import { getRedisKey, setRedisKey, setRedisKeyWithExpiry } from "./redis-util.js";
+import { getLocalRedisKey, setLocalRedisKey } from "./local-redis-util.js";
 
-const DEFAULT_CONFIG_PAGE_URL = "https://www.yfsp.tv/";
-const DEFAULT_USER_AGENT = (
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-  "AppleWebKit/537.36 (KHTML, like Gecko) " +
-  "Chrome/124.0.0 Safari/537.36"
-);
+// =====================
+// 爱壹帆 App 链路接口签名工具
+// 官方 Android App (com.cqcsy.ifvod) 的请求签名规则：
+//   - 请求头: x-timestamp / x-pub / x-sign
+//   - 无查询参数时自动追加 _t=<秒级时间戳>
+//   - x-sign = md5(最终URL的query串 + x-timestamp + privateKey)
+//   - privateKey 初始为 App 内置默认值，调用 /api/home/config 获取 pConfig 后替换
+// =====================
 
-export const AIYIFAN_SIGNING_CONFIG_TTL_MS = 60 * 1000;
+export const AIYIFAN_CONFIG_API = "https://api.tripdata.app/api/home/config";
+export const AIYIFAN_DEFAULT_PRIVATE_KEY = "57688*1-331@";
+export const AIYIFAN_SIGNING_CONFIG_TTL_MS = 10 * 60 * 1000;
+export const AIYIFAN_DEVICE_ID_REDIS_KEY = "aiyifanDeviceId";
+export const AIYIFAN_SIGNING_CONFIG_REDIS_KEY = "aiyifanSigningConfig";
+export const AIYIFAN_SIGNING_CONFIG_REDIS_TTL_SECONDS = 60 * 60;
+
+// 官方 App 的固定请求头（deviceid 单独生成，见 ensureAiyifanDeviceId）
+export const AIYIFAN_APP_HEADERS = {
+  "User-Agent": "okhttp-okgo/jeasonlzy",
+  "Accept": "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.8",
+  "bundleid": "com.cqcsy.ifvod",
+  "appversion": "1.7.8",
+  "system": "Android",
+  "systemversion": "16",
+  "deviceinfo": "Xiaomi 23127PN0CC",
+  "version": "V3",
+  "lang": "0",
+  "lat": "0.0",
+  "lng": "0.0"
+};
+
+let cachedDeviceId = null;
+let deviceIdReadyPromise = null;
+
+/**
+ * 定位 aiyifan-util.js 所在目录（与启动时的工作目录无关）。
+ * import.meta.url 不可用时回退到项目原有约定（Vercel CommonJS / Node 默认启动目录）。
+ */
+async function resolveAiyifanBaseDir(path) {
+  try {
+    const { fileURLToPath } = await import('node:url');
+    return path.dirname(fileURLToPath(import.meta.url));
+  } catch (error) {
+    if (typeof __dirname !== 'undefined') {
+      return __dirname;
+    }
+    return path.join(process.cwd(), 'danmu_api', 'utils');
+  }
+}
+
+/**
+ * 生成 32 位随机十六进制串（UUID v4 去连字符的等价格式）。
+ * 与其他源保持一致，使用纯 JS Math.random，不引入任何额外依赖。
+ */
+function generateRandomHex32() {
+  const hexChars = '0123456789abcdef';
+  let result = '';
+  for (let i = 0; i < 32; i++) {
+    result += hexChars[Math.floor(Math.random() * 16)];
+  }
+  return result;
+}
+
+function parsePersistedDeviceId(raw) {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  let parsed = raw;
+  if (raw.startsWith('"')) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      return null;
+    }
+  }
+  if (typeof parsed === "string" && /^[0-9a-fA-F]{32,34}$/.test(parsed)) {
+    return parsed.toLowerCase();
+  }
+  return null;
+}
+
+async function readDeviceIdFromUpstashRedis() {
+  if (!globals.redisValid) {
+    return null;
+  }
+  try {
+    const result = await getRedisKey(AIYIFAN_DEVICE_ID_REDIS_KEY);
+    return parsePersistedDeviceId(Array.isArray(result) ? result[0] : null);
+  } catch (error) {
+    log("warn", "[aiyifan] 从 Upstash 读取 deviceid 失败: " + (error.message || '未知错误'));
+    return null;
+  }
+}
+
+async function writeDeviceIdToUpstashRedis(deviceId) {
+  if (!globals.redisValid) {
+    return;
+  }
+  try {
+    await setRedisKey(AIYIFAN_DEVICE_ID_REDIS_KEY, deviceId);
+  } catch (error) {
+    log("warn", "[aiyifan] 写入 Upstash deviceid 失败: " + (error.message || '未知错误'));
+  }
+}
+
+async function readDeviceIdFromLocalRedis() {
+  if (!globals.localRedisValid) {
+    return null;
+  }
+  try {
+    const result = await getLocalRedisKey(AIYIFAN_DEVICE_ID_REDIS_KEY);
+    return parsePersistedDeviceId(result);
+  } catch (error) {
+    log("warn", "[aiyifan] 从本地 Redis 读取 deviceid 失败: " + (error.message || '未知错误'));
+    return null;
+  }
+}
+
+async function writeDeviceIdToLocalRedis(deviceId) {
+  if (!globals.localRedisValid) {
+    return;
+  }
+  try {
+    await setLocalRedisKey(AIYIFAN_DEVICE_ID_REDIS_KEY, deviceId);
+  } catch (error) {
+    log("warn", "[aiyifan] 写入本地 Redis deviceid 失败: " + (error.message || '未知错误'));
+  }
+}
+
+async function readSigningConfigFromUpstashRedis() {
+  if (!globals.redisValid) {
+    return null;
+  }
+  try {
+    const result = await getRedisKey(AIYIFAN_SIGNING_CONFIG_REDIS_KEY);
+    const raw = Array.isArray(result) ? result[0] : null;
+    if (typeof raw === "string") {
+      const parsed = JSON.parse(raw);
+      if (parsed &&
+          typeof parsed.publicKey === "string" &&
+          typeof parsed.privateKey === "string") {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    log("warn", "[aiyifan] 从 Upstash 读取签名配置失败: " + (error.message || '未知错误'));
+  }
+  return null;
+}
+
+async function writeSigningConfigToUpstashRedis(signingConfig) {
+  if (!globals.redisValid) {
+    return;
+  }
+  try {
+    await setRedisKeyWithExpiry(
+      AIYIFAN_SIGNING_CONFIG_REDIS_KEY,
+      signingConfig,
+      AIYIFAN_SIGNING_CONFIG_REDIS_TTL_SECONDS
+    );
+  } catch (error) {
+    log("warn", "[aiyifan] 写入 Upstash 签名配置失败: " + (error.message || '未知错误'));
+  }
+}
+
+/**
+ * 获取爱壹帆 App 接口的设备标识。
+ * 官方 Android 客户端逻辑（com.blankj.utilcode.util.k.n()）：
+ *   - 优先复用已持久化的 KEY_UDID；
+ *   - Android ID 可用时生成 "02" + UUID v3(Android ID)；
+ *   - Android ID 不可用（模拟器/权限受限）时生成 "09" + 随机 UUID v4；
+ *   - 生成后写入本地 SharedPreferences，后续请求保持稳定。
+ * 服务端无 Android ID 环境，因此按官方无 Android ID 分支生成 "09" + UUID v4（去除连字符）。
+ * 持久化策略：
+ *   - Node/VM 等可写文件系统环境：写入项目已有的 .cache/ 目录，重启后复用；
+ *   - Cloudflare/Vercel/Netlify 等只读或临时文件系统环境：自动回退为内存生成（冷启动后重新生成，
+ *     服务端仅将 deviceid 作为不透明标识使用，不影响接口可用性）。
+ */
+export async function ensureAiyifanDeviceId() {
+  if (cachedDeviceId) {
+    return cachedDeviceId;
+  }
+
+  if (deviceIdReadyPromise) {
+    return deviceIdReadyPromise;
+  }
+
+  deviceIdReadyPromise = (async () => {
+    const fromUpstash = await readDeviceIdFromUpstashRedis();
+    if (fromUpstash) {
+      cachedDeviceId = fromUpstash;
+      return cachedDeviceId;
+    }
+
+    const fromLocalRedis = await readDeviceIdFromLocalRedis();
+    if (fromLocalRedis) {
+      cachedDeviceId = fromLocalRedis;
+      return cachedDeviceId;
+    }
+
+    let fs, path, baseDir;
+    try {
+      fs = await import('node:fs');
+      path = await import('node:path');
+      baseDir = await resolveAiyifanBaseDir(path);
+      const cacheFilePath = path.join(baseDir, '..', '..', '.cache', 'aiyifan-deviceid');
+
+      if (fs.existsSync(cacheFilePath)) {
+        const stored = parsePersistedDeviceId(fs.readFileSync(cacheFilePath, 'utf8').trim());
+        if (stored) {
+          cachedDeviceId = stored;
+          return cachedDeviceId;
+        }
+      }
+    } catch (error) {
+      log("warn", "[aiyifan] 读取本地 deviceid 缓存失败，将重新生成: " + (error.message || '未知错误'));
+    }
+
+    const generated = "09" + generateRandomHex32();
+    cachedDeviceId = generated;
+
+    await writeDeviceIdToUpstashRedis(generated);
+    await writeDeviceIdToLocalRedis(generated);
+
+    try {
+      fs = await import('node:fs');
+      path = await import('node:path');
+      baseDir = await resolveAiyifanBaseDir(path);
+      const cacheDir = path.join(baseDir, '..', '..', '.cache');
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(cacheDir, 'aiyifan-deviceid'), JSON.stringify(generated), 'utf8');
+    } catch (error) {
+      log("info", "[aiyifan] 当前环境不支持本地持久化，deviceid 仅本次进程内有效");
+    }
+
+    return cachedDeviceId;
+  })();
+
+  return deviceIdReadyPromise;
+}
 
 // 安全获取对象属性（替代可选链操作符）
 function safeGet(obj, path, defaultValue) {
@@ -19,7 +256,6 @@ function safeGet(obj, path, defaultValue) {
   let result = obj;
   for (let i = 0; i < keys.length; i++) {
     if (result == null) return defaultValue;
-    // 处理数组索引，如 config[0]
     const key = keys[i];
     const arrayMatch = key.match(/^(.+)\[(\d+)\]$/);
     if (arrayMatch) {
@@ -38,342 +274,254 @@ function safeGet(obj, path, defaultValue) {
   return result !== undefined ? result : defaultValue;
 }
 
-function extractAssignedObjectLiteral(html, variableName) {
-  const assignmentPattern = new RegExp('\\b(?:var|let|const)\\s+' + variableName + '\\s*=\\s*');
-  const match = assignmentPattern.exec(html);
-  if (!match) {
-    return null;
-  }
-
-  const objectStart = html.indexOf("{", match.index + match[0].length);
-  if (objectStart === -1) {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let quote = "";
-  let escaped = false;
-
-  for (let i = objectStart; i < html.length; i++) {
-    const char = html[i];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        inString = false;
-        quote = "";
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      inString = true;
-      quote = char;
-      continue;
-    }
-
-    if (char === "{") {
-      depth += 1;
-      continue;
-    }
-
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return html.slice(objectStart, i + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-function parseFallbackPConfig(html) {
-  const match = html.match(/"pConfig"\s*:\s*\{\s*"publicKey"\s*:\s*"([^"]+)"\s*,\s*"privateKey"\s*:\s*\[(.*?)\]\s*\}/s);
-  if (!match) {
-    return null;
-  }
-
-  let privateKeys = [];
-  try {
-    privateKeys = JSON.parse('[' + match[2] + ']');
-  } catch (e) {
-    return null;
-  }
-
-  if (!match[1] || !privateKeys.length) {
-    return null;
-  }
-
-  return {
-    publicKey: match[1],
-    privateKey: privateKeys[0]
-  };
-}
-
-export function extractPConfigFromInjectJson(injectJson) {
-  // 使用安全获取替代可选链
-  const config = safeGet(injectJson, 'config[0]', null);
-  const pConfig = config ? config.pConfig : null;
-  
-  if (!pConfig) return null;
-  
-  const publicKey = pConfig.publicKey;
-  const privateKey = Array.isArray(pConfig.privateKey) ? pConfig.privateKey[0] : pConfig.privateKey;
-
-  if (!publicKey || !privateKey) {
-    return null;
-  }
-
-  return { publicKey, privateKey };
-}
-
-export function extractPConfigFromHtml(html) {
-  const objectLiteral = extractAssignedObjectLiteral(html, "injectJson");
-  if (objectLiteral) {
-    try {
-      const injectJson = JSON.parse(objectLiteral);
-      const signingConfig = extractPConfigFromInjectJson(injectJson);
-      if (signingConfig) {
-        return signingConfig;
-      }
-    } catch (error) {
-      log("warn", '[system] [aiyifan] 解析 injectJson 失败，回退到 pConfig 提取: ' + (error.message || '未知错误'));
-    }
-  }
-
-  return parseFallbackPConfig(html);
-}
-
-function normalizeQueryValue(value) {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  return String(value);
-}
-
-function isSigningParam(key) {
-  return key === "vv" || key === "pub";
-}
-
-function splitQueryString(queryString) {
-  if (!queryString) {
-    return [];
-  }
-
-  return queryString
-    .split("&")
-    .filter(Boolean)
-    .map(function(pair) {
-      const equalsIndex = pair.indexOf("=");
-      const rawKey = equalsIndex === -1 ? pair : pair.slice(0, equalsIndex);
-      const rawValue = equalsIndex === -1 ? "" : pair.slice(equalsIndex + 1);
-      
-      // 手动解码，替代 decodeURIComponent 的异常处理
-      function safeDecode(str) {
-        try {
-          return decodeURIComponent(str.replace(/\+/g, "%20"));
-        } catch (e) {
-          return str;
-        }
-      }
-      
-      const key = safeDecode(rawKey);
-      const value = safeDecode(rawValue);
-      return [key, value];
-    });
-}
-
-function getQueryEntries(input) {
-  if (!input) {
-    return [];
-  }
-
-  if (typeof input === "string") {
-    const trimmed = input.trim();
-    if (!trimmed) {
-      return [];
-    }
-
-    let queryString = trimmed;
-    const queryIndex = trimmed.indexOf("?");
-    if (queryIndex !== -1) {
-      const hashIndex = trimmed.indexOf("#", queryIndex);
-      queryString = trimmed.slice(queryIndex + 1, hashIndex === -1 ? undefined : hashIndex);
-    } else if (trimmed.charAt(0) === "?") {
-      queryString = trimmed.slice(1);
-    }
-
-    return splitQueryString(queryString);
-  }
-
-  // 移除 URLSearchParams 检查，统一按普通对象处理
-  if (typeof input === "object" && input !== null) {
-    // 如果 input 有 entries 方法且返回数组，使用它
-    if (typeof input.entries === "function") {
-      try {
-        var entries = input.entries();
-        if (Array.isArray(entries)) {
-          return entries;
-        }
-        // 处理迭代器情况
-        var result = [];
-        // 尝试作为 Map 或类似对象处理
-        if (typeof input.forEach === "function") {
-          input.forEach(function(value, key) {
-            result.push([key, normalizeQueryValue(value)]);
-          });
-          return result.filter(function(item) {
-            return item[1] !== null;
-          });
-        }
-      } catch (e) {
-        // 失败则回退到 Object.entries
-      }
-    }
-    
-    // 标准对象处理
-    return Object.keys(input).map(function(key) {
-      return [key, normalizeQueryValue(input[key])];
-    }).filter(function(item) {
-      return item[1] !== null;
-    });
-  }
-
-  return [];
-}
-
-export function buildCanonicalQuery(input) {
-  return getQueryEntries(input)
-    .filter(function(item) {
-      return !isSigningParam(item[0]);
-    })
-    .map(function(item) {
-      return item[0] + "=" + item[1];
-    })
-    .join("&");
-}
-
-export function computeAiyifanVv(input, signingConfig) {
-  const query = buildCanonicalQuery(input);
-  const raw = signingConfig.publicKey + "&" + query.toLowerCase() + "&" + signingConfig.privateKey;
-  return md5(raw);
-}
-
 function normalizeJsonPayload(data) {
   if (typeof data === "string") {
-    return JSON.parse(data);
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      return null;
+    }
   }
   return data;
 }
 
-function isSignedRequestSuccessful(payload) {
-  // 使用安全获取替代可选链
-  var ret = safeGet(payload, 'ret', null);
-  var code = safeGet(payload, 'data.code', null);
-  return ret === 200 && code === 0;
-}
-
 function getFailureMessage(payload, status) {
-  // 使用安全获取替代可选链
-  var msg = safeGet(payload, 'data.msg', null) || safeGet(payload, 'msg', null);
+  const msg = safeGet(payload, 'msg', null);
   return msg || ('HTTP ' + status);
 }
 
-export class AiyifanSigningProvider {
+function isRequestSuccessful(payload) {
+  return safeGet(payload, 'ret', null) === 200;
+}
+
+/**
+ * 构建查询串，仅保留非空参数。
+ * 值与 OkHttp 构建的 URL 保持一致（ASCII 参数不做额外转义）。
+ */
+function buildQueryString(params) {
+  if (!params) return "";
+  if (typeof params === "string") {
+    return params.replace(/^\?/, "");
+  }
+  return Object.keys(params)
+    .filter(function(key) {
+      const value = params[key];
+      return value !== undefined && value !== null;
+    })
+    .map(function(key) {
+      return encodeURIComponent(key) + "=" + encodeURIComponent(String(params[key]));
+    })
+    .join("&");
+}
+
+export class AiyifanAppSigningProvider {
   constructor(options) {
     options = options || {};
-    this.proxyUrlBuilder = options.proxyUrlBuilder || function(url) { 
-      return globals.makeProxyUrl(url); 
+    this.proxyUrlBuilder = options.proxyUrlBuilder || function(url) {
+      return globals.makeProxyUrl(url);
     };
-    this.userAgent = options.userAgent || DEFAULT_USER_AGENT;
-    this.configPageUrl = options.configPageUrl || DEFAULT_CONFIG_PAGE_URL;
     this.ttlMs = options.ttlMs || AIYIFAN_SIGNING_CONFIG_TTL_MS;
     this.now = options.now || function() { return Date.now(); };
-    this.signingConfig = null;
-    this.signingConfigFetchedAt = 0;
+    this.deviceId = options.deviceId || null;
+    this.publicKey = "";
+    this.privateKey = AIYIFAN_DEFAULT_PRIVATE_KEY;
+    this.configFetchedAt = 0;
+    this.inflightConfigPromise = null;
   }
 
+  async getDeviceId() {
+    if (this.deviceId) {
+      return this.deviceId;
+    }
+    this.deviceId = await ensureAiyifanDeviceId();
+    return this.deviceId;
+  }
+
+  timestamp() {
+    return Math.floor(this.now() / 1000);
+  }
+
+  /**
+   * 获取 App 签名配置（publicKey / privateKey）。
+   * 首次使用内置默认 privateKey 请求 /api/home/config，成功后缓存。
+   */
   async getSigningConfig(forceRefresh) {
     forceRefresh = forceRefresh || false;
-    var now = this.now();
-    var cacheValid = this.signingConfig && (now - this.signingConfigFetchedAt) < this.ttlMs;
+    const now = this.now();
+    const cacheValid = this.publicKey &&
+      this.privateKey &&
+      (now - this.configFetchedAt) < this.ttlMs;
 
     if (!forceRefresh && cacheValid) {
-      return this.signingConfig;
+      return {
+        publicKey: this.publicKey,
+        privateKey: this.privateKey
+      };
     }
 
-    var response = await httpGet(this.proxyUrlBuilder(this.configPageUrl), {
-      headers: {
-        "User-Agent": this.userAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    // serverless 多实例/冷启动场景：先从 Upstash 恢复签名配置，避免每次冷启动都请求 /api/home/config
+    if (!forceRefresh) {
+      const cached = await readSigningConfigFromUpstashRedis();
+      if (cached) {
+        this.publicKey = cached.publicKey;
+        this.privateKey = cached.privateKey;
+        this.configFetchedAt = now;
+        log("info", '[system] [aiyifan] 已从 Upstash 恢复 App 签名配置: ' + this.publicKey.slice(0, 12) + '...');
+        return {
+          publicKey: this.publicKey,
+          privateKey: this.privateKey
+        };
       }
+    }
+
+    if (this.inflightConfigPromise && !forceRefresh) {
+      return this.inflightConfigPromise;
+    }
+
+    const task = (async () => {
+      const ts = this.timestamp();
+      const deviceId = await this.getDeviceId();
+      const url = AIYIFAN_CONFIG_API + "?_t=" + ts;
+      const sign = md5("_t=" + ts + ts + AIYIFAN_DEFAULT_PRIVATE_KEY);
+      const headers = Object.assign({}, AIYIFAN_APP_HEADERS, {
+        "deviceid": deviceId,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-timestamp": String(ts),
+        "x-pub": "",
+        "x-sign": sign
+      });
+
+      const response = await httpPost(this.proxyUrlBuilder(url), "", {
+        headers: headers,
+        timeout: 10000,
+        retries: 1
+      });
+      const payload = normalizeJsonPayload(response.data);
+      if (!payload || !isRequestSuccessful(payload)) {
+        throw new Error("获取 App 签名配置失败: " + getFailureMessage(payload, response.status));
+      }
+
+      const pConfig = safeGet(payload, 'data.list.pConfig', null);
+      if (!pConfig ||
+          !pConfig.publicKey ||
+          !Array.isArray(pConfig.privateKey) ||
+          !pConfig.privateKey.length) {
+        throw new Error("App 签名配置响应缺少 pConfig");
+      }
+
+      this.publicKey = pConfig.publicKey;
+      this.privateKey = pConfig.privateKey[0];
+      this.configFetchedAt = this.now();
+      log("info", '[system] [aiyifan] 已更新 App 签名配置: ' + this.publicKey.slice(0, 12) + '...');
+      writeSigningConfigToUpstashRedis({
+        publicKey: this.publicKey,
+        privateKey: this.privateKey
+      });
+      return {
+        publicKey: this.publicKey,
+        privateKey: this.privateKey
+      };
+    })();
+
+    this.inflightConfigPromise = task;
+    try {
+      return await task;
+    } finally {
+      this.inflightConfigPromise = null;
+    }
+  }
+
+  /**
+   * 构建带签名请求。
+   * @param {string} api - 接口地址
+   * @param {Object|null} params - GET 查询参数；POST 传 null（自动追加 _t）
+   * @returns {Promise<{url: string, headers: Object}>}
+   */
+  async buildSignedRequest(api, params) {
+    await this.getSigningConfig(false);
+    const ts = this.timestamp();
+    const deviceId = await this.getDeviceId();
+    let url = api;
+    let query;
+
+    if (params && Object.keys(params).length) {
+      query = buildQueryString(params);
+      url += (api.indexOf("?") === -1 ? "?" : "&") + query;
+    } else {
+      query = "_t=" + ts;
+      url += (api.indexOf("?") === -1 ? "?" : "&") + query;
+    }
+
+    const sign = md5(query + ts + this.privateKey);
+    const headers = Object.assign({}, AIYIFAN_APP_HEADERS, {
+      "deviceid": deviceId,
+      "x-timestamp": String(ts),
+      "x-pub": this.publicKey,
+      "x-sign": sign
     });
 
-    var html = typeof response.data === "string" ? response.data : String(response.data || "");
-    var signingConfig = extractPConfigFromHtml(html);
-    if (!signingConfig) {
-      throw new Error("未能从桌面站页面解析到 pConfig");
-    }
-
-    this.signingConfig = signingConfig;
-    this.signingConfigFetchedAt = now;
-    log("info", '[system] [aiyifan] 已更新桌面站签名配置: ' + signingConfig.publicKey.slice(0, 12) + '...');
-    return signingConfig;
+    return { url: url, headers: headers };
   }
 
-  buildSignedParams(baseParams, signingConfig) {
-    var result = {};
-    // 手动复制对象，替代展开运算符
-    for (var key in baseParams) {
-      if (baseParams.hasOwnProperty(key)) {
-        result[key] = baseParams[key];
-      }
-    }
-    result.vv = computeAiyifanVv(baseParams, signingConfig);
-    result.pub = signingConfig.publicKey;
-    return result;
-  }
-
-  async signedGetJson(api, baseParams, headers, logPrefix, forceRefresh) {
-    headers = headers || {};
+  /**
+   * 发送带签名的 GET 请求并校验响应。
+   */
+  async signedGetJson(api, params, logPrefix, forceRefresh) {
     logPrefix = logPrefix || "Aiyifan";
     forceRefresh = forceRefresh || false;
-    
-    var signingConfig = await this.getSigningConfig(forceRefresh);
-    var signedParams = this.buildSignedParams(baseParams, signingConfig);
-    var requestUrl = updateQueryString(api, signedParams);
-    var response = await httpGet(this.proxyUrlBuilder(requestUrl), { headers: headers });
 
-    var payload;
     try {
-      payload = normalizeJsonPayload(response.data);
+      const { url, headers } = await this.buildSignedRequest(api, params);
+      const response = await httpGet(this.proxyUrlBuilder(url), {
+        headers: headers,
+        timeout: 10000,
+        retries: 1
+      });
+      const payload = normalizeJsonPayload(response.data);
+      if (!payload || !isRequestSuccessful(payload)) {
+        throw new Error(getFailureMessage(payload, response.status));
+      }
+      return payload;
     } catch (error) {
       if (!forceRefresh) {
-        log("warn", '[' + logPrefix + '] 响应无法解析为 JSON，刷新签名配置后重试: ' + (error.message || '未知错误'));
-        return this.signedGetJson(api, baseParams, headers, logPrefix, true);
+        log("warn", '[' + logPrefix + '] App 请求失败，刷新签名配置后重试: ' + (error.message || '未知错误'));
+        await this.getSigningConfig(true);
+        return this.signedGetJson(api, params, logPrefix, true);
       }
       throw error;
     }
+  }
 
-    // 安全获取状态码，如果不存在则默认为200
-    var statusCode = response.status != null ? response.status : 200;
-    if (statusCode !== 200 || !isSignedRequestSuccessful(payload)) {
-      if (!forceRefresh) {
-        log("warn", '[' + logPrefix + '] 当前签名请求失败，刷新 pConfig 后重试: ' + getFailureMessage(payload, statusCode));
-        return this.signedGetJson(api, baseParams, headers, logPrefix, true);
+  /**
+   * 发送带签名的 POST 请求并校验响应。
+   * @param {string} api - 接口地址（无查询参数，自动追加 _t）
+   * @param {Object} body - JSON 请求体
+   */
+  async signedPostJson(api, body, logPrefix, forceRefresh) {
+    logPrefix = logPrefix || "Aiyifan";
+    forceRefresh = forceRefresh || false;
+    body = body || {};
+
+    try {
+      const { url, headers } = await this.buildSignedRequest(api, null);
+      headers["Content-Type"] = "application/json;charset=utf-8";
+      const response = await httpPost(this.proxyUrlBuilder(url), JSON.stringify(body), {
+        headers: headers,
+        timeout: 10000,
+        retries: 1
+      });
+      const payload = normalizeJsonPayload(response.data);
+      if (!payload || !isRequestSuccessful(payload)) {
+        throw new Error(getFailureMessage(payload, response.status));
       }
-      throw new Error(getFailureMessage(payload, statusCode));
+      return payload;
+    } catch (error) {
+      if (!forceRefresh) {
+        log("warn", '[' + logPrefix + '] App 请求失败，刷新签名配置后重试: ' + (error.message || '未知错误'));
+        await this.getSigningConfig(true);
+        return this.signedPostJson(api, body, logPrefix, true);
+      }
+      throw error;
     }
-
-    return {
-      data: payload,
-      vv: signedParams.vv,
-      signingConfig: signingConfig
-    };
   }
 }
