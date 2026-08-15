@@ -8,6 +8,45 @@ import { titleMatches, getExplicitSeasonNumber, extractSeasonNumberFromAnimeTitl
 import { globals } from '../configs/globals.js';
 import { AiyifanAppSigningProvider } from '../utils/aiyifan-util.js';
 
+const AIYIFAN_APP_LINK_VERSION = "2";
+const AIYIFAN_PLAYLIST_CONCURRENCY = 4;
+const AIYIFAN_DANMU_CACHE_TTL_MS = 2 * 60 * 1000;
+const AIYIFAN_DANMU_CACHE_MAX_ENTRIES = 8;
+
+function hasPositiveId(value) {
+  return value !== null && value !== undefined && value !== '' && Number(value) > 0;
+}
+
+function getBarrageVideoId(episode) {
+  if (hasPositiveId(episode && episode.uniqueID)) {
+    return episode.uniqueID;
+  }
+  return hasPositiveId(episode && episode.episodeId) ? episode.episodeId : null;
+}
+
+function normalizeDuration(value) {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration > 0 ? duration : 0;
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  if (!items.length) {
+    return [];
+  }
+
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // =====================
 // 获取爱壹帆弹幕（官方 App 链路）
 // 接口均来自官方 Android App 抓包：
@@ -16,7 +55,7 @@ import { AiyifanAppSigningProvider } from '../utils/aiyifan-util.js';
 //   - 弹幕: GET  /api/Video/GetBarrages
 // =====================
 export default class AiyifanSource extends BaseSource {
-  constructor() {
+  constructor(options = {}) {
     super();
     this.USER_AGENT = "okhttp-okgo/jeasonlzy";
 
@@ -25,21 +64,22 @@ export default class AiyifanSource extends BaseSource {
     this.PLAYLIST_API = "https://api.tripdata.app/api/Video/VideoChooseGather";
     this.BARRAGE_API  = "https://api.tripdata.app/api/Video/GetBarrages";
     this.DOMAIN_API   = "https://www.yfsp.tv/play";
-    this.signingProvider = new AiyifanAppSigningProvider();
+    this.signingProvider = options.signingProvider || new AiyifanAppSigningProvider();
+    this.playlistConcurrency = Number.isFinite(options.playlistConcurrency)
+      ? Math.max(1, Math.floor(options.playlistConcurrency))
+      : AIYIFAN_PLAYLIST_CONCURRENCY;
+    this.danmuCacheTtlMs = Number.isFinite(options.danmuCacheTtlMs)
+      ? Math.max(0, options.danmuCacheTtlMs)
+      : AIYIFAN_DANMU_CACHE_TTL_MS;
+    this.now = options.now || (() => Date.now());
     this.inflightDanmuRequests = new Map();
-  }
-
-  extractEpisodeRequestKey(id) {
-    try {
-      return new URL(id).searchParams.get("id") ?? id;
-    } catch {
-      return id;
-    }
+    this.danmuCache = new Map();
   }
 
   /**
    * 解析分集链接，提取 App 接口所需参数。
-   * 链接格式: https://www.yfsp.tv/play/{mediaKey}?id={episodeKey}&videoId={episodeId}&videoType={videoType}
+   * 新链接会携带 appLinkVersion=2；无版本链接必须重新查询播放列表，
+   * 因为旧实现曾将 episodeId 错写成 GetBarrages 所需的 uniqueID。
    */
   parseEpisodeLink(id) {
     if (typeof id !== "string" || !id) {
@@ -54,21 +94,106 @@ export default class AiyifanSource extends BaseSource {
     }
 
     const episodeKey = url.searchParams.get("id");
-    const mediaKey = url.searchParams.get("mediaKey") ||
-      decodeURIComponent((url.pathname.split("/").pop() || "").replace(/\/$/, ""));
+    const pathParts = url.pathname.split("/").filter(Boolean);
+    let mediaKey = url.searchParams.get("mediaKey");
+    if (!mediaKey && pathParts.length) {
+      try {
+        mediaKey = decodeURIComponent(pathParts[pathParts.length - 1]);
+      } catch (error) {
+        return null;
+      }
+    }
     const videoId = url.searchParams.get("videoId");
     const videoType = url.searchParams.get("videoType");
 
-    if (!episodeKey || !mediaKey || !videoId || videoType == null) {
+    if (!episodeKey || !mediaKey) {
       return null;
     }
 
     return {
-      episodeKey: episodeKey,
-      mediaKey: mediaKey,
-      videoId: videoId,
-      videoType: videoType
+      episodeKey,
+      mediaKey,
+      videoId,
+      videoType,
+      duration: normalizeDuration(url.searchParams.get("duration")),
+      appLinkVersion: url.searchParams.get("appLinkVersion")
     };
+  }
+
+  buildEpisodeLink(episodeRequest) {
+    const params = [
+      `id=${encodeURIComponent(episodeRequest.episodeKey)}`,
+      `mediaKey=${encodeURIComponent(episodeRequest.mediaKey)}`,
+      `videoId=${encodeURIComponent(episodeRequest.videoId)}`,
+      `videoType=${encodeURIComponent(episodeRequest.videoType)}`,
+      `appLinkVersion=${AIYIFAN_APP_LINK_VERSION}`
+    ];
+    if (episodeRequest.duration > 0) {
+      params.push(`duration=${encodeURIComponent(episodeRequest.duration)}`);
+    }
+    return `${this.DOMAIN_API}/${encodeURIComponent(episodeRequest.mediaKey)}?${params.join('&')}`;
+  }
+
+  async resolveEpisodeRequest(id) {
+    const parsed = this.parseEpisodeLink(id);
+    if (!parsed) {
+      return null;
+    }
+
+    const trustedLink = parsed.appLinkVersion === AIYIFAN_APP_LINK_VERSION &&
+      hasPositiveId(parsed.videoId) && parsed.videoType !== null && parsed.videoType !== '';
+    if (trustedLink) {
+      return parsed;
+    }
+
+    const episodes = await this.getPlaylist(parsed.mediaKey);
+    const episode = episodes.find((item) =>
+      item && String(item.episodeKey) === String(parsed.episodeKey)
+    );
+    const videoId = getBarrageVideoId(episode);
+    const videoType = episode && episode.videoType != null ? episode.videoType : parsed.videoType;
+    if (!episode || !hasPositiveId(videoId) || videoType === null || videoType === undefined || videoType === '') {
+      return null;
+    }
+
+    return {
+      episodeKey: parsed.episodeKey,
+      mediaKey: episode.mediaKey || parsed.mediaKey,
+      videoId,
+      videoType,
+      duration: normalizeDuration(episode.epSecond) || parsed.duration,
+      appLinkVersion: AIYIFAN_APP_LINK_VERSION
+    };
+  }
+
+  getDanmuRequestKey(episodeRequest) {
+    return [episodeRequest.mediaKey, episodeRequest.videoId, episodeRequest.videoType].join(':');
+  }
+
+  getCachedDanmu(requestKey) {
+    const cached = this.danmuCache.get(requestKey);
+    if (!cached) {
+      return null;
+    }
+    if (cached.expiresAt <= this.now()) {
+      this.danmuCache.delete(requestKey);
+      return null;
+    }
+    return cached.comments;
+  }
+
+  setCachedDanmu(requestKey, comments) {
+    if (this.danmuCacheTtlMs <= 0 || !comments.length) {
+      return;
+    }
+    this.danmuCache.delete(requestKey);
+    this.danmuCache.set(requestKey, {
+      comments,
+      expiresAt: this.now() + this.danmuCacheTtlMs
+    });
+    while (this.danmuCache.size > AIYIFAN_DANMU_CACHE_MAX_ENTRIES) {
+      this.danmuCache.delete(this.danmuCache.keys().next().value);
+    }
   }
 
   /**
@@ -217,9 +342,9 @@ export default class AiyifanSource extends BaseSource {
         provider: "aiyifan",
         mediaId: drama.mediaKey,  // mediaKey 作为 mediaId
         title: drama.title,
-        type: drama.mediaType || drama.contentType,  // 默认类型
+        type: drama.mediaType || drama.contentType || '',  // 默认类型
         year: new Date(drama.postTime).getFullYear(),  // 年份信息
-        imageUrl: drama.coverImgUrl || null,  // 图片链接
+        imageUrl: drama.coverImgUrl || '',  // 图片链接
         episodeCount: 0 // 初始集数为0，后续获取
       };
     });
@@ -245,16 +370,29 @@ export default class AiyifanSource extends BaseSource {
 
     // 转换为标准格式
     const result = episodes.map((ep, index) => {
-      const videoId = ep.episodeId != null ? ep.episodeId : ep.uniqueID;
+      const videoId = getBarrageVideoId(ep);
+      const mediaKey = ep.mediaKey || id;
+      if (!ep.episodeKey || !mediaKey || !hasPositiveId(videoId) || ep.videoType == null) {
+        return null;
+      }
+
+      const episodeRequest = {
+        episodeKey: ep.episodeKey,
+        mediaKey,
+        videoId,
+        videoType: ep.videoType,
+        duration: normalizeDuration(ep.epSecond),
+        appLinkVersion: AIYIFAN_APP_LINK_VERSION
+      };
       return {
         vid: ep.episodeKey,  // episodeKey 作为 vid
         id: videoId,
-        mediaKey: ep.mediaKey,
+        mediaKey,
         videoType: ep.videoType,
         title: ep.episodeTitle || ep.title || `第${index + 1}集`,
-        link: `${this.DOMAIN_API}/${encodeURIComponent(ep.mediaKey)}?id=${encodeURIComponent(ep.episodeKey)}&videoId=${videoId}&videoType=${ep.videoType}`
+        link: this.buildEpisodeLink(episodeRequest)
       };
-    });
+    }).filter(Boolean);
 
     log("info", `[aiyifan] 获取到 ${result.length} 个剧集`);
     return result;
@@ -296,54 +434,53 @@ export default class AiyifanSource extends BaseSource {
       }
     }
 
-    const processPromises = filteredAnimes.map(async (anime) => {
+    const processed = await mapWithConcurrency(
+      filteredAnimes,
+      this.playlistConcurrency,
+      async (anime) => {
         try {
-          // 获取剧集列表
           const eps = await this.getEpisodes(anime.mediaId);
           if (eps.length === 0) {
             log("info", `[aiyifan] ${anime.title} 无分集，跳过`);
-            return;
+            return null;
           }
 
-          // 构建链接
           const links = eps.map((ep, index) => ({
             name: ep.title || `${index + 1}`,
             url: ep.link,
             title: `【aiyifan】 ${ep.title}`
           }));
+          if (links.length === 0) return null;
 
-          if (links.length === 0) return;
-
-          // 计算动漫ID
-          const numericAnimeId = convertToAsciiSum(anime.mediaId);
-
-          // 构建动漫对象
           const transformedAnime = {
-            animeId: numericAnimeId,
+            animeId: convertToAsciiSum(anime.mediaId),
             bangumiId: anime.mediaId,
             animeTitle: `${anime.title}(${anime.year || 'N/A'})【${anime.type}】from aiyifan`,
-            type: anime.type,
-            typeDescription: anime.type,
-            imageUrl: anime.imageUrl,
+            type: anime.type || '',
+            typeDescription: anime.type || '',
+            imageUrl: anime.imageUrl || '',
             startDate: generateValidStartDate(anime.year),
             episodeCount: links.length,
             rating: 0,
             isFavorited: true,
             source: "aiyifan",
           };
-
-          tmpAnimes.push(transformedAnime);
-          addAnime({ ...transformedAnime, links }, detailStore);
-
-          if (globals.animes.length > globals.MAX_ANIMES) {
-            removeEarliestAnime();
-          }
+          return { transformedAnime, links };
         } catch (error) {
           log("error", `[aiyifan] 处理 ${anime.title} 失败:`, error.message);
+          return null;
         }
-      });
+      }
+    );
 
-    await Promise.all(processPromises);
+    for (const item of processed) {
+      if (!item) continue;
+      tmpAnimes.push(item.transformedAnime);
+      addAnime({ ...item.transformedAnime, links: item.links }, detailStore);
+      if (globals.animes.length > globals.MAX_ANIMES) {
+        removeEarliestAnime();
+      }
+    }
 
     this.sortAndPushAnimesByYear(tmpAnimes, curAnimes);
     return tmpAnimes;
@@ -357,7 +494,19 @@ export default class AiyifanSource extends BaseSource {
   async getEpisodeDanmu(id) {
     log("info", `[aiyifan] 获取弹幕: ${id}`);
 
-    const requestKey = this.extractEpisodeRequestKey(id);
+    const episodeRequest = await this.resolveEpisodeRequest(id);
+    if (!episodeRequest) {
+      log("warn", "[aiyifan] 无法从链接恢复 mediaKey/uniqueID/videoType");
+      return [];
+    }
+
+    const requestKey = this.getDanmuRequestKey(episodeRequest);
+    const cached = this.getCachedDanmu(requestKey);
+    if (cached) {
+      log("info", `[aiyifan] 复用短期弹幕缓存: ${requestKey}`);
+      return cached;
+    }
+
     const inflightRequest = this.inflightDanmuRequests.get(requestKey);
     if (inflightRequest) {
       log("info", `[aiyifan] 复用进行中的弹幕请求: ${requestKey}`);
@@ -365,16 +514,10 @@ export default class AiyifanSource extends BaseSource {
     }
 
     const requestPromise = (async () => {
-      const parsed = this.parseEpisodeLink(id);
-      if (!parsed) {
-        log("warn", "[aiyifan] 无法从链接解析 mediaKey/videoId/videoType");
-        return [];
-      }
-
       const danmuList = await this.fetchBarrage(
-        parsed.mediaKey,
-        parsed.videoId,
-        parsed.videoType
+        episodeRequest.mediaKey,
+        episodeRequest.videoId,
+        episodeRequest.videoType
       );
       if (danmuList.length === 0) {
         log("info", "[aiyifan] 未获取到弹幕");
@@ -383,6 +526,7 @@ export default class AiyifanSource extends BaseSource {
 
       // 按时间排序
       danmuList.sort((a, b) => (a.second || 0) - (b.second || 0));
+      this.setCachedDanmu(requestKey, danmuList);
 
       log("info", `[aiyifan] 获取到 ${danmuList.length} 条弹幕`);
       return danmuList;
@@ -402,19 +546,32 @@ export default class AiyifanSource extends BaseSource {
    * @returns {Promise<any>} 弹幕分片列表
    */
   async getEpisodeDanmuSegments(id) {
-    const danmaku = await this.getEpisodeDanmu(id);
-    const maxSecond = danmaku.reduce((max, d) => Math.max(max, d.second || 0), 0);
+    const episodeRequest = await this.resolveEpisodeRequest(id);
+    if (!episodeRequest) {
+      return {
+        "type": "aiyifan",
+        "duration": 0,
+        "segmentList": []
+      };
+    }
+
+    const canonicalUrl = this.buildEpisodeLink(episodeRequest);
+    let duration = episodeRequest.duration;
+    if (duration <= 0) {
+      const danmaku = await this.getEpisodeDanmu(canonicalUrl);
+      duration = danmaku.reduce((max, d) => Math.max(max, Number(d.second) || 0), 0);
+    }
 
     const segmentList = [{
       "type": "aiyifan",
       "segment_start": 0,
-      "segment_end": maxSecond,
-      "url": id
+      "segment_end": duration,
+      "url": canonicalUrl
     }];
 
     return {
       "type": "aiyifan",
-      "duration": maxSecond,
+      "duration": duration,
       "segmentList": segmentList
     };
   }
@@ -437,15 +594,19 @@ export default class AiyifanSource extends BaseSource {
    * @returns {Array} 格式化后的弹幕
    */
   formatComments(comments) {
-    return comments.map(comment => {
-      // 将弹幕转换为标准格式
+    if (!Array.isArray(comments)) {
+      return [];
+    }
+
+    return comments.filter(Boolean).map(comment => {
+      const second = Number(comment.second);
+      const colorValue = String(comment.color || '#ffffff').replace(/^#/, '');
+      const normalizedColor = colorValue.length === 8 ? colorValue.slice(2) : colorValue;
       return {
-        // 时间（秒）
-        p: `${comment.second || 0},${comment.position === 1 ? 5 : 1},25,${hexToInt(comment.color.replace("#", ""))},0,0,0,0`, // 标准弹幕格式: time, type, fontsize, color, unix_timestamp, pool, uid, row_id
-        m: comment.contxt || comment.content || '', // 弹幕内容
-        like: comment.good, // 点赞数
-        // 保留原始数据
-        ...comment
+        ...comment,
+        p: `${Number.isFinite(second) ? second : 0},${comment.position === 1 ? 5 : 1},25,${hexToInt(normalizedColor)},0,0,0,0`,
+        m: comment.contxt || comment.content || '',
+        like: Number(comment.good) || 0
       };
     });
   }
