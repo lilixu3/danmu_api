@@ -51,7 +51,7 @@ import { extractFongmiSeasonNumber, scoreFongmiEpisodeMatch } from "./apis/clien
 import { localDanmuJsContent } from './ui/js/localdanmu.js';
 import { buildLocalDanmuResourceKey, groupLocalDanmuResources, parseLocalDanmu, normalizeLocalSeason } from './utils/local-danmu-parser.js';
 import { handleLocalDanmuUpload, handleLocalDanmuList, handleLocalDanmuDelete, handleLocalDanmuGet, handleLocalDanmuUpdate } from './apis/local-danmu-api.js';
-import { saveLocalDanmu, getLocalDanmu, listLocalDanmu, findLocalDanmu } from './utils/local-danmu-store.js';
+import { saveLocalDanmu, getLocalDanmu, listLocalDanmu, findLocalDanmu, removeLocalDanmu, localDanmuFileName } from './utils/local-danmu-store.js';
 import { handleConfig } from './apis/system-api.js';
 
 async function readRequestBody(req) {
@@ -3351,6 +3351,10 @@ function makeResource(title, episode, year = 2026, type = 'tv', status = 'ready'
   };
 }
 
+const localDanmuDir = () => path.join(process.cwd(), '.cache', 'local-danmu');
+const localIndexPath = () => path.join(localDanmuDir(), 'index.meta');
+const localDataPath = key => path.join(localDanmuDir(), localDanmuFileName(key));
+
 function searchUrl(keyword) {
   const url = new URL('http://localhost/api/v2/search/anime');
   url.searchParams.set('keyword', keyword);
@@ -3667,6 +3671,153 @@ test('local source configuration and search', async t => {
     }));
     assert.equal(await getLocalDanmu(resourceKey), null);
     await fs.rm(indexPath, { recursive: true, force: true });
+  });
+
+  await t.test('a failed index write keeps the previous version of an existing resource', async () => {
+    resetState();
+    const fields = { title: '覆盖回滚剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(fields, 'old comment');
+    const key = buildLocalDanmuResourceKey(fields);
+    const previous = await getLocalDanmu(key);
+    // 覆盖已有资源时索引写入失败：必须恢复旧文件，不能把上一次可用的弹幕删掉。
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+    await fs.mkdir(localIndexPath(), { recursive: true });
+    await assert.rejects(() => saveLocalDanmu({
+      ...previous,
+      comments: [{ p: '1,1,16777215', m: 'new comment' }],
+      count: 1,
+      updatedAt: new Date().toISOString(),
+    }));
+    const restored = await getLocalDanmu(key);
+    assert.equal(restored.comments.length, 1);
+    assert.equal(restored.comments[0].m, 'old comment');
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+  });
+
+  await t.test('a failed index update keeps the data file for deletion', async () => {
+    resetState();
+    const fields = { title: '删除回滚剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(fields, 'keep me');
+    const key = buildLocalDanmuResourceKey(fields);
+    // 删除先改索引再删数据：索引失败时文件必须还在，否则接口报错但资源已经丢了。
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+    await fs.mkdir(localIndexPath(), { recursive: true });
+    await assert.rejects(() => removeLocalDanmu(key));
+    const kept = await getLocalDanmu(key);
+    assert.equal(kept.comments[0].m, 'keep me');
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+  });
+
+  await t.test('list falls back to scanning when the index cannot be written', async () => {
+    resetState();
+    const fields = { title: '索引降级剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(fields, 'fallback comment');
+    const key = buildLocalDanmuResourceKey(fields);
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+    await fs.mkdir(localIndexPath(), { recursive: true });
+    const listed = await listLocalDanmu();
+    assert.ok(listed.some(resource => resource.resourceKey === key));
+    assert.ok(listed.every(resource => !('comments' in resource)));
+    await fs.rm(localIndexPath(), { recursive: true, force: true });
+  });
+
+  await t.test('list self-heals orphan and phantom entries by comparing the directory', async () => {
+    resetState();
+    const orphanFields = { title: '自愈孤儿剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    const phantomFields = { title: '自愈幻影剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(orphanFields, 'orphan comment');
+    await uploadResource(phantomFields, 'phantom comment');
+    const orphanKey = buildLocalDanmuResourceKey(orphanFields);
+    const phantomKey = buildLocalDanmuResourceKey(phantomFields);
+    const indexPath = localIndexPath();
+    // 模拟数据已落盘但索引更新前进程退出：索引里没有，目录里有。
+    const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+    await fs.writeFile(indexPath, JSON.stringify(index.filter(item => item.resourceKey !== orphanKey)), 'utf8');
+    const healed = await listLocalDanmu();
+    assert.ok(healed.some(resource => resource.resourceKey === orphanKey));
+    assert.ok(healed.some(resource => resource.resourceKey === phantomKey));
+    // 模拟索引里有但数据文件被外部删掉：列表要剔除幻影条目并修复索引。
+    await fs.unlink(localDataPath(phantomKey));
+    const cleaned = await listLocalDanmu();
+    assert.ok(cleaned.some(resource => resource.resourceKey === orphanKey));
+    assert.ok(!cleaned.some(resource => resource.resourceKey === phantomKey));
+    assert.ok(JSON.parse(await fs.readFile(indexPath, 'utf8')).every(item => item.resourceKey !== phantomKey));
+  });
+
+  await t.test('a concurrent upload during index rebuild is not lost', async t => {
+    resetState();
+    const baseFields = { title: '并发索引剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(baseFields, 'base comment');
+    const baseKey = buildLocalDanmuResourceKey(baseFields);
+    await fs.rm(localIndexPath(), { force: true }); // 索引缺失，接下来的列表会触发重建
+
+    const dirPath = localDanmuDir();
+    const realReaddir = fs.readdir.bind(fs);
+    const before = (await realReaddir(dirPath)).filter(name => name.endsWith('.json')).length;
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let capturedResolve;
+    const captured = new Promise(resolve => { capturedResolve = resolve; });
+    let gated = false;
+    // 让列表先拿到旧目录快照并停住，再放上传进来，复现重建与上传交错的时序。
+    t.mock.method(fs, 'readdir', async (...args) => {
+      const names = await realReaddir(...args);
+      if (!gated) { gated = true; capturedResolve(); await gate; }
+      return names;
+    });
+
+    const listing = listLocalDanmu();
+    await captured;
+    const newFields = { ...baseFields, episode: 2 };
+    const upload = uploadResource(newFields, 'concurrent comment');
+    // 等新数据文件落盘；此时上传会卡在重建锁后面，索引还没更新。
+    for (let i = 0; i < 200; i++) {
+      const count = (await realReaddir(dirPath)).filter(name => name.endsWith('.json')).length;
+      if (count > before) break;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    release();
+    const response = await upload;
+    assert.equal(response.status, 200);
+    await listing;
+
+    const newKey = buildLocalDanmuResourceKey(newFields);
+    const listed = await listLocalDanmu();
+    assert.ok(listed.some(resource => resource.resourceKey === baseKey));
+    assert.ok(listed.some(resource => resource.resourceKey === newKey));
+    const stored = await getLocalDanmu(newKey);
+    assert.equal(stored.comments[0].m, 'concurrent comment');
+    assert.ok(JSON.parse(await fs.readFile(localIndexPath(), 'utf8')).some(item => item.resourceKey === newKey));
+  });
+
+  await t.test('a concurrent upload during directory verification does not break listing', async t => {
+    resetState();
+    const baseFields = { title: '并发校验剧集', year: 2026, type: 'tv', season: 1, episode: 1 };
+    await uploadResource(baseFields, 'base comment'); // 上传刚写完索引，indexCache 为空
+
+    const dirPath = localDanmuDir();
+    const realReaddir = fs.readdir.bind(fs);
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let capturedResolve;
+    const captured = new Promise(resolve => { capturedResolve = resolve; });
+    let gated = false;
+    t.mock.method(fs, 'readdir', async (...args) => {
+      const names = await realReaddir(...args);
+      if (!gated) { gated = true; capturedResolve(); await gate; }
+      return names;
+    });
+
+    const listing = listLocalDanmu();
+    await captured;
+    const newFields = { ...baseFields, episode: 2 };
+    await uploadResource(newFields, 'concurrent verify comment'); // 校验期间重写索引并清空缓存
+    release();
+    await listing; // 修复前这里会因为 indexCache 已被清空而抛 TypeError
+
+    const newKey = buildLocalDanmuResourceKey(newFields);
+    const listed = await listLocalDanmu();
+    assert.ok(listed.some(resource => resource.resourceKey === newKey));
   });
 
   await t.test('parallel uploads keep every entry in the index', async () => {
