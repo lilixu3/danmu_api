@@ -1,8 +1,9 @@
 import { jsonResponse } from '../utils/http-util.js';
 import { globals } from '../configs/globals.js';
+import { storeTrace } from '../utils/trace-util.js';
 
 export const FORWARD_TRACE_LIMITS = Object.freeze({
-  maxPayloadBytes: 64 * 1024,
+  maxPayloadBytes: 256 * 1024,
 });
 
 function payloadByteLength(text) {
@@ -28,6 +29,39 @@ function formatTraceValue(value) {
 function appendForwardTraceEvent(payload, handler) {
   const eventType = String(payload.eventType || 'handlerComplete');
   const durationMs = Number(payload.durationMs) || 0;
+
+  if (eventType === 'trace') {
+    const trace = payload.trace && typeof payload.trace === 'object' ? payload.trace : null;
+    if (!trace || !trace.id) return 0;
+    trace.enabled = true;
+    trace.origin = {
+      ...(trace.origin && typeof trace.origin === 'object' ? trace.origin : {}),
+      kind: 'forward',
+      widgetId: String(payload.widgetId || ''),
+      handler,
+    };
+    storeTrace(trace);
+
+    // 合成一条请求记录，让 App 的「请求记录」列表也能看到 forward 侧的调用
+    const record = {
+      interface: `forward://${handler}`,
+      params: payload.params && typeof payload.params === 'object' ? payload.params : null,
+      timestamp: trace.startedAt ? new Date(trace.startedAt).toISOString() : new Date().toISOString(),
+      method: 'FORWARD',
+      clientIp: '',
+      traceId: trace.id,
+      statusCode: trace.status === 'error' ? 500 : 200,
+      durationMs: trace.durationMs || durationMs,
+      success: trace.status !== 'error',
+      errorMessage: trace.error || '',
+      summary: trace.summary || null,
+    };
+    globals.reqRecords.push(record);
+    if (globals.reqRecords.length > globals.MAX_RECORDS) {
+      globals.reqRecords = globals.reqRecords.slice(-globals.MAX_RECORDS);
+    }
+    return 1;
+  }
 
   if (eventType === 'logBatch') {
     const logs = Array.isArray(payload.logs) ? payload.logs : [];

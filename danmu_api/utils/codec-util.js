@@ -22,6 +22,10 @@ export function serializeValue(key, value) {
   if ((key === 'lastSelectMap' || key === 'favoriteCache') && value instanceof Map) {
     return JSON.stringify(Object.fromEntries(value));
   }
+  // 链路追踪按时间顺序存数组，恢复时再按 id 重建 Map
+  if (key === 'reqTraces' && value instanceof Map) {
+    return JSON.stringify([...value.values()]);
+  }
   return JSON.stringify(value);
 }
 

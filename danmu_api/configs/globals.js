@@ -31,6 +31,7 @@ export const Globals = {
   redisCacheInitialized: false, // redis 缓存是否已初始化
   lastSelectMap: new Map(), // 存储查询关键字上次选择的animeId，用于下次match自动匹配时优先选择该anime
   reqRecords: [], // 记录请求历史，包括接口/参数/请求时间
+  reqTraces: new Map(), // 最近请求的链路追踪（id -> trace），随本地缓存/Redis 持久化
   todayReqNum: 0, // 今日请求数量统计
   lastHashes: { // 存储上一次各变量哈希值
     animes: null,
@@ -38,6 +39,7 @@ export const Globals = {
     episodeNum: null,
     lastSelectMap: null,
     reqRecords: null,
+    reqTraces: null,
     todayReqNum: null,
     favoriteCache: null
   },

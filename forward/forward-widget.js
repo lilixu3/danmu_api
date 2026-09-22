@@ -2,6 +2,7 @@ import { searchAnime, getBangumi, getComment, getSegmentComment, matchSeason } f
 import { Globals } from '../danmu_api/configs/globals.js';
 import { log } from '../danmu_api/utils/log-util.js';
 import { simplized } from '../danmu_api/utils/zh-util.js';
+import { createTrace, enableTrace, setFallbackTrace, clearFallbackTrace, finishTrace } from '../danmu_api/utils/trace-util.js';
 
 const wv = typeof widgetVersion !== 'undefined' ? widgetVersion : Globals.VERSION;
 WidgetMetadata = {
@@ -708,10 +709,19 @@ async function flushForwardRuntimeLogs() {
 }
 
 async function startForwardRealtimeTrace(handlerName, params, startedAt) {
+  const trace = createTrace({
+    method: 'FORWARD',
+    path: `forward://${handlerName}`,
+    deployPlatform: 'forward',
+  });
+  enableTrace(trace, { method: 'FORWARD', path: `forward://${handlerName}`, tokenRole: 'admin' });
+  setFallbackTrace(trace);
   forwardDebugContext = {
     handler: handlerName,
     debugEndpoint: params?.debugEndpoint,
     startedAt,
+    params: redactForwardTraceValue(params || {}),
+    trace,
     seenLogs: [],
     runtimeLogs: [],
     flushing: false,
@@ -729,10 +739,30 @@ async function startForwardRealtimeTrace(handlerName, params, startedAt) {
   });
 }
 
-async function stopForwardRealtimeTrace() {
+async function stopForwardRealtimeTrace(status = 'ok', errorMessage = '') {
   const context = forwardDebugContext;
   if (!context) return;
   await flushForwardRuntimeLogs();
+  const trace = context.trace;
+  if (trace) {
+    finishTrace(trace, {
+      httpStatus: status === 'error' ? 500 : 200,
+      status,
+      error: errorMessage,
+    });
+    await sendForwardTrace(context.debugEndpoint, {
+      eventType: 'trace',
+      widgetId: WidgetMetadata.id,
+      widgetVersion: WidgetMetadata.version,
+      handler: context.handler,
+      status,
+      timestamp: new Date().toISOString(),
+      durationMs: trace.durationMs,
+      params: context.params,
+      trace,
+    });
+    clearFallbackTrace(trace);
+  }
   if (forwardDebugContext === context) forwardDebugContext = null;
 }
 
@@ -808,7 +838,7 @@ async function runWithForwardTrace(handlerName, params, operation) {
     });
     return result;
   } catch (error) {
-    await stopForwardRealtimeTrace();
+    await stopForwardRealtimeTrace('error', error?.message || String(error));
     await sendForwardTrace(params?.debugEndpoint, {
       eventType: 'handlerComplete',
       widgetId: WidgetMetadata.id,

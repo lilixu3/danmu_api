@@ -1,4 +1,5 @@
 import { globals } from '../configs/globals.js';
+import { traceLog } from './trace-util.js';
 
 // =====================
 // 日志记录工具
@@ -35,6 +36,8 @@ export function log(level, ...args) {
 
   globals.logBuffer.push({ timestamp, level, message });
   if (globals.logBuffer.length > globals.MAX_LOGS) globals.logBuffer.shift();
+  // 请求链路追踪开启时，把同一条日志挂进当前请求的 trace（容量由 trace-util 控制）
+  traceLog({ at: Date.parse(timestamp) || now, level, message });
   console[level](...processedArgs);
 }
 

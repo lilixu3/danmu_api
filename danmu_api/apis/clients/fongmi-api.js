@@ -1,6 +1,7 @@
 import { globals } from "../../configs/globals.js";
 import { jsonResponse } from "../../utils/http-util.js";
 import { log } from "../../utils/log-util.js";
+import { traceStage, traceSummary } from "../../utils/trace-util.js";
 import { simplized } from "../../utils/zh-util.js";
 import { convertChineseNumber, extractEpisodeTitle, extractEpisodeNumberFromTitle, extractSeasonNumberFromAnimeTitle, getExplicitSeasonNumber, normalizeSpaces } from "../../utils/common-util.js";
 import { filterSameEpisodeTitle, getBangumiDataForMatch, searchAnime } from "../dandan-api.js";
@@ -391,14 +392,19 @@ export async function getFongmiDanmaku(url, req) {
   let { name, episode } = await parseFongmiRequestParams(url, req);
 
   if (!name) {
+    traceStage('fongmi.params', { label: '播放器参数', status: 'miss', detail: { reason: 'missing-name' } });
     return jsonResponse([], 200);
   }
+  traceStage('fongmi.params', { label: '播放器参数', status: 'ok', detail: { name, episode } });
   // 使用剧名映射表转换剧名
   if (globals.titleMappingTable && globals.titleMappingTable.size > 0) {
     const mappedTitle = globals.titleMappingTable.get(name);
     if (mappedTitle) {
       log("info", `[system] [fongmi] Title mapped from original: ${name} to: ${mappedTitle}`);
+      traceStage('title.map', { label: '自定义映射', status: 'ok', detail: { before: name, after: mappedTitle } });
       name = mappedTitle;
+    } else {
+      traceStage('title.map', { label: '自定义映射', status: 'miss', detail: { before: name, reason: 'no-rule-matched' } });
     }
   }
   const searchUrl = new URL(url.toString());
@@ -415,12 +421,19 @@ export async function getFongmiDanmaku(url, req) {
       if (keyword !== name) {
         log("info", `[system] [fongmi] Search fallback hit: raw=${name}, keyword=${keyword}, episode=${episode}`);
       }
+      traceStage('fongmi.keywords', {
+        label: '关键词回退',
+        status: keyword === name ? 'skip' : 'ok',
+        detail: { keywords, hit: keyword },
+      });
       break;
     }
   }
 
   if (!animes.length) {
     log("info", `[system] [fongmi] No danmaku candidates for name=${name}, episode=${episode}`);
+    traceStage('fongmi.candidates', { label: '候选生成', status: 'miss', detail: { name, episode, keywords } });
+    traceSummary({ title: name, episode, result: '无候选', count: 0 });
     return jsonResponse([], 200);
   }
 
@@ -445,6 +458,25 @@ export async function getFongmiDanmaku(url, req) {
   }
 
   log("info", `[system] [fongmi] name=${name}, episode=${episode}, candidates=${items.length}`);
+  traceStage('fongmi.candidates', {
+    label: '候选生成',
+    status: items.length > 0 ? 'ok' : 'miss',
+    detail: {
+      count: items.length,
+      topScores: candidates.slice(0, 5).map((candidate) => ({
+        score: candidate.score,
+        animeTitle: candidate.anime?.animeTitle || '',
+        episodeTitle: candidate.episode?.episodeTitle || '',
+      })),
+    },
+  });
+  traceSummary({
+    title: name,
+    episode,
+    count: items.length,
+    topScore: candidates[0]?.score ?? '',
+    result: '播放器候选',
+  });
   return jsonResponse(items, 200);
 }
 

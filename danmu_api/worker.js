@@ -8,7 +8,7 @@ import AIClient from './utils/ai-util.js';
 import { getBangumi, getComment, getCommentByUrl, getSegmentComment, matchAnime, searchAnime, searchEpisodes } from "./apis/dandan-api.js";
 import { handleFavoriteAdd, handleFavoriteList, handleFavoriteRefresh, handleFavoriteRemove, handleFavoriteSchedule } from "./apis/favorite-api.js";
 import { getFongmiDanmaku } from "./apis/clients/fongmi-api.js";
-import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleCacheAnimes } from "./apis/system-api.js";
+import { handleConfig, handleUI, handleLogs, handleClearLogs, handleDeploy, handleClearCache, handleReqRecords, handleReqTrace, handleCacheAnimes } from "./apis/system-api.js";
 import { handleForwardTrace } from "./apis/forward-trace-api.js";
 import { handleSetEnv, handleAddEnv, handleDelEnv, handleAiVerify } from "./apis/env-api.js";
 import { handleLocalDanmuUpload, handleLocalDanmuList, handleLocalDanmuGet, handleLocalDanmuDelete, handleLocalDanmuUpdate } from "./apis/local-danmu-api.js";
@@ -21,10 +21,66 @@ import {
     handleQRCheck,
     handleCookieSave
 } from "./utils/cookie-util.js";
+import { createTrace, runWithTrace, finishTrace, storeTrace, enableTrace, tracesEnabled, currentTrace, traceStage } from "./utils/trace-util.js";
 
 let globals;
 
+const TRACE_HEADER = 'X-Danmu-Trace-Id';
+
+// 记录完成态：接口/参数/时间在入口写入，状态码/耗时/摘要在这里补全
+function writeTraceToRecord(trace) {
+  const record = trace?.record;
+  if (!record) return;
+  record.statusCode = trace.httpStatus || 0;
+  record.durationMs = trace.durationMs || 0;
+  record.success = trace.status !== 'error' && (!trace.httpStatus || trace.httpStatus < 400);
+  record.errorMessage = trace.error || '';
+  if (trace.enabled) record.traceId = trace.id;
+  if (trace.summary) record.summary = trace.summary;
+}
+
+function attachTraceHeader(response, trace) {
+  if (!response || !trace?.enabled) return response;
+  try {
+    response.headers.set(TRACE_HEADER, trace.id);
+  } catch (_) {
+    // 只读响应头（少数运行时）忽略即可，trace 仍可通过 /api/reqrecords 查询
+  }
+  return response;
+}
+
+// 所有部署方式（node / vercel / netlify / edgeone / cloudflare / 手机内嵌宿主）
+// 都从这里进入，因此 trace 只需在这一处创建与收尾。
 async function handleRequest(req, env, deployPlatform, clientIp) {
+  let requestPath = '';
+  try {
+    requestPath = new URL(req.url).pathname;
+  } catch (_) {
+    requestPath = '';
+  }
+  const trace = createTrace({
+    method: req?.method,
+    path: requestPath,
+    deployPlatform,
+    clientIp,
+  });
+  try {
+    const response = await runWithTrace(trace, () => handleRequestInner(req, env, deployPlatform, clientIp));
+    finishTrace(trace, { httpStatus: response?.status || 0 });
+    writeTraceToRecord(trace);
+    trace.record = null; // 记录本体已在 reqRecords，trace 里不再重复一份
+    storeTrace(trace);
+    return attachTraceHeader(response, trace);
+  } catch (error) {
+    finishTrace(trace, { status: 'error', error: error?.message || String(error) });
+    writeTraceToRecord(trace);
+    trace.record = null;
+    storeTrace(trace);
+    throw error;
+  }
+}
+
+async function handleRequestInner(req, env, deployPlatform, clientIp) {
   // 加载全局变量和环境变量配置
   globals = Globals.init(env);
 
@@ -202,6 +258,30 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
     if (globals.reqRecords.length > globals.MAX_RECORDS) {
       globals.reqRecords = globals.reqRecords.slice(-globals.MAX_RECORDS);
     }
+
+    // 链路追踪：与请求记录同源启用，入口即挂上，完成态由包装层回填
+    const trace = currentTrace();
+    if (trace && !trace.finished) {
+      trace.record = requestRecord;
+      if (tracesEnabled()) {
+        enableTrace(trace, {
+          method,
+          path: normalizedPath,
+          clientIp,
+          tokenRole: globals.adminToken && globals.currentToken === globals.adminToken ? 'admin' : 'user',
+        });
+        traceStage('request.receive', {
+          label: '接收请求',
+          status: 'ok',
+          detail: { method, interface: normalizedPath },
+        });
+        traceStage('request.route', {
+          label: '路由解析',
+          status: 'ok',
+          detail: { deployPlatform: deployPlatform || '' },
+        });
+      }
+    }
   }
 
   // GET /
@@ -296,6 +376,11 @@ async function handleRequest(req, env, deployPlatform, clientIp) {
   // GET /api/reqrecords - 获取请求记录 (需要 token)
   if (path === "/api/reqrecords" && method === "GET") {
     return handleReqRecords();
+  }
+
+  // GET /api/reqrecords/trace?id=xxx - 获取单条请求的链路详情 (需要 token)
+  if (path === "/api/reqrecords/trace" && method === "GET") {
+    return handleReqTrace(url);
   }
 
   log("info", `[system] [server] ${path}`);

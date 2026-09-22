@@ -4,6 +4,7 @@ import { HTML_TEMPLATE } from "../ui/template.js";
 import { formatLogMessage, log } from "../utils/log-util.js";
 import { HandlerFactory } from "../configs/handlers/handler-factory.js";
 import { clearBangumiDataCache, initBangumiData } from "../utils/bangumi-data-util.js";
+import { getTrace, clearTraces } from "../utils/trace-util.js";
 
 const UI_THEMES = new Set([
   'lavender', 'shinyo', 'sakura', 'tianyi', 'hatsune', 'sakuragi', 'violet', 'amber'
@@ -190,8 +191,10 @@ export async function handleClearCache(req) {
     requestHistory: () => {
       globals.requestHistory = new Map();
       globals.reqRecords = []; // 清空请求记录
+      clearTraces(); // 请求记录对应的链路详情一并清空
       globals.todayReqNum = 0; // 重置今日请求次数
     },
+    reqTraces: () => { clearTraces(); },
     bangumiData: () => {
       try {
         clearBangumiDataCache(true); // 清理 Bangumi-Data 内存与磁盘缓存
@@ -269,6 +272,7 @@ export async function handleClearCache(req) {
       if (key === "requestHistory") {
         clearedItems.requestHistory = 0;
         clearedItems.reqRecords = 0;
+        clearedItems.reqTraces = 0;
         clearedItems.todayReqNum = 0;
       } else if (key === "episodeNum") {
         clearedItems.episodeNum = 10001;
@@ -333,11 +337,82 @@ export function handleReqRecords() {
         // 隐藏请求体的所有值，保留 key 与结构
         masked.params = maskParamValues(masked.params);
       }
+      if (masked.summary != null) {
+        // 链路摘要里的标题/ID 同样按普通用户脱敏，管理员模式可见全量
+        masked.summary = maskParamValues(masked.summary);
+      }
       return masked;
     });
   }
   
   return jsonResponse({ records, todayReqNum }, 200);
+}
+
+// 把文本里的 token 段替换成 *，避免链路/日志里泄露自定义 TOKEN
+function maskTokenInText(text) {
+  let output = String(text || '');
+  for (const rawToken of [globals.token, globals.adminToken]) {
+    const token = String(rawToken || '').trim();
+    if (!token) continue;
+    output = output.split(`/${token}/`).join('/*/');
+    output = output.split(`/${token}?`).join('/*?');
+    if (output === `/${token}`) output = '/*';
+  }
+  return output;
+}
+
+// 隐藏日志文本里的 client ip，与 handleLogs 的脱敏规则保持一致
+function maskClientIpInText(text) {
+  return String(text || '').replace(/(client\s+ip:\s*)([^\n\r]*)/gi, (match, prefix, ipPart) => {
+    const maskedIp = ipPart.replace(/[^.\s\n\r]/g, '*');
+    return prefix + maskedIp;
+  });
+}
+
+// 非 admin 读取 trace：结构可见（阶段/状态/耗时），值全部打码
+function maskTraceForRead(trace) {
+  if (globals.currentToken === globals.adminToken) return trace;
+  let masked;
+  try {
+    masked = JSON.parse(JSON.stringify(trace));
+  } catch (_) {
+    return null;
+  }
+  if (masked.request) {
+    if (masked.request.clientIp) masked.request.clientIp = masked.request.clientIp.replace(/[^.]/g, '*');
+    if (masked.request.path) masked.request.path = maskTokenInText(maskInterfaceValues(masked.request.path));
+  }
+  if (masked.summary != null) masked.summary = maskParamValues(masked.summary);
+  if (Array.isArray(masked.stages)) {
+    for (const stage of masked.stages) {
+      if (stage.detail != null) stage.detail = maskParamValues(stage.detail);
+      if (stage.error) stage.error = '***';
+    }
+  }
+  if (Array.isArray(masked.logs)) {
+    for (const entry of masked.logs) {
+      if (typeof entry.message === 'string') entry.message = maskTokenInText(maskClientIpInText(entry.message));
+    }
+  }
+  masked.record = null;
+  return masked;
+}
+
+/**
+ * 处理获取单条链路追踪的请求
+ * @param {URL} url 请求 URL（query: id）
+ * @returns {Response} 包含 trace 的 JSON 响应
+ */
+export function handleReqTrace(url) {
+  const id = String(url?.searchParams?.get('id') || '').trim();
+  if (!id) {
+    return jsonResponse({ success: false, errorMessage: 'Missing trace id' }, 400);
+  }
+  const trace = getTrace(id);
+  if (!trace) {
+    return jsonResponse({ success: false, errorMessage: 'Trace not found' }, 404);
+  }
+  return jsonResponse({ success: true, trace: maskTraceForRead(trace) }, 200);
 }
 
 /**

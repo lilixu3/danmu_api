@@ -816,6 +816,11 @@ export async function getLocalCaches() {
       globals.episodeIds = JSON.parse(readCacheFromFile('episodeIds')) || globals.episodeIds;
       globals.episodeNum = JSON.parse(readCacheFromFile('episodeNum')) || globals.episodeNum;
       globals.reqRecords = JSON.parse(readCacheFromFile('reqRecords')) || globals.reqRecords;
+      const reqTracesData = readCacheFromFile('reqTraces');
+      if (reqTracesData) {
+        const parsedTraces = typeof reqTracesData === 'string' ? JSON.parse(reqTracesData) : reqTracesData;
+        globals.reqTraces = new Map((Array.isArray(parsedTraces) ? parsedTraces : []).filter(t => t?.id).map(t => [String(t.id), t]));
+      }
       globals.todayReqNum = JSON.parse(readCacheFromFile('todayReqNum')) || globals.todayReqNum;
 
       const favoriteCacheData = readCacheFromFile('favoritesCache');
@@ -835,6 +840,7 @@ export async function getLocalCaches() {
       globals.lastHashes.episodeIds = simpleHash(JSON.stringify(globals.episodeIds));
       globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
+      globals.lastHashes.reqTraces = simpleHash(JSON.stringify([...globals.reqTraces.values()]));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.favoriteCache = simpleHash(JSON.stringify(saveFavorites()));
@@ -860,6 +866,7 @@ export async function updateLocalCaches() {
       { key: 'episodeIds', value: globals.episodeIds },
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
+      { key: 'reqTraces', value: globals.reqTraces },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
       { key: 'todayReqNum', value: globals.todayReqNum },
       { key: 'favoritesCache', value: globals.favoriteCache }
@@ -869,6 +876,8 @@ export async function updateLocalCaches() {
       // 对于 lastSelectMap（Map 对象），需要转换为普通对象后再序列化
       const serializedValue = key === 'lastSelectMap'
         ? JSON.stringify(Object.fromEntries(value))
+        : key === 'reqTraces'
+          ? JSON.stringify([...value.values()])
         : key === 'favoritesCache'
           ? JSON.stringify(saveFavorites())
           : JSON.stringify(value);

@@ -169,7 +169,7 @@ export async function getLocalRedisCaches() {
         throw new Error('本地 Redis 客户端未初始化');
       }
 
-      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum'];
+      const keys = ['animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum', 'reqTraces'];
       const results = await Promise.all(keys.map(key => getLocalRedisKey(key)));
 
       // 解析结果，按顺序赋值
@@ -185,12 +185,21 @@ export async function getLocalRedisCaches() {
         log("info", `[system] [Local-Redis] Restored lastSelectMap from Local Redis with ${globals.lastSelectMap.size} entries`);
       }
       globals.todayReqNum = results[5] ? parseInt(results[5], 10) : globals.todayReqNum;
+      if (results[6]) {
+        try {
+          const parsedTraces = JSON.parse(results[6]);
+          globals.reqTraces = new Map((Array.isArray(parsedTraces) ? parsedTraces : []).filter(t => t?.id).map(t => [String(t.id), t]));
+        } catch (_) {
+          globals.reqTraces = globals.reqTraces instanceof Map ? globals.reqTraces : new Map();
+        }
+      }
 
       // 更新哈希值
       globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
       globals.lastHashes.episodeIds = simpleHash(JSON.stringify(globals.episodeIds));
       globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
+      globals.lastHashes.reqTraces = simpleHash(JSON.stringify([...(globals.reqTraces instanceof Map ? globals.reqTraces.values() : [])]));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
 
@@ -224,13 +233,18 @@ export async function updateLocalRedisCaches() {
       { key: 'episodeIds', value: globals.episodeIds },
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
+      { key: 'reqTraces', value: globals.reqTraces },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
       { key: 'todayReqNum', value: globals.todayReqNum }
     ];
 
     for (const { key, value } of variables) {
       // 对于 lastSelectMap（Map 对象），需要转换为普通对象后再序列化
-      const serializedValue = key === 'lastSelectMap' ? JSON.stringify(Object.fromEntries(value)) : JSON.stringify(value);
+      const serializedValue = key === 'lastSelectMap'
+        ? JSON.stringify(Object.fromEntries(value))
+        : key === 'reqTraces'
+          ? JSON.stringify([...value.values()])
+          : JSON.stringify(value);
       const currentHash = simpleHash(serializedValue);
       if (currentHash !== globals.lastHashes[key]) {
         updates.push({ key, value, hash: currentHash });

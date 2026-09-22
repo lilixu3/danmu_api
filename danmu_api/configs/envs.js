@@ -748,6 +748,9 @@ export class Envs {
       'REMEMBER_LAST_SELECT': { category: 'cache', type: 'boolean', description: '记住明确手动选择的结果；自动匹配后直接获取其返回结果不会写入偏好' },
       'MAX_LAST_SELECT_MAP': { category: 'cache', type: 'number', description: '记住上次选择映射缓存大小限制，默认100', min: 10, max: 1000 },
       'MAX_ANIMES': { category: 'cache', type: 'number', description: '动漫标题缓存最大数量，默认100', min: 100, max: 1000 },
+      'TRACE_ENABLED': { category: 'cache', type: 'boolean', description: '请求链路追踪开关；开启后请求记录会附带各阶段耗时与匹配详情，默认开启' },
+      'TRACE_LOG_CAPTURE': { category: 'cache', type: 'boolean', description: '链路追踪是否同时记录请求期间的日志，默认开启' },
+      'MAX_TRACES': { category: 'cache', type: 'number', description: '链路追踪缓存最大数量，默认100', min: 10, max: 1000 },
       'UPSTASH_REDIS_REST_URL': { category: 'cache', type: 'text', description: 'Upstash Redis请求链接' },
       'UPSTASH_REDIS_REST_TOKEN': { category: 'cache', type: 'text', description: 'Upstash Redis访问令牌' },
       'LOCAL_REDIS_URL': { category: 'cache', type: 'text', description: '本地 Redis 连接URL，示例：redis://:password@127.0.0.1:6379/0，只支持本地部署和docker部署' },
@@ -829,6 +832,9 @@ export class Envs {
       rememberLastSelect: this.get('REMEMBER_LAST_SELECT', true, 'boolean'), // 是否记住手动选择结果，用于match自动匹配时优选上次的选择（默认 true，记住）
       MAX_LAST_SELECT_MAP: this.get('MAX_LAST_SELECT_MAP', 100, 'number'), // 记住上次选择映射缓存大小限制（默认 100）
       MAX_ANIMES: this.get('MAX_ANIMES', 100, 'number'), // 动漫标题缓存最大数量（默认 100）
+      traceEnabled: this.get('TRACE_ENABLED', true, 'boolean'), // 请求链路追踪开关（默认开启）
+      traceLogCapture: this.get('TRACE_LOG_CAPTURE', true, 'boolean'), // 链路追踪是否记录日志（默认开启）
+      MAX_TRACES: this.get('MAX_TRACES', 100, 'number'), // 链路追踪缓存最大数量（默认 100）
       bangumiDataCacheDays: this.get('BANGUMI_DATA_CACHE_DAYS', 7, 'number'), // Bangumi Data 缓存有效期(天)，默认7天
       deployPlatformAccount: this.get('DEPLOY_PLATFROM_ACCOUNT', '', 'string', true), // 部署平台账号ID配置（默认空）
       deployPlatformProject: this.get('DEPLOY_PLATFROM_PROJECT', '', 'string', true), // 部署平台项目名称配置（默认空）

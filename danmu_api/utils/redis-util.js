@@ -154,7 +154,7 @@ export async function getRedisCaches() {
     try {
       log("info", '[system] [redis] getRedisCaches start.');
       const keys = [
-        'animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum', 'favoriteCache'
+        'animes', 'episodeIds', 'episodeNum', 'reqRecords', 'lastSelectMap', 'todayReqNum', 'favoriteCache', 'reqTraces'
       ];
       const commands = keys.map(key => ['GET', key]); // 构造 pipeline 命令
       const results = await runPipeline(commands);
@@ -173,12 +173,21 @@ export async function getRedisCaches() {
       }
       globals.todayReqNum = results[5].result ? parseInt(results[5].result, 10) : globals.todayReqNum;
       if (results[6]?.result) loadFavorites(results[6].result);
+      if (results[7]?.result) {
+        try {
+          const parsedTraces = JSON.parse(results[7].result);
+          globals.reqTraces = new Map((Array.isArray(parsedTraces) ? parsedTraces : []).filter(t => t?.id).map(t => [String(t.id), t]));
+        } catch (_) {
+          globals.reqTraces = globals.reqTraces instanceof Map ? globals.reqTraces : new Map();
+        }
+      }
 
       // 更新哈希值
       globals.lastHashes.animes = simpleHash(JSON.stringify(globals.animes));
       globals.lastHashes.episodeIds = simpleHash(JSON.stringify(globals.episodeIds));
       globals.lastHashes.episodeNum = simpleHash(JSON.stringify(globals.episodeNum));
       globals.lastHashes.reqRecords = simpleHash(JSON.stringify(globals.reqRecords));
+      globals.lastHashes.reqTraces = simpleHash(JSON.stringify([...(globals.reqTraces instanceof Map ? globals.reqTraces.values() : [])]));
       globals.lastHashes.lastSelectMap = simpleHash(JSON.stringify(Object.fromEntries(globals.lastSelectMap)));
       globals.lastHashes.todayReqNum = simpleHash(JSON.stringify(globals.todayReqNum));
       globals.lastHashes.favoriteCache = simpleHash(serializeValue('favoriteCache', globals.favoriteCache));
@@ -223,6 +232,7 @@ export async function updateRedisCaches() {
       { key: 'episodeIds', value: globals.episodeIds },
       { key: 'episodeNum', value: globals.episodeNum },
       { key: 'reqRecords', value: globals.reqRecords },
+      { key: 'reqTraces', value: globals.reqTraces },
       { key: 'lastSelectMap', value: globals.lastSelectMap },
       { key: 'todayReqNum', value: globals.todayReqNum },
       { key: 'favoriteCache', value: globals.favoriteCache }
