@@ -4,3 +4,6 @@ node_modules
 .env
 .cache
 dist
+
+# Locally built Go helper (Docker builds its own binary)
+outbound/bin/

@@ -62,6 +62,7 @@ const previewGroupDefinitions = {
     system: [
         { name: '界面与运行', keys: ['UI_THEME', 'LOG_LEVEL'] },
         { name: '网络与数据服务', keys: ['PROXY_URL', 'TMDB_API_KEY'] },
+        { name: '增强直连', keys: ['OUTBOUND_MODE', 'OUTBOUND_SOURCES', 'OUTBOUND_HTTP_VERSION', 'OUTBOUND_DOH_URL', 'OUTBOUND_CONNECT_TIMEOUT_MS', 'OUTBOUND_HELPER_PATH', 'outboundStatus'] },
         { name: '部署平台', keys: ['DEPLOY_PLATFROM_ACCOUNT', 'DEPLOY_PLATFROM_PROJECT', 'DEPLOY_PLATFROM_TOKEN', 'deployPlatform'] },
         { name: '安全策略', keys: ['NODE_TLS_REJECT_UNAUTHORIZED', 'IP_BLACKLIST'] },
         { name: '运行状态', keys: ['localCacheValid', 'redisValid', 'localRedisValid', 'aiValid'] }

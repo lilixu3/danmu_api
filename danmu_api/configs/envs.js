@@ -21,7 +21,7 @@ export class Envs {
   static sensitiveKeys = new Set();
 
   // 允许在值中写入 # 等 dotenv 视为注释字符的变量；读取时绕过 dotenv 截断以保留完整内容。加密变量按掩码写入预览集合，原始值仅供运行期使用与日志脱敏。
-  static RAW_ENV_KEYS = new Set(['ADMIN_TOKEN', 'AI_API_KEY', 'AI_MATCH_PROMPT', 'ANIME_TITLE_FILTER', 'AUTO_MATCH_MAPPING_TABLE', 'BLOCKED_WORDS', 'BILIBILI_COOKIE', 'COLOR_POOL', 'CUSTOM_MERGE_RULES', 'CUSTOM_SOURCE_API_URL', 'DANDANPLAY_ACCOUNT', 'DANDANPLAY_PASSWORD', 'DANMU_OFFSET', 'DANMU_PUSH_URL', 'DEPLOY_PLATFROM_ACCOUNT', 'DEPLOY_PLATFROM_PROJECT', 'DEPLOY_PLATFROM_TOKEN', 'DOUBAN_COOKIE', 'EPISODE_TITLE_FILTER', 'IP_BLACKLIST', 'LOCAL_REDIS_URL', 'OTHER_SERVER', 'PROXY_URL', 'TITLE_MAPPING_TABLE', 'TITLE_NOISE_FILTER', 'TMDB_API_KEY', 'TOKEN', 'UPSTASH_REDIS_REST_TOKEN', 'UPSTASH_REDIS_REST_URL', 'VOD_SERVERS']);
+  static RAW_ENV_KEYS = new Set(['ADMIN_TOKEN', 'AI_API_KEY', 'AI_MATCH_PROMPT', 'ANIME_TITLE_FILTER', 'AUTO_MATCH_MAPPING_TABLE', 'BLOCKED_WORDS', 'BILIBILI_COOKIE', 'COLOR_POOL', 'CUSTOM_MERGE_RULES', 'CUSTOM_SOURCE_API_URL', 'DANDANPLAY_ACCOUNT', 'DANDANPLAY_PASSWORD', 'DANMU_OFFSET', 'DANMU_PUSH_URL', 'DEPLOY_PLATFROM_ACCOUNT', 'DEPLOY_PLATFROM_PROJECT', 'DEPLOY_PLATFROM_TOKEN', 'DOUBAN_COOKIE', 'EPISODE_TITLE_FILTER', 'IP_BLACKLIST', 'LOCAL_REDIS_URL', 'OTHER_SERVER', 'OUTBOUND_DOH_URL', 'OUTBOUND_HELPER_PATH', 'PROXY_URL', 'TITLE_MAPPING_TABLE', 'TITLE_NOISE_FILTER', 'TMDB_API_KEY', 'TOKEN', 'UPSTASH_REDIS_REST_TOKEN', 'UPSTASH_REDIS_REST_URL', 'VOD_SERVERS']);
 
   static VOD_ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'sohu', 'leshi', 'xigua', 'maiduidui', 'aiyifan']; // vod允许的播放平台
   static ALLOWED_PLATFORMS = ['qiyi', 'bilibili1', 'imgo', 'youku', 'qq', 'migu', 'renren', 'hanjutv', 'sohu', 'leshi', 'xigua', 'maiduidui', 'aiyifan', 'hongguo', 'dandan', 'bahamut', 'animeko', 'custom']; // 全部源允许的播放平台
@@ -763,6 +763,14 @@ export class Envs {
       // 系统配置
       'UI_THEME': { category: 'system', type: 'select', options: ['lavender', 'shinyo', 'sakura', 'tianyi', 'hatsune', 'sakuragi', 'violet', 'amber'], description: '管理界面主题' },
       'PROXY_URL': { category: 'system', type: 'text', description: '代理/反代地址' },
+      'OUTBOUND_MODE': { category: 'system', type: 'select', options: ['off', 'auto'], description: '增强直连：仅独立 Node / Docker / Termux 支持，默认关闭' },
+      'OUTBOUND_SOURCES': { category: 'system', type: 'text', description: '增强直连来源，逗号分隔 bahamut,tmdb；不改变搜索来源顺序' },
+      'OUTBOUND_HTTP_VERSION': { category: 'system', type: 'select', options: ['auto', 'h2', 'h3'], description: '出站协议：auto 竞争 H3/H2 握手；h3 强制且不回退' },
+      'OUTBOUND_DOH_URL': { category: 'system', type: 'text', description: '自定义 HTTPS DNS；留空使用内置解析路径（高级）' },
+      'OUTBOUND_CONNECT_TIMEOUT_MS': { category: 'system', type: 'number', description: '连接尝试最长时间，默认 3000 毫秒；受请求总超时限制（高级）' },
+      'OUTBOUND_HELPER_PATH': { category: 'system', type: 'text', description: 'Go 组件绝对路径；Docker 内置，本地可运行 npm run build:outbound（高级）' },
+      'outboundStatus': { category: 'system', type: 'text', description: '增强直连运行状态' },
+
       'TMDB_API_KEY': { category: 'system', type: 'text', description: 'TMDB API密钥' },
       'LOG_LEVEL': { category: 'system', type: 'select', options: ['debug', 'info', 'warn', 'error'], description: '日志级别配置' },
       'DEPLOY_PLATFROM_ACCOUNT': { category: 'system', type: 'text', description: '部署平台账号ID' },
@@ -800,6 +808,12 @@ export class Envs {
       groupMinute: Math.min(this.get('GROUP_MINUTE', 1, 'number'), 30), // 分钟内合并去重（默认 1，最大值30，0表示不去重）
       danmuLimit: this.get('DANMU_LIMIT', 0, 'number'), // 等间隔采样限制弹幕总数，单位为k，即千：默认 0，表示不限制弹幕数，若改为5，弹幕总数在超过5000的情况下会将弹幕数控制在5000
       uiTheme: this.get('UI_THEME', 'lavender', 'string').toLowerCase(), // 管理界面主题
+      outboundMode: this.get('OUTBOUND_MODE', 'off', 'string'),
+      outboundSources: this.get('OUTBOUND_SOURCES', 'bahamut,tmdb', 'string'),
+      outboundHttpVersion: this.get('OUTBOUND_HTTP_VERSION', 'auto', 'string'),
+      outboundDohUrl: this.get('OUTBOUND_DOH_URL', '', 'string', true),
+      outboundConnectTimeoutMs: this.get('OUTBOUND_CONNECT_TIMEOUT_MS', 3000, 'number'),
+      outboundHelperPath: this.get('OUTBOUND_HELPER_PATH', '', 'string'),
       proxyUrl: this.get('PROXY_URL', '', 'string', true), // 代理/反代地址
       danmuSimplifiedTraditional: this.get('DANMU_SIMPLIFIED_TRADITIONAL', 'default', 'string'), // 弹幕简繁体转换设置：default（默认不转换）、simplified（繁转简）、traditional（简转繁）
       danmuPushUrl: this.get('DANMU_PUSH_URL', '', 'string'), // 代理/反代地址

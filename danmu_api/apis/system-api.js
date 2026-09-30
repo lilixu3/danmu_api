@@ -1,3 +1,4 @@
+import { outboundStatus } from '../outbound/runtime.js';
 import { globals } from "../configs/globals.js";
 import { jsonResponse } from "../utils/http-util.js";
 import { HTML_TEMPLATE } from "../ui/template.js";
@@ -46,6 +47,10 @@ export function handleConfig(hasPermission = false) {
     system: []
   };
   
+  const outbound = outboundStatus(globals.env, globals.deployPlatform);
+  const outboundLabels = { unsupported: '当前平台不支持', off: '关闭', starting: '启动中', ready: '已就绪', failed: '组件失败' };
+  const outboundLabel = (outboundLabels[outbound.status] || outbound.status) + (outbound.reason ? '：' + outbound.reason : '');
+
   // 获取所有环境变量 - 这是用于配置预览的
   const previewEnvVars = {
     ...globals.accessedEnvVars,
@@ -53,6 +58,7 @@ export function handleConfig(hasPermission = false) {
     redisValid: globals.redisValid,
     localRedisValid: globals.localRedisValid,
     aiValid: globals.aiValid,
+    outboundStatus: outboundLabel,
     deployPlatform: globals.deployPlatform
   };
   
@@ -89,6 +95,7 @@ export function handleConfig(hasPermission = false) {
   return jsonResponse({
     message: "Welcome to the LogVar Danmu API server",
     version: globals.VERSION,
+    outbound,
     envs: previewEnvVars, // 配置预览使用
     categorizedEnvVars: categorizedVars,
     envVarConfig: envVarConfig,

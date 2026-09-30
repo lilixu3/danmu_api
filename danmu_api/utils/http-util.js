@@ -1,3 +1,4 @@
+import { usesEnhancedOutbound, fetchWithOutbound } from '../outbound/runtime.js';
 import { globals } from '../configs/globals.js';
 import { log } from './log-util.js'
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -92,6 +93,37 @@ function shouldUseNodeFetch() {
   return USE_NODE_FETCH;
 }
 
+
+async function ordinaryFetch(url, options) {
+  if (shouldUseNodeFetch()) {
+    const nodeFetch = (await import('node-fetch')).default;
+    return nodeFetch(url, { ...options, agent: nodeFetchAgent });
+  }
+  return fetch(url, options);
+}
+
+function outboundResponseHeaders(response) {
+  const headers = Object.fromEntries(response.headers.entries());
+  const cookies = response.headers.getSetCookie?.() || [];
+  if (cookies.length) headers['set-cookie'] = cookies.join(';');
+  return headers;
+}
+
+function waitForOutboundRetry(delay, signal, deadline) {
+  return new Promise((resolve, reject) => {
+    const remaining = deadline - Date.now();
+    if (signal?.aborted) return reject(signal.reason || new DOMException('请求已取消', 'AbortError'));
+    if (remaining <= 0) return reject(new DOMException('增强直连请求总超时', 'TimeoutError'));
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      if (Date.now() >= deadline) reject(new DOMException('增强直连请求总超时', 'TimeoutError'));
+      else resolve();
+    }, Math.min(delay, remaining));
+    const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(signal.reason || new DOMException('请求已取消', 'AbortError')); };
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
 export async function httpGet(url, options = {}) {
   // 单次搜索请求内 HTTP 响应复用: 若当前请求上下文已激活复用缓存且本 URL 已缓存, 直接返回克隆结果, 跳过重复网络请求
   const requestHttpCache = httpCacheContext.getStore();
@@ -104,6 +136,8 @@ export async function httpGet(url, options = {}) {
   }
 
   // 从 options 中获取重试次数，默认为 0
+  const enhanced = usesEnhancedOutbound(url, globals);
+  const deadline = Date.now() + (parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000);
   const maxRetries = parseInt(options.retries || '0', 10) || 0;
   // GET 与 POST 行为保持一致：默认跟随重定向，allow_redirects 为 false 时禁止（用于截获 302 Location）
   const allow_redirects = options.allow_redirects !== false;
@@ -121,16 +155,20 @@ export async function httpGet(url, options = {}) {
       // 针对网络层物理阻断（如 ETIMEDOUT, ECONNRESET, AbortError）取消长退避，实现快速重试
       // 常规服务端报错（如 502, 429）保持指数退避逻辑
       if (lastError && (lastError.cause?.code === 'ETIMEDOUT' || lastError.cause?.code === 'ECONNRESET' || lastError.name === 'AbortError')) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        if (enhanced) await waitForOutboundRetry(100, options.signal, deadline);
+        else await new Promise(resolve => setTimeout(resolve, 100));
       } else {
-        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        if (enhanced) await waitForOutboundRetry(delay, options.signal, deadline);
+        else await new Promise(resolve => setTimeout(resolve, delay));
       }
     } else {
       log("info", `[${currentSource}] [请求模拟] HTTP GET: ${url}`);
     }
 
     // 设置超时时间（默认5秒）
-    const timeout = parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000;
+    const timeout = enhanced ? deadline - Date.now() : (parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000);
+    if (timeout <= 0) throw new DOMException('增强直连请求总超时', 'TimeoutError');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -140,7 +178,9 @@ export async function httpGet(url, options = {}) {
     try {
       // 兼容iOS巨魔或旧版Node：使用node-fetch替代内置fetch
       let response;
-      if (shouldUseNodeFetch()) {
+      if (enhanced) {
+        response = await fetchWithOutbound(url, { method: 'GET', headers: options.headers, signal: controller.signal, redirect: allow_redirects ? 'follow' : 'manual' }, globals, ordinaryFetch, deadline);
+      } else if (shouldUseNodeFetch()) {
         const fetch = (await import('node-fetch')).default;
         response = await fetch(url, {
           method: 'GET',
@@ -163,7 +203,7 @@ export async function httpGet(url, options = {}) {
         });
       }
 
-      clearTimeout(timeoutId);
+      if (!enhanced) clearTimeout(timeoutId);
 
       // 非 2xx 且不在白名单内的状态码抛出异常
       if (!response.ok && !validStatusCodes.includes(response.status)) {
@@ -318,6 +358,7 @@ export async function httpGet(url, options = {}) {
         continue;
       }
     } finally {
+      clearTimeout(timeoutId);
       // 请求生命周期结束，释放监听器内存引用
       cleanupSignal();
     }
@@ -331,7 +372,9 @@ export async function httpGet(url, options = {}) {
 
 export async function httpPost(url, body, options = {}) {
   // 从 options 中获取重试次数，默认为 0
-  const maxRetries = parseInt(options.retries || '0', 10) || 0;
+  const enhanced = usesEnhancedOutbound(url, globals);
+  const deadline = Date.now() + (parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000);
+  const maxRetries = enhanced ? 0 : (parseInt(options.retries || '0', 10) || 0);
   const validStatusCodes = Array.isArray(options.validStatusCodes) ? options.validStatusCodes : [];
   let lastError;
 
@@ -344,16 +387,20 @@ export async function httpPost(url, body, options = {}) {
       // 针对网络层物理阻断（如 ETIMEDOUT, ECONNRESET, AbortError）取消长退避，实现快速重试
       // 常规服务端报错（如 502, 429）保持指数退避逻辑
       if (lastError && (lastError.cause?.code === 'ETIMEDOUT' || lastError.cause?.code === 'ECONNRESET' || lastError.name === 'AbortError')) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        if (enhanced) await waitForOutboundRetry(100, options.signal, deadline);
+        else await new Promise(resolve => setTimeout(resolve, 100));
       } else {
-        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        if (enhanced) await waitForOutboundRetry(delay, options.signal, deadline);
+        else await new Promise(resolve => setTimeout(resolve, delay));
       }
     } else {
       log("info", `[${currentSource}] [请求模拟] HTTP POST: ${url}`);
     }
 
     // 设置超时时间（默认5秒）
-    const timeout = parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000;
+    const timeout = enhanced ? deadline - Date.now() : (parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000);
+    if (timeout <= 0) throw new DOMException('增强直连请求总超时', 'TimeoutError');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -378,7 +425,9 @@ export async function httpPost(url, body, options = {}) {
     try {
       // 兼容iOS巨魔或旧版Node：使用node-fetch替代内置fetch
       let response;
-      if (shouldUseNodeFetch()) {
+      if (enhanced) {
+        response = await fetchWithOutbound(url, fetchOptions, globals, ordinaryFetch, deadline);
+      } else if (shouldUseNodeFetch()) {
         const fetch = (await import('node-fetch')).default;
         response = await fetch(url, { ...fetchOptions, agent: nodeFetchAgent });
       } else {
@@ -386,7 +435,7 @@ export async function httpPost(url, body, options = {}) {
         response = await fetch(url, fetchOptions);
       }
 
-      clearTimeout(timeoutId);
+      if (!enhanced) clearTimeout(timeoutId);
 
       const data = await response.text();
 
@@ -411,7 +460,7 @@ export async function httpPost(url, body, options = {}) {
       return {
         data: parsedData,
         status: response.status,
-        headers: Object.fromEntries(response.headers.entries())
+        headers: enhanced ? outboundResponseHeaders(response) : Object.fromEntries(response.headers.entries())
       };
 
     } catch (error) {
@@ -450,6 +499,7 @@ export async function httpPost(url, body, options = {}) {
         continue;
       }
     } finally {
+      clearTimeout(timeoutId);
       // 请求生命周期结束，释放监听器内存引用
       cleanupSignal();
     }
@@ -501,10 +551,21 @@ async function httpRequestMethod(method, url, body, options = {}) {
     fetchOptions.signal = options.signal;
   }
 
+  const enhanced = usesEnhancedOutbound(url, globals);
+  const timeout = parseInt(options.timeout || globals.vodRequestTimeout || '5000', 10) || 5000;
+  const deadline = Date.now() + timeout;
+  const controller = enhanced ? new AbortController() : null;
+  const cleanup = controller ? linkSignal(options.signal, controller) : () => {};
+  const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+  if (controller) fetchOptions.signal = controller.signal;
+  fetchOptions.redirect = options.allow_redirects === false ? 'manual' : 'follow';
+
   try {
     // 兼容iOS巨魔或旧版Node：使用node-fetch替代内置fetch
     let response;
-    if (shouldUseNodeFetch()) {
+    if (enhanced) {
+      response = await fetchWithOutbound(url, fetchOptions, globals, ordinaryFetch, deadline);
+    } else if (shouldUseNodeFetch()) {
       const fetch = (await import('node-fetch')).default;
       response = await fetch(url, { ...fetchOptions, agent: nodeFetchAgent });
     } else {
@@ -527,7 +588,7 @@ async function httpRequestMethod(method, url, body, options = {}) {
     return {
       data: parsedData,
       status: response.status,
-      headers: Object.fromEntries(response.headers.entries())
+      headers: enhanced ? outboundResponseHeaders(response) : Object.fromEntries(response.headers.entries())
     };
   } catch (error) {
     const currentSource = sourceLogContext.getStore() || "system";
@@ -541,6 +602,9 @@ async function httpRequestMethod(method, url, body, options = {}) {
       log("error", '- 原因:', error.cause?.message);
     }
     throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+    cleanup();
   }
 }
 

@@ -1,0 +1,47 @@
+name: Enhanced outbound checks
+
+on:
+  pull_request:
+    paths:
+      - 'outbound/**'
+      - 'danmu_api/outbound/**'
+      - 'danmu_api/utils/http-util.js'
+      - 'danmu_api/configs/globals.js'
+      - 'danmu_api/server.js'
+      - 'Dockerfile'
+      - '.github/workflows/outbound-checks.yml'
+  push:
+    paths:
+      - 'outbound/**'
+      - 'danmu_api/outbound/**'
+      - 'danmu_api/utils/http-util.js'
+      - 'danmu_api/configs/globals.js'
+      - 'danmu_api/server.js'
+      - 'Dockerfile'
+      - '.github/workflows/outbound-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: outbound/go.mod
+          cache-dependency-path: outbound/go.sum
+      - name: Go tests including concurrency race detection
+        working-directory: outbound
+        run: |
+          go test -race -timeout=60s ./...
+          go vet ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Node transport and existing API tests
+        run: |
+          npm install
+          npm run test:outbound
+          node --test danmu_api/worker.test.js

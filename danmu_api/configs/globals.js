@@ -78,9 +78,13 @@ export const Globals = {
    * @returns {string} 处理后的URL
    */
   makeProxyUrl(targetUrl) {
+    return this.getProxyRoute(targetUrl).url;
+  },
+
+  getProxyRoute(targetUrl) {
     const proxyConfig = this.envs.proxyUrl || '';
     
-    if (!proxyConfig || !targetUrl) return targetUrl;
+    if (!proxyConfig || !targetUrl) return { url: targetUrl, kind: 'direct' };
 
     const configs = proxyConfig.split(',').map(s => s.trim()).filter(s => s);
     let forwardProxy = null;
@@ -91,7 +95,7 @@ export const Globals = {
     try {
       targetObj = new URL(targetUrl);
     } catch (e) {
-      return targetUrl;
+      return { url: targetUrl, kind: 'direct' };
     }
 
     const hostname = targetObj.hostname;
@@ -101,7 +105,7 @@ export const Globals = {
       if (conf.startsWith('bahamut@') && hostname.includes('gamer.com.tw')) {
          specificProxy = conf.substring(8);
          break;
-      } else if (conf.startsWith('tmdb@') && hostname.includes('tmdb')) {
+      } else if (conf.startsWith('tmdb@') && (hostname.includes('tmdb') || hostname === 'api.themoviedb.org')) {
          specificProxy = conf.substring(5);
          break;
       } else if (conf.startsWith('bilibili@') && hostname.includes('bilibili')) {
@@ -128,24 +132,24 @@ export const Globals = {
           if (proxyObj.pathname !== '/') {
              targetObj.pathname = proxyObj.pathname.replace(/\/$/, '') + targetObj.pathname;
           }
-          return targetObj.toString();
+          return { url: targetObj.toString(), kind: 'specific' };
         } catch (e) {
-          return targetUrl;
+          return { url: targetUrl, kind: 'specific' };
         }
     }
 
     // 2. 万能反代 (拼接: ProxyURL + TargetURL)
     if (universalProxy) {
         const cleanProxy = universalProxy.replace(/\/$/, '');
-        return `${cleanProxy}/${targetUrl}`;
+        return { url: `${cleanProxy}/${targetUrl}`, kind: 'universal' };
     }
 
     // 3. 正向代理 (仅本地环境回退到 5321 中转)
     if (forwardProxy) {
-        return `http://127.0.0.1:5321/proxy?url=${encodeURIComponent(targetUrl)}`;
+        return { url: `http://127.0.0.1:5321/proxy?url=${encodeURIComponent(targetUrl)}`, kind: 'forward' };
     }
 
-    return targetUrl;
+    return { url: targetUrl, kind: 'direct' };
   },
 
   /**
@@ -176,6 +180,7 @@ export const Globals = {
 
         // 暴露方法
         if (prop === 'makeProxyUrl') return self.makeProxyUrl.bind(self);
+        if (prop === 'getProxyRoute') return self.getProxyRoute.bind(self);
 
         // 其他属性直接返回
         return self[prop];

@@ -1,3 +1,4 @@
+import { createOutboundManager } from './outbound/node-runtime.js';
 import { createRequire } from 'module';
 import path from 'path';
 import fs from 'fs';
@@ -169,6 +170,7 @@ let envWatcher = null;
 let reloadTimer = null;
 let mainServer = null;
 let proxyServer = null;
+const outboundManager = createOutboundManager();
 
 /**
  * 设置 .env 文件监听器
@@ -246,6 +248,7 @@ async function setupEnvWatcher() {
           const bangumiEnabled = process.env.USE_BANGUMI_DATA === 'true' || process.env.USE_BANGUMI_DATA === true;
           globals.useBangumiData = bangumiEnabled;
           syncBangumiDataLifecycleOnConfigChange('node');
+          outboundManager.configure(process.env, detectNodeDeployPlatform()).catch(error => console.error('[outbound]', error.message));
 
         } catch (error) {
           console.log('[server] Error reloading configuration files:', error.message);
@@ -276,6 +279,7 @@ async function setupEnvWatcher() {
  */
 function cleanupWatcher(exitCode = 0) {
   stopFavoriteScheduler();
+  outboundManager.stop().catch(error => console.error('[outbound]', error.message));
   if (envWatcher) {
     console.log('[server] Closing file watcher...');
     envWatcher.close();
@@ -520,6 +524,8 @@ async function startServer() {
   } catch (e) {
     console.error('[server] Globals init failed:', e);
   }
+
+  await outboundManager.configure(process.env, detectNodeDeployPlatform());
 
   // 启动主业务服务器（默认 9321，可通过 DANMU_API_PORT 覆盖）
   const configuredMainPort = Number.parseInt(process.env.DANMU_API_PORT ?? '', 10);
