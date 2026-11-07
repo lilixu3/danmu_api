@@ -49,6 +49,19 @@ test('PARSE TitleSeasonEpisode', async () => {
     ({title, season, episode} = await extractTitleSeasonEpisode("宇宙Marry Me? S02E08"));
     assert(title === "宇宙Marry Me?" && season == 2 && episode == 8, `Expected title === "宇宙Marry Me?" && season == 2 && episode == 8, but got ${title} ${season} ${episode}`);
   });
+test('filename parsing treats hyphens before season markers as separators', async () => {
+  Globals.init({ LOG_LEVEL: 'error', TITLE_TO_CHINESE: 'false' });
+
+  for (const [fileName, title, season, episode] of [
+    ['海贼王 - S11E382', '海贼王', 11, 382],
+    ['海贼王-S11E382', '海贼王', 11, 382],
+    ['Spider-Man - S01E01', 'Spider-Man', 1, 1],
+  ]) {
+    assert.deepStrictEqual(await extractTitleSeasonEpisode(fileName), {
+      title, season, episode, year: undefined,
+    }, fileName);
+  }
+});
 test('season matching unifies traditional and simplified titles', () => {
   const queryTitle = '无职转生 ～到了异世界就拿出真本事～';
 

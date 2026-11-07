@@ -1742,7 +1742,7 @@ function detectPlatformFromUrl(url) {
 }
 
 export async function extractTitleSeasonEpisode(cleanFileName) {
-  const regex = /^(.+?)[.\s]+S(\d+)E(\d+)/i;
+  const regex = /^(.+?)[.\s-]+S(\d+)E(\d+)/i;
   const match = cleanFileName.match(regex);
 
   let title, season, episode, year;
